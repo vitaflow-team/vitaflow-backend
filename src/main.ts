@@ -27,9 +27,4 @@ export async function setupApp() {
   return app;
 }
 
-export async function bootstrap() {
-  const app = await setupApp();
-  await app.listen(process.env.PORT || 3000);
-}
-
-bootstrap();
+export const appPromise = setupApp();
