@@ -87,7 +87,14 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "transformIgnorePatterns": [
+      "/node_modules/(?!@nestjs/swagger)"
+    ],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/$1", 
+      "^mock/(.*)$": "<rootDir>/../mock/$1" 
+    }
   },
   "config": {
     "commitizen": {
