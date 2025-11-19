@@ -6,7 +6,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SingUpDTO } from './singup.Dto';
 
 @ApiTags('User')
-@Controller()
+@Controller('/users')
 export class SingupController {
   constructor(
     private user: UserRepository,
