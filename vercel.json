@@ -1,20 +1,15 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "dist/main.js",
-      "use": "@vercel/node"
+  "functions": {
+    "api/main.js": {
+      "runtime": "@vercel/node@3.0.0",
+      "includeFiles": "node_modules/.prisma/client/**"
     }
-  ],
+  },
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "dist/main.js"
+      "dest": "api/main.js"
     }
-  ],
-  "functions": {
-    "dist/main.js": {
-      "includeFiles": "node_modules/.prisma/client/**"
-    }
-  }
+  ]
 }
