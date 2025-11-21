@@ -3,9 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
-export async function createApp() {
+async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
   app.useGlobalPipes(new ValidationPipe());
 
   const config = new DocumentBuilder()
@@ -25,11 +24,6 @@ export async function createApp() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('swagger/api', app, document);
 
-  return app;
-}
-
-export async function bootstrap() {
-  const app = await createApp();
   await app.listen(process.env.PORT ?? 3333);
 }
 
