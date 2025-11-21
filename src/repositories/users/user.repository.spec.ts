@@ -5,26 +5,7 @@ import { UserRepository } from './user.repository';
 
 describe('UserRepository Tests', () => {
   let userRepository: UserRepository;
-
-  const mockPrismaService = {
-    users: {
-      create: jest
-        .fn()
-        .mockImplementation(({ data }: { data: Prisma.UsersCreateInput }) => {
-          return Promise.resolve({
-            id: 'idNewUser',
-            name: data.name,
-            email: data.email,
-            password: data.password,
-            avatar: data.avatar ?? null,
-            active: data.active ?? false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          } satisfies Users);
-        }),
-      findUnique: jest.fn(),
-    } as unknown as PrismaService['users'],
-  };
+  let prismaService: PrismaService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -32,12 +13,33 @@ describe('UserRepository Tests', () => {
         UserRepository,
         {
           provide: PrismaService,
-          useValue: mockPrismaService,
+          useValue: {
+            users: {
+              create: jest
+                .fn()
+                .mockImplementation(
+                  ({ data }: { data: Prisma.UsersCreateInput }) => {
+                    return Promise.resolve({
+                      id: 'idNewUser',
+                      name: data.name,
+                      email: data.email,
+                      password: data.password,
+                      avatar: data.avatar ?? null,
+                      active: data.active ?? false,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    } satisfies Users);
+                  },
+                ),
+              findUnique: jest.fn(),
+            },
+          },
         },
       ],
     }).compile();
 
     userRepository = module.get<UserRepository>(UserRepository);
+    prismaService = module.get<PrismaService>(PrismaService);
   });
 
   it('should be defined and instantiated', () => {
@@ -70,9 +72,7 @@ describe('UserRepository Tests', () => {
       updatedAt: new Date(),
     };
 
-    (mockPrismaService.users.findUnique as jest.Mock).mockResolvedValue(
-      userData,
-    );
+    (prismaService.users.findUnique as jest.Mock).mockResolvedValue(userData);
 
     const user = await userRepository.findByEmail({
       email: 'jonhdoe@jonhdoe.com',
@@ -82,12 +82,16 @@ describe('UserRepository Tests', () => {
   });
 
   it('should return null when user is not found', async () => {
-    (mockPrismaService.users.findUnique as jest.Mock).mockResolvedValue(null);
+    (prismaService.users.findUnique as jest.Mock).mockResolvedValue(null);
 
     const user = await userRepository.findByEmail({
       email: 'notexists@jonhdoe.com',
     });
 
     expect(user).toBeNull();
+  });
+
+  it('should be instantiated correctly manually', () => {
+    expect(new UserRepository(prismaService)).toBeDefined();
   });
 });

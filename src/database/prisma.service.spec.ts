@@ -7,13 +7,7 @@ describe('PrismaService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [PrismaService],
-    })
-      .overrideProvider(PrismaService)
-      .useValue({
-        $connect: jest.fn(),
-        $disconnect: jest.fn(),
-      })
-      .compile();
+    }).compile();
 
     service = module.get<PrismaService>(PrismaService);
   });
@@ -22,8 +16,15 @@ describe('PrismaService', () => {
     expect(service).toBeDefined();
   });
 
-  it('should call $connect method', async () => {
-    await (service.$connect as jest.Mock)();
-    expect(service.$connect).toHaveBeenCalled();
+  describe('onModuleInit', () => {
+    it('should call $connect', async () => {
+      const connectSpy = jest
+        .spyOn(service, '$connect')
+        .mockImplementation(async () => {});
+
+      await service.onModuleInit();
+
+      expect(connectSpy).toHaveBeenCalled();
+    });
   });
 });
