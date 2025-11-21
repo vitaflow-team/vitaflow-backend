@@ -33,6 +33,4 @@ export async function bootstrap() {
   await app.listen(process.env.PORT ?? 3333);
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  bootstrap();
-}
+bootstrap();
