@@ -34,20 +34,23 @@ export class SingupController {
   })
   @ApiResponse({
     status: 400,
-    description: 'This email is already used by another user.',
+    description: 'Este e-mail já está sendo usado por outro usuário.',
   })
   @Post('singup')
   async postNewUser(@Body() body: SingUpDTO) {
     const { email, name, password, checkPassword } = body;
 
-    const userExists = await this.user.findByEmail({ email });
-    if (userExists) {
-      throw new AppError('This email is already used by another user.', 400);
-    }
-
     if (checkPassword !== password) {
       throw new AppError(
-        'The confirm password does not match the password.',
+        'A confirmação da senha não corresponde à senha.',
+        400,
+      );
+    }
+
+    const userExists = await this.user.findByEmail({ email });
+    if (userExists) {
+      throw new AppError(
+        'Este e-mail já está sendo usado por outro usuário.',
         400,
       );
     }

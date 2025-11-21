@@ -1,29 +1,84 @@
-import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
-import { setupApp } from './main';
+/* eslint-disable @typescript-eslint/no-misused-promises */
+/* eslint-disable @typescript-eslint/require-await */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/await-thenable */
+/* eslint-disable @typescript-eslint/no-require-imports */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import * as NestFactory from '@nestjs/core';
+import * as SwaggerModule from '../test/__mocks__/@nestjs/swagger';
+import { bootstrap, createApp } from './main';
 
-describe('Bootstrap (e2e)', () => {
-  let app: INestApplication;
+jest.mock('@nestjs/core', () => ({
+  NestFactory: {
+    create: jest.fn(),
+  },
+}));
 
-  beforeAll(async () => {
-    app = await setupApp();
-    await app.init();
-  }, 15000);
+describe('Main', () => {
+  let listenSpy: jest.Mock;
+  let useGlobalPipesSpy: jest.Mock;
 
-  afterAll(async () => {
-    await app.close();
+  beforeEach(() => {
+    listenSpy = jest.fn();
+    useGlobalPipesSpy = jest.fn();
+
+    (NestFactory.NestFactory.create as jest.Mock).mockResolvedValue({
+      useGlobalPipes: useGlobalPipesSpy,
+      listen: listenSpy,
+    });
   });
 
-  it('should return 200 on Swagger UI', async () => {
-    const res = await request(app.getHttpServer()).get('/swagger/api');
-    expect(res.status).toBe(200);
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('should apply ValidationPipe globally', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/some-endpoint')
-      .send({ invalidField: 'invalid' });
+  describe('createApp', () => {
+    it('should configure global pipes and swagger', async () => {
+      await createApp();
 
-    expect(res.status).toBe(404);
+      expect(SwaggerModule.SwaggerModule.createDocument).toHaveBeenCalled();
+      expect(SwaggerModule.SwaggerModule.setup).toHaveBeenCalled();
+    });
+  });
+
+  describe('bootstrap', () => {
+    it('should start the application listening on port', async () => {
+      await bootstrap();
+
+      expect(listenSpy).toHaveBeenCalledWith(3333);
+    });
+  });
+
+  describe('App bootstrapping (Side Effects)', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      jest.resetModules(); // Limpa o cache dos módulos para permitir re-importar
+      process.env = { ...originalEnv }; // Clona o ambiente original
+    });
+
+    afterEach(() => {
+      process.env = originalEnv; // Restaura o ambiente original
+    });
+
+    it('should bootstrap the app if NODE_ENV is not "test"', async () => {
+      process.env.NODE_ENV = 'development';
+
+      jest.mock('@nestjs/core', () => ({
+        NestFactory: {
+          create: jest.fn().mockResolvedValue({
+            useGlobalPipes: jest.fn(),
+            listen: jest.fn(),
+          }),
+        },
+      }));
+      const NestFactoryMock = require('@nestjs/core');
+
+      await jest.isolateModules(async () => {
+        require('./main');
+      });
+
+      expect(NestFactoryMock.NestFactory.create).toHaveBeenCalled();
+    });
   });
 });

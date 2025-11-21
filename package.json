@@ -74,27 +74,36 @@
     "typescript-eslint": "^8.20.0"
   },
   "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "rootDir": ".",
     "moduleFileExtensions": [
       "js",
       "json",
       "ts"
     ],
-    "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "src/**/*.{ts,js}",
+      "!src/**/*.d.ts"
     ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node",
-    "transformIgnorePatterns": [
-      "/node_modules/(?!@nestjs/swagger)"
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/",
+      "/coverage/"
+    ],
+    "coverageDirectory": "coverage",
+    "moduleDirectories": [
+      "node_modules",
+      "src"
     ],
     "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/$1",
-      "^mock/(.*)$": "<rootDir>/../mock/$1"
+      "^@/(.*)$": "<rootDir>/src/$1",
+      "^mock/(.*)$": "<rootDir>/mock/$1",
+      "^@nestjs/swagger$": "<rootDir>/../test/__mocks__/@nestjs/swagger.ts"
     }
   },
   "config": {
