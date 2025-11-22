@@ -1,4 +1,5 @@
 import { UserRepository } from '@/repositories/users/user.repository';
+import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
 import { Body, Controller, Post } from '@nestjs/common';
@@ -12,6 +13,8 @@ export class SingupController {
     private user: UserRepository,
 
     private hash: PasswordHash,
+
+    private userToken: UserTokenRepository,
   ) {}
 
   @ApiOperation({
@@ -62,6 +65,10 @@ export class SingupController {
       email,
       password: hasPassword,
       active: false,
+    });
+
+    await this.userToken.create({
+      user: { connect: userCreated },
     });
 
     return {
