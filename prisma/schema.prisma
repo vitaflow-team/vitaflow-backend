@@ -14,14 +14,23 @@ datasource db {
 }
 
 model Users {
-  id        String   @id @default(cuid())
-  name      String
-  email     String
-  password  String
-  avatar    String?
-  active    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String       @id @default(cuid())
+  name        String
+  email       String
+  password    String
+  avatar      String?
+  active      Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  usersTokens UsersToken[]
 
   @@unique([email])
+}
+
+model UsersToken {
+  id        String   @id @default(cuid())
+  user      Users    @relation(fields: [userID], references: [id])
+  userID    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

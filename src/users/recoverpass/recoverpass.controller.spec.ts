@@ -1,8 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
-import { userTokenServiceMock } from 'mock/userToken.repository.mock';
-import { SingupController } from './singup.controller';
+import { SingupController } from '../singup/singup.controller';
 
 describe('SingupController Tests', () => {
   let singupController: SingupController;
@@ -10,7 +9,7 @@ describe('SingupController Tests', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [SingupController],
-      providers: [passwordHashMock, userRepositoryMock, userTokenServiceMock],
+      providers: [passwordHashMock, userRepositoryMock],
     }).compile();
 
     singupController = moduleFixture.get<SingupController>(SingupController);

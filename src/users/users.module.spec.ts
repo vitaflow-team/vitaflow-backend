@@ -1,8 +1,10 @@
 import { PrismaService } from '@/database/prisma.service';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
 import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
+import { RecoverpassController } from './recoverpass/recoverpass.controller';
 import { SinginController } from './singin/singin.controller';
 import { SingupController } from './singup/singup.controller';
 import { UsersModule } from './users.module';
@@ -36,6 +38,13 @@ describe('UsersModule Test', () => {
     expect(singupcontroller).toBeDefined();
   });
 
+  it('should register SingUpController controller', () => {
+    const recoverpassController = moduleRef.get<RecoverpassController>(
+      RecoverpassController,
+    );
+    expect(recoverpassController).toBeDefined();
+  });
+
   it('should register PrismaService provider', () => {
     const prismaService = moduleRef.get<PrismaService>(PrismaService);
     expect(prismaService).toBeDefined();
@@ -49,5 +58,11 @@ describe('UsersModule Test', () => {
   it('should register UserRepository provider', () => {
     const userRepository = moduleRef.get<UserRepository>(UserRepository);
     expect(userRepository).toBeDefined();
+  });
+
+  it('should register UserRepository provider', () => {
+    const userTokenRepository =
+      moduleRef.get<UserTokenRepository>(UserTokenRepository);
+    expect(userTokenRepository).toBeDefined();
   });
 });
