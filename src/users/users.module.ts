@@ -1,4 +1,5 @@
 import { PrismaService } from '@/database/prisma.service';
+import { MailModule } from '@/mail/mail.module';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
@@ -10,6 +11,7 @@ import { SingupController } from './singup/singup.controller';
 
 @Module({
   imports: [
+    MailModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '12h' },

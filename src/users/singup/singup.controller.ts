@@ -1,3 +1,4 @@
+import { MailService } from '@/mail/mail.service';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { AppError } from '@/utils/app.erro';
@@ -15,6 +16,8 @@ export class SingupController {
     private hash: PasswordHash,
 
     private userToken: UserTokenRepository,
+
+    private mailService: MailService,
   ) {}
 
   @ApiOperation({
@@ -67,9 +70,11 @@ export class SingupController {
       active: false,
     });
 
-    await this.userToken.create({
+    const userTokenCreated = await this.userToken.create({
       user: { connect: userCreated },
     });
+
+    await this.mailService.sendActivationEmail(email, userTokenCreated.id);
 
     return {
       ...userCreated,
