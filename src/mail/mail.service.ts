@@ -8,8 +8,6 @@ export class MailService {
   async sendActivationEmail(email: string, token: string) {
     const activationLink = `${process.env.APP_URL}/singin/activate?token=${token}`;
 
-    console.log(activationLink);
-
     await this.mailerService.sendMail({
       to: email,
       subject: 'Ative sua conta',
