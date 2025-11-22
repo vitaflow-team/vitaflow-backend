@@ -94,6 +94,7 @@
       "/node_modules/",
       "/dist/",
       "/coverage/",
+      "/src/app.module.ts",
       "/src/main.ts"
     ],
     "coverageDirectory": "coverage",
@@ -113,12 +114,13 @@
     }
   },
   "lint-staged": {
-    "*.{ts,js,json,md}": [
-      "eslint --fix",
-      "prettier --write"
+    "*.{ts,js,json,md}": "prettier --write",
+    "src/**/*.ts": [
+      "eslint --fix"
     ],
-    "*.ts": [
-      "yarn test:staged"
-    ]
+    "**/*.{spec,test}.ts": [
+      "eslint"
+    ],
+    "*.ts": "eslint"
   }
 }

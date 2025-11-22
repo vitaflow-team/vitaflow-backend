@@ -1,5 +1,6 @@
 import { PrismaService } from '@/database/prisma.service';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
 import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -57,5 +58,11 @@ describe('UsersModule Test', () => {
   it('should register UserRepository provider', () => {
     const userRepository = moduleRef.get<UserRepository>(UserRepository);
     expect(userRepository).toBeDefined();
+  });
+
+  it('should register UserRepository provider', () => {
+    const userTokenRepository =
+      moduleRef.get<UserTokenRepository>(UserTokenRepository);
+    expect(userTokenRepository).toBeDefined();
   });
 });
