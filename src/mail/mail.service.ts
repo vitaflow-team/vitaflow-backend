@@ -20,7 +20,7 @@ export class MailService {
   }
 
   async resetPasswordEmail(name: string, email: string, token: string) {
-    const resetPasswordLink = `${process.env.APP_URL}/singin/activate?token=${token}`;
+    const resetPasswordLink = `${process.env.APP_URL}/singin/reset?token=${token}`;
 
     await this.mailerService.sendMail({
       to: email,
