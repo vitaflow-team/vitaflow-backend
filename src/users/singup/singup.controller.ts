@@ -74,7 +74,11 @@ export class SingupController {
       user: { connect: userCreated },
     });
 
-    await this.mailService.sendActivationEmail(email, userTokenCreated.id);
+    await this.mailService.sendActivationEmail(
+      name,
+      email,
+      userTokenCreated.id,
+    );
 
     return {
       ...userCreated,
