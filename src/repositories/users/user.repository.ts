@@ -19,4 +19,11 @@ export class UserRepository {
       where,
     });
   }
+
+  async activateUser(id: string): Promise<Users> {
+    return await this.prisma.users.update({
+      where: { id },
+      data: { active: true },
+    });
+  }
 }

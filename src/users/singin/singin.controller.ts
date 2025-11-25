@@ -6,9 +6,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SingInDTO } from './singin.Dto';
 
-const UnauthorizedUser = 'Unauthorized user.';
-const AccountInactive =
-  UnauthorizedUser + ' Your account is currently inactive.';
+const UnauthorizedUser = 'Usuário não autorizado.';
+const AccountInactive = UnauthorizedUser + ' Conta inativa.';
 
 @ApiTags('User')
 @Controller('users')
