@@ -74,10 +74,14 @@ export class SingupController {
       user: { connect: userCreated },
     });
 
-    await this.mailService.sendActivationEmail(
+    const activationLink = `${process.env.APP_URL}/singin/activate?token=${userTokenCreated.id}`;
+
+    await this.mailService.sendEmailPassword(
       name,
       email,
-      userTokenCreated.id,
+      'Ative sua conta',
+      './activation',
+      activationLink,
     );
 
     return {

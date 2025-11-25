@@ -33,8 +33,6 @@ export class RecoverpassController {
   async postRecoverpass(@Body() body: RecoverpassDTO) {
     const { email } = body;
 
-    console.log('emailback', email);
-
     const userExists = await this.user.findByEmail({ email });
     if (userExists) {
       await this.userToken.deleteAll({
@@ -47,10 +45,14 @@ export class RecoverpassController {
         },
       });
 
-      await this.mailService.resetPasswordEmail(
+      const recoveryUrl = `${process.env.APP_URL}/singin/recoverpass?token=${token.id}`;
+
+      await this.mailService.sendEmailPassword(
         userExists.name,
         email,
-        token.id,
+        'Recuperação de senha',
+        './resetpassword',
+        recoveryUrl,
       );
 
       return true;
