@@ -5,30 +5,20 @@ import { Injectable } from '@nestjs/common';
 export class MailService {
   constructor(private readonly mailerService: MailerService) {}
 
-  async sendActivationEmail(name: string, email: string, token: string) {
-    const activationLink = `${process.env.APP_URL}/singin/activate?token=${token}`;
-
+  async sendEmailPassword(
+    name: string,
+    email: string,
+    subject: string,
+    template: string,
+    url: string,
+  ) {
     await this.mailerService.sendMail({
       to: email,
-      subject: 'Ative sua conta',
-      template: './activation',
+      subject: subject,
+      template: template,
       context: {
         name: name,
-        link: activationLink,
-      },
-    });
-  }
-
-  async resetPasswordEmail(name: string, email: string, token: string) {
-    const resetPasswordLink = `${process.env.APP_URL}/singin/reset?token=${token}`;
-
-    await this.mailerService.sendMail({
-      to: email,
-      subject: 'Ative sua conta',
-      template: './resetpassword',
-      context: {
-        name: name,
-        link: resetPasswordLink,
+        link: url,
       },
     });
   }

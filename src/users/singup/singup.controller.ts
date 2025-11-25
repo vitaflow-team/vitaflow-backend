@@ -5,6 +5,8 @@ import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { differenceInHours } from 'date-fns';
+import { ActiveDTO } from './activate.Dto';
 import { SingUpDTO } from './singup.Dto';
 
 @ApiTags('User')
@@ -74,15 +76,54 @@ export class SingupController {
       user: { connect: userCreated },
     });
 
-    await this.mailService.sendActivationEmail(
+    const activationLink = `${process.env.APP_URL}/singin/activate?token=${userTokenCreated.id}`;
+
+    await this.mailService.sendEmailPassword(
       name,
       email,
-      userTokenCreated.id,
+      'Ative sua conta',
+      './activation',
+      activationLink,
     );
 
     return {
       ...userCreated,
       password: undefined,
     };
+  }
+
+  @ApiOperation({
+    summary: 'Activate a new user account',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'User account activated.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired token.',
+  })
+  @Post('/activate')
+  async activateNewUser(@Body() body: ActiveDTO) {
+    const { token } = body;
+
+    const userToken = await this.userToken.findById({ id: token });
+    if (userToken) {
+      if (differenceInHours(Date.now(), userToken.createdAt) > 2) {
+        throw new AppError('Token expired.', 400);
+      }
+
+      await this.userToken.deleteAll({
+        userID: userToken.userID,
+      });
+
+      const user = await this.user.activateUser(userToken.userID);
+
+      return { ...user, password: undefined };
+    }
+
+    return null;
+
+    return false;
   }
 }
