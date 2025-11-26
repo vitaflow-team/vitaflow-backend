@@ -45,17 +45,19 @@ export class RecoverpassController {
         },
       });
 
-      const recoveryUrl = `${process.env.APP_URL}/singin/recoverpass?token=${token.id}`;
+      if (token) {
+        const recoveryUrl = `${process.env.APP_URL}/singin?token=${token.id}`;
 
-      await this.mailService.sendEmailPassword(
-        userExists.name,
-        email,
-        'Recuperação de senha',
-        './resetpassword',
-        recoveryUrl,
-      );
+        await this.mailService.sendEmailPassword(
+          userExists.name,
+          email,
+          'Recuperação de senha',
+          './resetpassword',
+          recoveryUrl,
+        );
 
-      return true;
+        return true;
+      }
     }
 
     return false;
