@@ -123,7 +123,5 @@ export class SingupController {
     }
 
     return null;
-
-    return false;
   }
 }
