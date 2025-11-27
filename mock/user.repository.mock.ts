@@ -22,6 +22,16 @@ export const userMock = [
     createdAt: new Date(),
     updatedAt: new Date(),
   },
+  {
+    id: '3',
+    name: 'Jonh Doe',
+    email: 'jonhdoeActive@jonhdoe.com',
+    password: '12345',
+    avatar: null,
+    active: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
 ] as Users[];
 
 export const userRepositoryMock = {
@@ -58,5 +68,6 @@ export const userRepositoryMock = {
         updatedAt: new Date(),
       } as Users);
     }),
+    updatePassword: jest.fn(),
   },
 };

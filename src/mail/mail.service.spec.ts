@@ -66,7 +66,7 @@ describe('MailService Tests', () => {
           'tpl',
           'url',
         ),
-      ).rejects.toThrow('Erro SMTP');
+      ).rejects.toThrow('SMTP Error');
     });
   });
 });
