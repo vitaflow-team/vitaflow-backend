@@ -24,7 +24,11 @@ export const userTokenMock = [
 export const userTokenServiceMock = {
   provide: UserTokenRepository,
   useValue: {
-    create: jest.fn().mockResolvedValue(userTokenMock[0]),
+    create: jest
+      .fn()
+      .mockResolvedValue(({ id }) =>
+        Promise.resolve({ ...userTokenMock[0], userID: id }),
+      ),
     deleteAll: jest.fn().mockResolvedValue(null),
     findById: jest.fn().mockImplementation(({ id }) => {
       const userToken = userTokenMock.filter((userToken) => {

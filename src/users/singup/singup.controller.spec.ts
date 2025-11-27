@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { jwtServiceMock } from 'mock/jwtService.mock';
+import { mailServiceMock } from 'mock/mail.service.mok';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
 import { userTokenServiceMock } from 'mock/userToken.repository.mock';
@@ -10,7 +12,13 @@ describe('SingupController Tests', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [SingupController],
-      providers: [passwordHashMock, userRepositoryMock, userTokenServiceMock],
+      providers: [
+        passwordHashMock,
+        userRepositoryMock,
+        jwtServiceMock,
+        mailServiceMock,
+        userTokenServiceMock,
+      ],
     }).compile();
 
     singupController = moduleFixture.get<SingupController>(SingupController);
@@ -61,6 +69,36 @@ describe('SingupController Tests', () => {
       expect(result.email).toEqual(newUser.email);
       expect(result.active).toEqual(false);
       expect(result.password).toBeUndefined();
+    });
+
+    it('Active New User - Error', async () => {
+      const token = {
+        token: 'tokenNotFound',
+      };
+
+      const result = await singupController.activateNewUser(token);
+
+      expect(result).toBeNull();
+    });
+
+    it('Active New User - Token expired', async () => {
+      const token = {
+        token: 'userTokenMockID1',
+      };
+
+      await expect(
+        singupController.activateNewUser(token),
+      ).rejects.toHaveProperty('statusCode', 400);
+    });
+
+    it('Active New User - Success', async () => {
+      const token = {
+        token: 'userTokenMockID2',
+      };
+
+      const result = await singupController.activateNewUser(token);
+
+      expect(result?.active).toEqual(true);
     });
   });
 });

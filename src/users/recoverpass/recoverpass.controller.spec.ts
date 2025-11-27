@@ -1,65 +1,99 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { mailServiceMock } from 'mock/mail.service.mok';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
-import { SingupController } from '../singup/singup.controller';
+import { userTokenServiceMock } from 'mock/userToken.repository.mock';
+import { RecoverpassController } from './recoverpass.controller';
 
-describe('SingupController Tests', () => {
-  let singupController: SingupController;
+describe('RecoverPassController Tests', () => {
+  let recoverPassController: RecoverpassController;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      controllers: [SingupController],
-      providers: [passwordHashMock, userRepositoryMock],
+      controllers: [RecoverpassController],
+      providers: [
+        userRepositoryMock,
+        userTokenServiceMock,
+        mailServiceMock,
+        passwordHashMock,
+        mailServiceMock,
+      ],
     }).compile();
 
-    singupController = moduleFixture.get<SingupController>(SingupController);
+    recoverPassController = moduleFixture.get<RecoverpassController>(
+      RecoverpassController,
+    );
   });
 
   it('Should be defined', () => {
-    expect(singupController).toBeDefined();
+    expect(recoverPassController).toBeDefined();
   });
 
-  describe('SingupController.postNewUser - Tests', () => {
-    it('Creating new user - Existing email', async () => {
-      const newUser = {
-        email: 'jonhdoe@jonhdoe.com',
-        name: 'Jonh Doe',
-        password: '12345',
-        checkPassword: '12345',
+  describe('RecoverpassController.postRecoverpass - Tests', () => {
+    it('Recover password - Not existing email', async () => {
+      const recover = { email: 'naoencontrou@jonhdoe.com' };
+
+      const result = await recoverPassController.postRecoverpass(recover);
+
+      expect(result).toEqual(false);
+    });
+
+    it('Recover password - create token', async () => {
+      const recover = { email: 'jonhdoe@jonhdoe.com' };
+
+      const result = await recoverPassController.postRecoverpass(recover);
+
+      expect(result).toEqual(true);
+    });
+  });
+
+  describe('RecoverpassController.postVerifyToken - Tests', () => {
+    it('Recover password - Token not exists', async () => {
+      const tokenData = {
+        token: 'invalidTokenID',
+        password: 'newStrongPassword123',
+        checkPassword: 'newStrongPassword123',
       };
 
       await expect(
-        singupController.postNewUser(newUser),
+        recoverPassController.postChangePassword(tokenData),
       ).rejects.toHaveProperty('statusCode', 400);
     });
 
-    it('Creating new user - Confirm incorrect password', async () => {
-      const newUser = {
-        email: 'jonhdoeNewUser@jonhdoe.com',
-        name: 'Jonh Doe',
-        password: '12345',
-        checkPassword: '54321',
+    it('Recover password - Token expired', async () => {
+      const tokenData = {
+        token: 'userTokenMockID1',
+        password: 'newStrongPassword123',
+        checkPassword: 'newStrongPassword123',
       };
 
       await expect(
-        singupController.postNewUser(newUser),
+        recoverPassController.postChangePassword(tokenData),
       ).rejects.toHaveProperty('statusCode', 400);
     });
 
-    it('Creating new user - Success', async () => {
-      const newUser = {
-        email: 'jonhdoeNewUser@jonhdoe.com',
-        name: 'Jonh Doe',
-        password: '12345',
-        checkPassword: '12345',
+    it('Recover password - password different the checkPassword', async () => {
+      const tokenData = {
+        token: 'userTokenMockID2',
+        password: 'newStrongPassword123',
+        checkPassword: 'differentPassword123',
       };
 
-      const result = await singupController.postNewUser(newUser);
+      await expect(
+        recoverPassController.postChangePassword(tokenData),
+      ).rejects.toHaveProperty('statusCode', 401);
+    });
 
-      expect(result.id).toEqual('idNewUser');
-      expect(result.email).toEqual(newUser.email);
-      expect(result.active).toEqual(false);
-      expect(result.password).toBeUndefined();
+    it('Recover password - change password', async () => {
+      const tokenData = {
+        token: 'userTokenMockID2',
+        password: 'newStrongPassword123',
+        checkPassword: 'newStrongPassword123',
+      };
+
+      const result = await recoverPassController.postChangePassword(tokenData);
+
+      expect(result).toEqual(true);
     });
   });
 });

@@ -3,6 +3,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Users } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
+const mockUser: Users = {
+  id: 'id-test-user',
+  email: 'test@example.com',
+  password: 'oldpassword123',
+  name: 'Test User',
+  active: false,
+  avatar: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 describe('UserRepository Tests', () => {
   let userRepository: UserRepository;
   let prismaService: PrismaService;
@@ -32,6 +43,7 @@ describe('UserRepository Tests', () => {
                   },
                 ),
               findUnique: jest.fn(),
+              update: jest.fn(),
             },
           },
         },
@@ -89,6 +101,51 @@ describe('UserRepository Tests', () => {
     });
 
     expect(user).toBeNull();
+  });
+
+  describe('activateUser', () => {
+    it('should activate the user and return the updated user', async () => {
+      const activatedUser = { ...mockUser, active: true };
+      (prismaService.users.update as jest.Mock).mockResolvedValue(
+        activatedUser,
+      );
+
+      const result = await userRepository.activateUser(mockUser.id);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.users.update).toHaveBeenCalledWith({
+        where: { id: mockUser.id },
+        data: { active: true },
+      });
+
+      expect(result.id).toBe(mockUser.id);
+      expect(result.active).toBe(true);
+    });
+  });
+
+  describe('updatePassword', () => {
+    it('should update the user password and return the updated user', async () => {
+      const newPasswordHash = 'new_hashed_password_456';
+
+      const userWithNewPassword = { ...mockUser, password: newPasswordHash };
+      (prismaService.users.update as jest.Mock).mockResolvedValue(
+        userWithNewPassword,
+      );
+
+      const result = await userRepository.updatePassword(
+        mockUser.id,
+        newPasswordHash,
+      );
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.users.update).toHaveBeenCalledWith({
+        where: { id: mockUser.id },
+        data: { password: newPasswordHash },
+      });
+
+      expect(result.id).toBe(mockUser.id);
+      expect(result.password).toBe(newPasswordHash);
+    });
   });
 
   it('should be instantiated correctly manually', () => {
