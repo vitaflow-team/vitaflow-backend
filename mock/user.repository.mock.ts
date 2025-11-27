@@ -51,5 +51,12 @@ export const userRepositoryMock = {
         return Promise.resolve(null);
       }
     }),
+    activateUser: jest.fn().mockImplementation((user: Users) => {
+      return Promise.resolve({
+        ...user,
+        active: true,
+        updatedAt: new Date(),
+      } as Users);
+    }),
   },
 };
