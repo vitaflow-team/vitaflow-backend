@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, Length } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+} from 'class-validator';
 
 export class ProfileAddressDTO {
   @ApiProperty({
@@ -48,8 +54,8 @@ export class ProfileAddressDTO {
     example: '01310-000',
   })
   @IsString()
-  @Length(8, 9, {
-    message: 'postalCode must contain 8 or 9 characters.',
+  @Matches(/^\d{5}-?\d{3}$/, {
+    message: 'Postal code must follow the pattern 00000-000.',
   })
   postalCode: string;
 }
