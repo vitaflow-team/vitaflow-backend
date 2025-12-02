@@ -12,6 +12,12 @@ export class UserRepository {
     });
   }
 
+  async findUnique(where: Prisma.UsersWhereUniqueInput): Promise<Users | null> {
+    return await this.prisma.users.findUnique({
+      where,
+    });
+  }
+
   async findByEmail(
     where: Prisma.UsersWhereUniqueInput,
   ): Promise<Users | null> {

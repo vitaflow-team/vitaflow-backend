@@ -1,18 +1,8 @@
 import { PrismaService } from '@/database/prisma.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Users } from '@prisma/client';
+import { userMock } from 'mock/user.repository.mock';
 import { UserRepository } from './user.repository';
-
-const mockUser: Users = {
-  id: 'id-test-user',
-  email: 'test@example.com',
-  password: 'oldpassword123',
-  name: 'Test User',
-  active: false,
-  avatar: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
 
 describe('UserRepository Tests', () => {
   let userRepository: UserRepository;
@@ -35,6 +25,8 @@ describe('UserRepository Tests', () => {
                       name: data.name,
                       email: data.email,
                       password: data.password,
+                      phone: data.phone ?? null,
+                      birthDate: new Date('1990-05-20'),
                       avatar: data.avatar ?? null,
                       active: data.active ?? false,
                       createdAt: new Date(),
@@ -78,6 +70,8 @@ describe('UserRepository Tests', () => {
       email: 'jonhdoe@jonhdoe.com',
       password: 'jonhdoe1234',
       name: 'Jonh Doe New User',
+      phone: null,
+      birthDate: new Date('1990-05-20'),
       active: true,
       avatar: null,
       createdAt: new Date(),
@@ -93,6 +87,18 @@ describe('UserRepository Tests', () => {
     expect(user?.id).toEqual(userData.id);
   });
 
+  it('should return user by ID', async () => {
+    (prismaService.users.findUnique as jest.Mock).mockResolvedValue({
+      id: 'userID',
+    });
+
+    const user = await userRepository.findUnique({
+      id: 'userID',
+    });
+
+    expect(user?.id).toEqual('userID');
+  });
+
   it('should return null when user is not found', async () => {
     (prismaService.users.findUnique as jest.Mock).mockResolvedValue(null);
 
@@ -105,20 +111,20 @@ describe('UserRepository Tests', () => {
 
   describe('activateUser', () => {
     it('should activate the user and return the updated user', async () => {
-      const activatedUser = { ...mockUser, active: true };
+      const activatedUser = { ...userMock[0], active: true };
       (prismaService.users.update as jest.Mock).mockResolvedValue(
         activatedUser,
       );
 
-      const result = await userRepository.activateUser(mockUser.id);
+      const result = await userRepository.activateUser(userMock[0].id);
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prismaService.users.update).toHaveBeenCalledWith({
-        where: { id: mockUser.id },
+        where: { id: userMock[0].id },
         data: { active: true },
       });
 
-      expect(result.id).toBe(mockUser.id);
+      expect(result.id).toBe(userMock[0].id);
       expect(result.active).toBe(true);
     });
   });
@@ -127,23 +133,23 @@ describe('UserRepository Tests', () => {
     it('should update the user password and return the updated user', async () => {
       const newPasswordHash = 'new_hashed_password_456';
 
-      const userWithNewPassword = { ...mockUser, password: newPasswordHash };
+      const userWithNewPassword = { ...userMock[0], password: newPasswordHash };
       (prismaService.users.update as jest.Mock).mockResolvedValue(
         userWithNewPassword,
       );
 
       const result = await userRepository.updatePassword(
-        mockUser.id,
+        userMock[0].id,
         newPasswordHash,
       );
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prismaService.users.update).toHaveBeenCalledWith({
-        where: { id: mockUser.id },
+        where: { id: userMock[0].id },
         data: { password: newPasswordHash },
       });
 
-      expect(result.id).toBe(mockUser.id);
+      expect(result.id).toBe(userMock[0].id);
       expect(result.password).toBe(newPasswordHash);
     });
   });

@@ -9,6 +9,8 @@ export const userMock = [
     password: '12345',
     avatar: null,
     active: true,
+    birthDate: new Date('1990-05-20'),
+    phone: '999999999',
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -19,6 +21,8 @@ export const userMock = [
     password: '12345',
     avatar: null,
     active: false,
+    birthDate: new Date('1990-05-20'),
+    phone: '999999999',
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -29,6 +33,8 @@ export const userMock = [
     password: '12345',
     avatar: null,
     active: true,
+    birthDate: new Date('1990-05-20'),
+    phone: '999999999',
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -45,6 +51,8 @@ export const userRepositoryMock = {
         password: data.password,
         avatar: data.avatar ?? null,
         active: data.active ?? false,
+        birthDate: new Date('1990-05-20'),
+        phone: '999999999',
         createdAt: new Date(),
         updatedAt: new Date(),
       } satisfies Users);
@@ -69,5 +77,17 @@ export const userRepositoryMock = {
       } as Users);
     }),
     updatePassword: jest.fn(),
+    findUnique: jest.fn().mockImplementation(({ id }) => {
+      const user = userMock.filter((user) => {
+        if (user.id === id) {
+          return user;
+        }
+      });
+      if (user[0]) {
+        return Promise.resolve(user[0]);
+      } else {
+        return Promise.resolve(null);
+      }
+    }),
   },
 };
