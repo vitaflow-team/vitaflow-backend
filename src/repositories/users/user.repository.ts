@@ -39,4 +39,11 @@ export class UserRepository {
       data: { password },
     });
   }
+
+  async updateUser(id: string, data: Prisma.UsersUpdateInput): Promise<Users> {
+    return await this.prisma.users.update({
+      where: { id },
+      data,
+    });
+  }
 }
