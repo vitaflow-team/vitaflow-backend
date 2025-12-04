@@ -1,7 +1,7 @@
 import { PrismaService } from '@/database/prisma.service';
 import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
 import { Injectable } from '@nestjs/common';
-import { Prisma, Users } from '@prisma/client';
+import { Prisma, UserAddress, Users } from '@prisma/client';
 
 @Injectable()
 export class UserRepository {
@@ -38,6 +38,17 @@ export class UserRepository {
     return await this.prisma.users.update({
       where: { id },
       data: { password },
+    });
+  }
+
+  async getUserProfile(
+    userId: string,
+  ): Promise<(Users & { userAddresses: UserAddress | null }) | null> {
+    return await this.prisma.users.findUnique({
+      where: { id: userId },
+      include: {
+        userAddresses: true,
+      },
     });
   }
 

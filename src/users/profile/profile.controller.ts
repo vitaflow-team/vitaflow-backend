@@ -1,6 +1,14 @@
 import { AuthGuard } from '@/auth/auth.guard';
 import { UserRepository } from '@/repositories/users/user.repository';
-import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
+import { AppError } from '@/utils/app.erro';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -50,5 +58,50 @@ export class ProfileController {
     );
 
     return result;
+  }
+
+  @ApiOperation({
+    summary: 'Get User Profile',
+    description: 'Returns the authenticated user profile.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile update successfully.',
+    type: ProfileDTO,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized user.',
+  })
+  @ApiResponse({
+    status: 402,
+    description: 'User not found.',
+  })
+  @Get('profile')
+  async getProfile(@Request() req) {
+    const user = await this.user.getUserProfile(req.user.id);
+
+    if (!user) {
+      throw new AppError('User not found', 402);
+    }
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      birthDate: user.birthDate,
+      avatar: user.avatar ?? null,
+      phone: user.phone ?? null,
+      address: user.userAddresses
+        ? {
+            addressLine1: user.userAddresses.addressLine1,
+            addressLine2: user.userAddresses.addressLine2,
+            district: user.userAddresses.district,
+            city: user.userAddresses.city,
+            region: user.userAddresses.region,
+            postalCode: user.userAddresses.postalCode,
+          }
+        : null,
+    };
   }
 }
