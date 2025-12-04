@@ -4,6 +4,7 @@ import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
 import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ProfileController } from './profile/profile.controller';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
 import { SinginController } from './singin/singin.controller';
 import { SingupController } from './singup/singup.controller';
@@ -43,6 +44,12 @@ describe('UsersModule Test', () => {
       RecoverpassController,
     );
     expect(recoverpassController).toBeDefined();
+  });
+
+  it('should register ProfileController controller', () => {
+    const profileController =
+      moduleRef.get<ProfileController>(ProfileController);
+    expect(profileController).toBeDefined();
   });
 
   it('should register PrismaService provider', () => {

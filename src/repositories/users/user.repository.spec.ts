@@ -1,18 +1,9 @@
 import { PrismaService } from '@/database/prisma.service';
+import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Users } from '@prisma/client';
+import { userMock } from 'mock/user.repository.mock';
 import { UserRepository } from './user.repository';
-
-const mockUser: Users = {
-  id: 'id-test-user',
-  email: 'test@example.com',
-  password: 'oldpassword123',
-  name: 'Test User',
-  active: false,
-  avatar: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
 
 describe('UserRepository Tests', () => {
   let userRepository: UserRepository;
@@ -35,6 +26,8 @@ describe('UserRepository Tests', () => {
                       name: data.name,
                       email: data.email,
                       password: data.password,
+                      phone: data.phone ?? null,
+                      birthDate: new Date('1990-05-20'),
                       avatar: data.avatar ?? null,
                       active: data.active ?? false,
                       createdAt: new Date(),
@@ -42,9 +35,64 @@ describe('UserRepository Tests', () => {
                     } satisfies Users);
                   },
                 ),
-              findUnique: jest.fn(),
               update: jest.fn(),
+              findUnique: jest.fn().mockImplementation(({ where }) => {
+                const user = userMock.filter((user) => {
+                  if (user.id === where.id) {
+                    return user;
+                  }
+                });
+                if (user[0]) {
+                  return Promise.resolve(user[0]);
+                } else {
+                  return Promise.resolve(null);
+                }
+              }),
             },
+            $transaction: jest
+              .fn()
+              .mockImplementation(
+                async (
+                  callback: (
+                    tx: any,
+                  ) => Promise<Users & { address: ProfileAddressDTO | null }>,
+                ): Promise<Users & { address: ProfileAddressDTO | null }> => {
+                  const tx = {
+                    users: {
+                      update: jest
+                        .fn()
+                        .mockImplementation(({ where, data }) => {
+                          const baseUser = userMock.find(
+                            (u) => u.id === where.id,
+                          );
+
+                          const updatedUser = {
+                            ...baseUser,
+                            ...data,
+                          };
+                          return Promise.resolve(updatedUser);
+                        }),
+                    },
+                    userAddress: {
+                      upsert: jest
+                        .fn()
+                        .mockImplementation(({ where, address }) => {
+                          if (!address) return Promise.resolve(undefined);
+
+                          return Promise.resolve({
+                            ...address,
+                            id: 'newIdAddress',
+                            userID: where.id,
+                          });
+                        }),
+                    },
+                  };
+
+                  const result = await callback(tx);
+
+                  return result;
+                },
+              ),
           },
         },
       ],
@@ -78,6 +126,8 @@ describe('UserRepository Tests', () => {
       email: 'jonhdoe@jonhdoe.com',
       password: 'jonhdoe1234',
       name: 'Jonh Doe New User',
+      phone: null,
+      birthDate: new Date('1990-05-20'),
       active: true,
       avatar: null,
       createdAt: new Date(),
@@ -93,6 +143,18 @@ describe('UserRepository Tests', () => {
     expect(user?.id).toEqual(userData.id);
   });
 
+  it('should return user by ID', async () => {
+    (prismaService.users.findUnique as jest.Mock).mockResolvedValue({
+      id: 'userID',
+    });
+
+    const user = await userRepository.findUnique({
+      id: 'userID',
+    });
+
+    expect(user?.id).toEqual('userID');
+  });
+
   it('should return null when user is not found', async () => {
     (prismaService.users.findUnique as jest.Mock).mockResolvedValue(null);
 
@@ -105,20 +167,20 @@ describe('UserRepository Tests', () => {
 
   describe('activateUser', () => {
     it('should activate the user and return the updated user', async () => {
-      const activatedUser = { ...mockUser, active: true };
+      const activatedUser = { ...userMock[0], active: true };
       (prismaService.users.update as jest.Mock).mockResolvedValue(
         activatedUser,
       );
 
-      const result = await userRepository.activateUser(mockUser.id);
+      const result = await userRepository.activateUser(userMock[0].id);
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prismaService.users.update).toHaveBeenCalledWith({
-        where: { id: mockUser.id },
+        where: { id: userMock[0].id },
         data: { active: true },
       });
 
-      expect(result.id).toBe(mockUser.id);
+      expect(result.id).toBe(userMock[0].id);
       expect(result.active).toBe(true);
     });
   });
@@ -127,28 +189,100 @@ describe('UserRepository Tests', () => {
     it('should update the user password and return the updated user', async () => {
       const newPasswordHash = 'new_hashed_password_456';
 
-      const userWithNewPassword = { ...mockUser, password: newPasswordHash };
+      const userWithNewPassword = { ...userMock[0], password: newPasswordHash };
       (prismaService.users.update as jest.Mock).mockResolvedValue(
         userWithNewPassword,
       );
 
       const result = await userRepository.updatePassword(
-        mockUser.id,
+        userMock[0].id,
         newPasswordHash,
       );
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prismaService.users.update).toHaveBeenCalledWith({
-        where: { id: mockUser.id },
+        where: { id: userMock[0].id },
         data: { password: newPasswordHash },
       });
 
-      expect(result.id).toBe(mockUser.id);
+      expect(result.id).toBe(userMock[0].id);
       expect(result.password).toBe(newPasswordHash);
     });
   });
 
   it('should be instantiated correctly manually', () => {
     expect(new UserRepository(prismaService)).toBeDefined();
+  });
+
+  describe('User profile', () => {
+    it('Update - no address', async () => {
+      const userId = '1';
+      const userData = {
+        birthDate: new Date('2010-10-10'),
+        name: 'Jonh Doe Doe',
+        avatar: 'http://www.jonhdoe.com/jonhdoe.png',
+        phone: '99999999999',
+      };
+
+      (prismaService.users.update as jest.Mock).mockResolvedValue({
+        ...userMock[0],
+        name: userData.name,
+        avatar: userData.avatar,
+        phone: userData.phone,
+        password: undefined,
+      });
+
+      const newUser = await userRepository.updateUserProfile(
+        userId,
+        userData,
+        undefined,
+      );
+
+      expect(newUser.phone).toEqual(userData.phone);
+      expect(newUser.address).toBeNull();
+    });
+
+    it('Update - with address', async () => {
+      const userId = '1';
+      const userData = {
+        birthDate: new Date('2010-10-10'),
+        name: 'Jonh Doe Doe',
+        avatar: 'http://www.jonhdoe.com/jonhdoe.png',
+        phone: '99999999999',
+      };
+      const address = {
+        addressLine1: 'Jonh Doe address line 1',
+        addressLine2: 'Jonh Doe address line 2',
+        district: 'Jonh Doe',
+        city: 'JonhDoe City',
+        region: 'Region Jonh Doe',
+        postalCode: 'JonhDoeZip',
+      };
+
+      (prismaService.users.update as jest.Mock).mockResolvedValue({
+        ...userMock[0],
+        name: userData.name,
+        avatar: userData.avatar,
+        phone: userData.phone,
+        password: undefined,
+      });
+
+      const newUser = await userRepository.updateUserProfile(
+        userId,
+        userData,
+        address,
+      );
+
+      expect(newUser.phone).toEqual(userData.phone);
+      expect(newUser.address).toBeDefined();
+      expect(newUser.address?.district).toEqual(address.district);
+    });
+
+    it('Get profile', async () => {
+      const newUser = await userRepository.getUserProfile(userMock[0].id);
+
+      expect(newUser?.id).toEqual(userMock[0].id);
+      expect(newUser?.name).toEqual(userMock[0].name);
+    });
   });
 });
