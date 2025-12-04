@@ -1,4 +1,5 @@
 import { PrismaService } from '@/database/prisma.service';
+import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Users } from '@prisma/client';
 import { userMock } from 'mock/user.repository.mock';
@@ -37,6 +38,50 @@ describe('UserRepository Tests', () => {
               findUnique: jest.fn(),
               update: jest.fn(),
             },
+            $transaction: jest
+              .fn()
+              .mockImplementation(
+                async (
+                  callback: (
+                    tx: any,
+                  ) => Promise<Users & { address: ProfileAddressDTO | null }>,
+                ): Promise<Users & { address: ProfileAddressDTO | null }> => {
+                  const tx = {
+                    users: {
+                      update: jest
+                        .fn()
+                        .mockImplementation(({ where, data }) => {
+                          const baseUser = userMock.find(
+                            (u) => u.id === where.id,
+                          );
+
+                          const updatedUser = {
+                            ...baseUser,
+                            ...data,
+                          };
+                          return Promise.resolve(updatedUser);
+                        }),
+                    },
+                    userAddress: {
+                      upsert: jest
+                        .fn()
+                        .mockImplementation(({ where, address }) => {
+                          if (!address) return Promise.resolve(undefined);
+
+                          return Promise.resolve({
+                            ...address,
+                            id: 'newIdAddress',
+                            userID: where.id,
+                          });
+                        }),
+                    },
+                  };
+
+                  const result = await callback(tx);
+
+                  return result;
+                },
+              ),
           },
         },
       ],
@@ -156,5 +201,68 @@ describe('UserRepository Tests', () => {
 
   it('should be instantiated correctly manually', () => {
     expect(new UserRepository(prismaService)).toBeDefined();
+  });
+
+  it('Update user profile - no address', async () => {
+    const userId = '1';
+    const userData = {
+      birthDate: new Date('2010-10-10'),
+      name: 'Jonh Doe Doe',
+      avatar: 'http://www.jonhdoe.com/jonhdoe.png',
+      phone: '99999999999',
+    };
+
+    (prismaService.users.update as jest.Mock).mockResolvedValue({
+      ...userMock[0],
+      name: userData.name,
+      avatar: userData.avatar,
+      phone: userData.phone,
+      password: undefined,
+    });
+
+    const newUser = await userRepository.updateUserProfile(
+      userId,
+      userData,
+      undefined,
+    );
+
+    expect(newUser.phone).toEqual(userData.phone);
+    expect(newUser.address).toBeNull();
+  });
+
+  it('Update user profile - with address', async () => {
+    const userId = '1';
+    const userData = {
+      birthDate: new Date('2010-10-10'),
+      name: 'Jonh Doe Doe',
+      avatar: 'http://www.jonhdoe.com/jonhdoe.png',
+      phone: '99999999999',
+    };
+    const address = {
+      addressLine1: 'Jonh Doe address line 1',
+      addressLine2: 'Jonh Doe address line 2',
+      district: 'Jonh Doe',
+      city: 'JonhDoe City',
+      region: 'Region Jonh Doe',
+      postalCode: 'JonhDoeZip',
+    };
+
+    (prismaService.users.update as jest.Mock).mockResolvedValue({
+      ...userMock[0],
+      name: userData.name,
+      avatar: userData.avatar,
+      phone: userData.phone,
+      password: undefined,
+    });
+
+    const newUser = await userRepository.updateUserProfile(
+      userId,
+      userData,
+      address,
+    );
+
+    expect(newUser.phone).toEqual(userData.phone);
+    expect(newUser.address).toBeDefined();
+    expect(newUser.address?.district).toEqual(address.district);
   });
 });

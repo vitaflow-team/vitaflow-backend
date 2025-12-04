@@ -1,4 +1,5 @@
 import { UserRepository } from '@/repositories/users/user.repository';
+import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
 import { Prisma, Users } from '@prisma/client';
 
 export const userMock = [
@@ -89,5 +90,44 @@ export const userRepositoryMock = {
         return Promise.resolve(null);
       }
     }),
+    updateUserProfile: jest
+      .fn()
+      .mockImplementation(
+        async (
+          id: string,
+          userData: Prisma.UsersUpdateInput,
+          address?: ProfileAddressDTO,
+        ): Promise<Users & { address: ProfileAddressDTO | null }> => {
+          const baseUser = userMock.find((u) => u.id === id);
+
+          const updatedUser = {
+            ...baseUser,
+            ...(userData as Users),
+          };
+
+          if (address) {
+            const mockedAddress = {
+              id: 'newIdAddress',
+              userID: updatedUser.id,
+              addressLine1: address.addressLine1,
+              addressLine2: address.addressLine2,
+              district: address.district,
+              city: address.city,
+              region: address.region,
+              postalCode: address.postalCode,
+            };
+
+            return Promise.resolve({
+              ...updatedUser,
+              address: mockedAddress,
+            });
+          }
+
+          return Promise.resolve({
+            ...updatedUser,
+            address: null,
+          });
+        },
+      ),
   },
 };

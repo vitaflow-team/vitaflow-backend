@@ -2,8 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDate,
-  IsDateString,
-  IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -22,22 +20,6 @@ export class ProfileDTO {
   name: string;
 
   @ApiProperty({
-    description: 'Email address (must be unique).',
-    example: 'johndoe@example.com',
-  })
-  @IsEmail({}, { message: 'Invalid email format.' })
-  @IsNotEmpty({ message: 'email is mandatory.' })
-  email: string;
-
-  @ApiProperty({
-    description: 'Password for account creation.',
-    example: 'StrongPassword123',
-  })
-  @IsString()
-  @IsNotEmpty({ message: 'password is mandatory.' })
-  password: string;
-
-  @ApiProperty({
     description: 'Phone number including area code.',
     example: '(11) 98888-7777',
     required: false,
@@ -51,11 +33,10 @@ export class ProfileDTO {
     example: '1990-05-20',
   })
   @Type(() => Date)
-  @IsDate()
-  @IsDateString({}, { message: 'birthDate must be a valid date.' })
-  @IsNotEmpty({ message: 'birthDate is mandatory.' })
+  @IsDate({ message: 'birthDate must be a valid date.' })
+  @IsOptional()
   @MaxDate(new Date(), { message: 'Birth date cannot be in the future.' })
-  birthDate: string;
+  birthDate: Date;
 
   @ApiProperty({
     description: 'User avatar URL.',
