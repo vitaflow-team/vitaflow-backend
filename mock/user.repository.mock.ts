@@ -129,5 +129,17 @@ export const userRepositoryMock = {
           });
         },
       ),
+    getUserProfile: jest.fn().mockImplementation((id) => {
+      const user = userMock.filter((user) => {
+        if (user.id === id) {
+          return user;
+        }
+      });
+      if (user[0]) {
+        return Promise.resolve(user[0]);
+      } else {
+        return Promise.resolve(null);
+      }
+    }),
   },
 };

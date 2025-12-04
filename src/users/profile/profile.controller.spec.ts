@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { jwtServiceMock } from 'mock/jwtService.mock';
-import { userRepositoryMock } from 'mock/user.repository.mock';
+import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
 import { ProfileController } from './profile.controller';
 import { ProfileDTO } from './profile.Dto';
 
@@ -76,6 +76,27 @@ describe('ProfileController Tests', () => {
     expect(result.phone).toEqual(body.phone);
     expect(result.birthDate).toEqual(body.birthDate);
     expect(result.address?.district).toEqual(body.address.district);
+  });
+
+  it('Get user profile - user not exists', async () => {
+    await expect(
+      profileController.getProfile({
+        user: {
+          id: 'idUserNotExists',
+        },
+      }),
+    ).rejects.toHaveProperty('statusCode', 402);
+  });
+
+  it('Get user profile - successfully', async () => {
+    const profile = await profileController.getProfile({
+      user: {
+        id: userMock[0].id,
+      },
+    });
+
+    expect(profile.id).toEqual(userMock[0].id);
+    expect(profile.email).toEqual(userMock[0].email);
   });
 
   it('Update user profile - string conversion to DTO', () => {
