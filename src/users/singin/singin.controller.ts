@@ -74,6 +74,7 @@ export class SinginController {
     const payload = {
       name: user.name,
       email: user.email,
+      avatar: user.avatar,
       id: user.id,
     };
 
@@ -81,6 +82,7 @@ export class SinginController {
       id: user.id,
       name: user.name,
       email: user.email,
+      avatar: user.avatar,
       accessToken: await this.jwtService.signAsync(payload),
     };
   }
