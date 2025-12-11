@@ -84,6 +84,9 @@ export class ProfileController {
     let avatarUrl = existingUser.avatar;
     if (avatar) {
       avatarUrl = await this.uploadService.uploadImage(avatar);
+      if (existingUser.avatar) {
+        await this.uploadService.deleteImage(existingUser.avatar);
+      }
     }
 
     const userBirthDate = birthDate ? new Date(birthDate) : null;

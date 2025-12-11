@@ -36,6 +36,31 @@ export class UploadService {
     });
   }
 
+  async deleteImage(fileUrl: string): Promise<void> {
+    if (!fileUrl) {
+      return;
+    }
+
+    const objectName = fileUrl.split('/').pop();
+
+    if (!objectName) {
+      return;
+    }
+
+    const file = this.bucket.file(objectName);
+
+    try {
+      const [exists] = await file.exists();
+      if (exists) {
+        await file.delete();
+      } else {
+        console.log(`File not found, skipping deletion: ${objectName}`);
+      }
+    } catch (error) {
+      console.error(`Error deleting file ${objectName}:`, error);
+    }
+  }
+
   async getSignedUrl(filename: string): Promise<string> {
     if (!filename) {
       return '';
