@@ -1,14 +1,18 @@
 import { AuthGuard } from '@/auth/auth.guard';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
+import { UploadService } from '@/utils/upload.service';
 import {
   Body,
   Controller,
   Get,
   Post,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -22,7 +26,11 @@ import { ProfileDTO } from './profile.Dto';
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard)
 export class ProfileController {
-  constructor(private user: UserRepository) {}
+  constructor(
+    private user: UserRepository,
+
+    private uploadService: UploadService,
+  ) {}
 
   @ApiOperation({
     summary: 'Update User Profile',
@@ -41,8 +49,42 @@ export class ProfileController {
     description: 'Unauthorized access.',
   })
   @Post('profile')
-  async postProfile(@Body() body: ProfileDTO, @Request() req) {
-    const { address, birthDate, name, avatar, phone } = body;
+  @UseInterceptors(FileInterceptor('avatar'))
+  async postProfile(
+    @UploadedFile() avatar: Express.Multer.File,
+    @Body() body: ProfileDTO,
+    @Request() req,
+  ) {
+    const existingUser = await this.user.getUserProfile(req.user.id);
+    if (!existingUser) {
+      throw new AppError('User not found', 402);
+    }
+
+    const {
+      addressLine1,
+      addressLine2,
+      city,
+      district,
+      postalCode,
+      region,
+      birthDate,
+      name,
+      phone,
+    } = body;
+
+    const address = {
+      addressLine1,
+      addressLine2,
+      city,
+      district,
+      postalCode,
+      region,
+    };
+
+    let avatarUrl = existingUser.avatar;
+    if (avatar) {
+      avatarUrl = await this.uploadService.uploadImage(avatar);
+    }
 
     const userBirthDate = birthDate ? new Date(birthDate) : null;
 
@@ -51,8 +93,8 @@ export class ProfileController {
       {
         birthDate: userBirthDate,
         name,
-        avatar,
         phone,
+        avatar: avatarUrl,
       },
       address,
     );
@@ -85,12 +127,16 @@ export class ProfileController {
       throw new AppError('User not found', 402);
     }
 
+    const signedAvatarUrl = user.avatar
+      ? await this.uploadService.getSignedUrl(user.avatar)
+      : null;
+
     return {
       id: user.id,
       name: user.name,
       email: user.email,
       birthDate: user.birthDate,
-      avatar: user.avatar ?? null,
+      avatar: signedAvatarUrl,
       phone: user.phone ?? null,
       address: user.userAddresses
         ? {

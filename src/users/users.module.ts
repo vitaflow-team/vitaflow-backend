@@ -3,6 +3,7 @@ import { MailModule } from '@/mail/mail.module';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
+import { UploadService } from '@/utils/upload.service';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ProfileController } from './profile/profile.controller';
@@ -24,6 +25,12 @@ import { SingupController } from './singup/singup.controller';
     RecoverpassController,
     ProfileController,
   ],
-  providers: [PasswordHash, PrismaService, UserRepository, UserTokenRepository],
+  providers: [
+    PasswordHash,
+    PrismaService,
+    UserRepository,
+    UserTokenRepository,
+    UploadService,
+  ],
 })
 export class UsersModule {}

@@ -1,6 +1,7 @@
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
+import { UploadService } from '@/utils/upload.service';
 import { Body, Controller, Post } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -18,6 +19,8 @@ export class SinginController {
     private hash: PasswordHash,
 
     private jwtService: JwtService,
+
+    private uploadService: UploadService,
   ) {}
 
   @ApiOperation({
@@ -71,10 +74,14 @@ export class SinginController {
       }
     }
 
+    const signedAvatarUrl = user.avatar
+      ? await this.uploadService.getSignedUrl(user.avatar)
+      : null;
+
     const payload = {
       name: user.name,
       email: user.email,
-      avatar: user.avatar,
+      avatar: signedAvatarUrl,
       id: user.id,
     };
 
@@ -82,7 +89,7 @@ export class SinginController {
       id: user.id,
       name: user.name,
       email: user.email,
-      avatar: user.avatar,
+      avatar: signedAvatarUrl,
       accessToken: await this.jwtService.signAsync(payload),
     };
   }
