@@ -22,7 +22,7 @@ export class UploadService {
       contentType: file.mimetype,
     });
 
-    return new Promise((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
       stream.on('finish', () => {
         void (() => {
           resolve(

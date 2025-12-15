@@ -1,5 +1,6 @@
-/* eslint-disable @typescript-eslint/require-await */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
+import { ConfigService } from '@nestjs/config';
+import { Test, TestingModule } from '@nestjs/testing';
 import { UploadService } from './upload.service';
 
 const mockDateNow = 1700000000000;
@@ -54,14 +55,36 @@ describe('UploadService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UploadService,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string) => {
+              const env = {
+                GCP_PROJECT_ID: 'test-project',
+                GCP_CLIENT_EMAIL: 'test-email',
+                GCP_PRIVATE_KEY: 'test-key',
+                GCP_BUCKET: 'test-bucket',
+              };
+              return env[key];
+            }),
+          },
+        },
+      ],
+    }).compile();
+
+    mockBucketFile.mockImplementation(mockGcsFile);
+
+    service = module.get<UploadService>(UploadService);
+  });
+
+  beforeAll(() => {
     process.env.GCP_PROJECT_ID = 'test-project';
     process.env.GCP_CLIENT_EMAIL = 'test-email';
     process.env.GCP_PRIVATE_KEY = 'test-key';
     process.env.GCP_BUCKET = 'test-bucket';
-
-    mockBucketFile.mockImplementation(mockGcsFile);
-
-    service = new UploadService();
   });
 
   describe('uploadImage', () => {
@@ -96,7 +119,7 @@ describe('UploadService', () => {
       expect(mockWriteStream.end).toHaveBeenCalledWith(mockFile.buffer);
 
       expect(url).toBe(
-        `https://storage.googleapis.com/${process.env.GCP_BUCKET}/${expectedFilename}`,
+        `https://storage.googleapis.com/test-bucket/${expectedFilename}`,
       );
     });
 
