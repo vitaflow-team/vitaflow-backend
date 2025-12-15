@@ -7,11 +7,11 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { differenceInHours } from 'date-fns';
 import { ActiveDTO } from './activate.Dto';
-import { SingUpDTO } from './singup.Dto';
+import { SignUpDTO } from './signup.Dto';
 
 @ApiTags('User')
 @Controller('users')
-export class SingupController {
+export class SignUpController {
   constructor(
     private user: UserRepository,
 
@@ -44,8 +44,8 @@ export class SingupController {
     status: 400,
     description: 'Este e-mail já está sendo usado por outro usuário.',
   })
-  @Post('singup')
-  async postNewUser(@Body() body: SingUpDTO) {
+  @Post('signup')
+  async postNewUser(@Body() body: SignUpDTO) {
     const { email, name, password, checkPassword } = body;
 
     if (checkPassword !== password) {
@@ -76,7 +76,7 @@ export class SingupController {
       user: { connect: userCreated },
     });
 
-    const activationLink = `${process.env.APP_URL}/singin/activate?token=${userTokenCreated.id}`;
+    const activationLink = `${process.env.APP_URL}/signin/activate?token=${userTokenCreated.id}`;
 
     await this.mailService.sendEmailPassword(
       name,

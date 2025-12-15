@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsNotEmpty, IsOptional } from 'class-validator';
 
-export class SingInDTO {
+export class SignInDTO {
   @ApiProperty({
     description: 'User email address (must be unique and used for login).',
     example: 'johndoe@example.com',

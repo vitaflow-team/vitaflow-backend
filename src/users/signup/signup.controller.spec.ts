@@ -4,14 +4,14 @@ import { mailServiceMock } from 'mock/mail.service.mok';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
 import { userTokenServiceMock } from 'mock/userToken.repository.mock';
-import { SingupController } from './singup.controller';
+import { SignUpController } from './signup.controller';
 
-describe('SingupController Tests', () => {
-  let singupController: SingupController;
+describe('SignUpController Tests', () => {
+  let signUpController: SignUpController;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      controllers: [SingupController],
+      controllers: [SignUpController],
       providers: [
         passwordHashMock,
         userRepositoryMock,
@@ -21,14 +21,14 @@ describe('SingupController Tests', () => {
       ],
     }).compile();
 
-    singupController = moduleFixture.get<SingupController>(SingupController);
+    signUpController = moduleFixture.get<SignUpController>(SignUpController);
   });
 
   it('Should be defined', () => {
-    expect(singupController).toBeDefined();
+    expect(signUpController).toBeDefined();
   });
 
-  describe('SingupController.postNewUser - Tests', () => {
+  describe('SignupController.postNewUser - Tests', () => {
     it('Creating new user - Existing email', async () => {
       const newUser = {
         email: 'jonhdoe@jonhdoe.com',
@@ -38,7 +38,7 @@ describe('SingupController Tests', () => {
       };
 
       await expect(
-        singupController.postNewUser(newUser),
+        signUpController.postNewUser(newUser),
       ).rejects.toHaveProperty('statusCode', 400);
     });
 
@@ -51,7 +51,7 @@ describe('SingupController Tests', () => {
       };
 
       await expect(
-        singupController.postNewUser(newUser),
+        signUpController.postNewUser(newUser),
       ).rejects.toHaveProperty('statusCode', 400);
     });
 
@@ -63,7 +63,7 @@ describe('SingupController Tests', () => {
         checkPassword: '12345',
       };
 
-      const result = await singupController.postNewUser(newUser);
+      const result = await signUpController.postNewUser(newUser);
 
       expect(result.id).toEqual('idNewUser');
       expect(result.email).toEqual(newUser.email);
@@ -76,7 +76,7 @@ describe('SingupController Tests', () => {
         token: 'tokenNotFound',
       };
 
-      const result = await singupController.activateNewUser(token);
+      const result = await signUpController.activateNewUser(token);
 
       expect(result).toBeNull();
     });
@@ -87,7 +87,7 @@ describe('SingupController Tests', () => {
       };
 
       await expect(
-        singupController.activateNewUser(token),
+        signUpController.activateNewUser(token),
       ).rejects.toHaveProperty('statusCode', 400);
     });
 
@@ -96,7 +96,7 @@ describe('SingupController Tests', () => {
         token: 'userTokenMockID2',
       };
 
-      const result = await singupController.activateNewUser(token);
+      const result = await signUpController.activateNewUser(token);
 
       expect(result?.active).toEqual(true);
     });

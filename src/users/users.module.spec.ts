@@ -2,12 +2,13 @@ import { PrismaService } from '@/database/prisma.service';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
+import { UploadService } from '@/utils/upload.service';
 import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfileController } from './profile/profile.controller';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
-import { SinginController } from './singin/singin.controller';
-import { SingupController } from './singup/singup.controller';
+import { SignInController } from './signin/signin.controller';
+import { SignUpController } from './signup/signup.controller';
 import { UsersModule } from './users.module';
 
 describe('UsersModule Test', () => {
@@ -29,17 +30,17 @@ describe('UsersModule Test', () => {
     expect(moduleRef).toBeDefined();
   });
 
-  it('should register SingInController controller', () => {
-    const singincontroller = moduleRef.get<SinginController>(SinginController);
-    expect(singincontroller).toBeDefined();
+  it('should register SignInController controller', () => {
+    const signincontroller = moduleRef.get<SignInController>(SignInController);
+    expect(signincontroller).toBeDefined();
   });
 
-  it('should register SingUpController controller', () => {
-    const singupcontroller = moduleRef.get<SingupController>(SingupController);
-    expect(singupcontroller).toBeDefined();
+  it('should register SignUpController controller', () => {
+    const signupcontroller = moduleRef.get<SignUpController>(SignUpController);
+    expect(signupcontroller).toBeDefined();
   });
 
-  it('should register SingUpController controller', () => {
+  it('should register SignUpController controller', () => {
     const recoverpassController = moduleRef.get<RecoverpassController>(
       RecoverpassController,
     );
@@ -71,5 +72,10 @@ describe('UsersModule Test', () => {
     const userTokenRepository =
       moduleRef.get<UserTokenRepository>(UserTokenRepository);
     expect(userTokenRepository).toBeDefined();
+  });
+
+  it('should register UploadService provider', () => {
+    const uploadService = moduleRef.get<UploadService>(UploadService);
+    expect(uploadService).toBeDefined();
   });
 });

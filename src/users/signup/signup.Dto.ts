@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, Matches, MinLength } from 'class-validator';
 
-export class SingUpDTO {
+export class SignUpDTO {
   @ApiProperty({
     description: 'Full name of the user',
     example: 'John Doe',

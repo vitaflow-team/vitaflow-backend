@@ -51,7 +51,7 @@ export class RecoverpassController {
       });
 
       if (token) {
-        const recoveryUrl = `${process.env.APP_URL}/singin?token=${token.id}`;
+        const recoveryUrl = `${process.env.APP_URL}/signin?token=${token.id}`;
 
         await this.mailService.sendEmailPassword(
           userExists.name,

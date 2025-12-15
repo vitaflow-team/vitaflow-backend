@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { jwtServiceMock } from 'mock/jwtService.mock';
+import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
-import { ProfileController } from './profile.controller';
 import { ProfileDTO } from './profile.Dto';
+import { ProfileController } from './profile.controller';
 
 describe('ProfileController Tests', () => {
   let profileController: ProfileController;
@@ -11,7 +12,7 @@ describe('ProfileController Tests', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [ProfileController],
-      providers: [userRepositoryMock, jwtServiceMock],
+      providers: [userRepositoryMock, jwtServiceMock, uploadServiceMock],
     }).compile();
 
     profileController = moduleFixture.get<ProfileController>(ProfileController);
@@ -26,14 +27,13 @@ describe('ProfileController Tests', () => {
       name: 'Jonh Doe Profile',
       phone: '99999999999',
       avatar: '',
-      address: {
-        addressLine1: 'Jonh Doe address line 1',
-        addressLine2: 'Jonh Doe address line 2',
-        district: 'Jonh Doe',
-        city: 'JonhDoe City',
-        region: 'Region Jonh Doe',
-        postalCode: 'JonhDoeZip',
-      },
+      birthDate: undefined,
+      addressLine1: 'Jonh Doe address line 1',
+      addressLine2: 'Jonh Doe address line 2',
+      district: 'Jonh Doe',
+      city: 'JonhDoe City',
+      region: 'SP',
+      postalCode: '12345-678',
     };
     const req = {
       user: {
@@ -41,12 +41,16 @@ describe('ProfileController Tests', () => {
       },
     };
 
-    const result = await profileController.postProfile(body, req);
+    const result = await profileController.postProfile(
+      null as any,
+      body as any,
+      req,
+    );
 
     expect(result.id).toEqual(req.user.id);
     expect(result.phone).toEqual(body.phone);
     expect(result.birthDate).toBeNull();
-    expect(result.address?.district).toEqual(body.address.district);
+    expect(result.address?.district).toEqual(body.district);
   });
 
   it('Update user profile - with address', async () => {
@@ -55,14 +59,12 @@ describe('ProfileController Tests', () => {
       phone: '99999999999',
       birthDate: new Date('2010-10-10'),
       avatar: '',
-      address: {
-        addressLine1: 'Jonh Doe address line 1',
-        addressLine2: 'Jonh Doe address line 2',
-        district: 'Jonh Doe',
-        city: 'JonhDoe City',
-        region: 'Region Jonh Doe',
-        postalCode: 'JonhDoeZip',
-      },
+      addressLine1: 'Jonh Doe address line 1',
+      addressLine2: 'Jonh Doe address line 2',
+      district: 'Jonh Doe',
+      city: 'JonhDoe City',
+      region: 'SP',
+      postalCode: '12345-678',
     };
     const req = {
       user: {
@@ -70,12 +72,16 @@ describe('ProfileController Tests', () => {
       },
     };
 
-    const result = await profileController.postProfile(body, req);
+    const result = await profileController.postProfile(
+      null as any,
+      body as any,
+      req,
+    );
 
     expect(result.id).toEqual(req.user.id);
     expect(result.phone).toEqual(body.phone);
     expect(result.birthDate).toEqual(body.birthDate);
-    expect(result.address?.district).toEqual(body.address.district);
+    expect(result.address?.district).toEqual(body.district);
   });
 
   it('Get user profile - user not exists', async () => {
@@ -105,19 +111,17 @@ describe('ProfileController Tests', () => {
       phone: '99999999999',
       birthDate: '2010-10-10T00:00:00.000Z',
       avatar: '',
-      address: {
-        addressLine1: 'Jonh Doe address line 1',
-        addressLine2: 'Jonh Doe address line 2',
-        district: 'Jonh Doe',
-        city: 'JonhDoe City',
-        region: 'Region Jonh Doe',
-        postalCode: 'JonhDoeZip',
-      },
+      addressLine1: 'Jonh Doe address line 1',
+      addressLine2: 'Jonh Doe address line 2',
+      district: 'Jonh Doe',
+      city: 'JonhDoe City',
+      region: 'SP',
+      postalCode: '12345-678',
     };
 
     const body = plainToInstance(ProfileDTO, plainData);
 
     expect(body.birthDate).toBeInstanceOf(Date);
-    expect(body.address).toBeDefined();
+    expect(body.district).toBeDefined();
   });
 });

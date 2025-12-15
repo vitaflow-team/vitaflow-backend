@@ -2,19 +2,21 @@ import { PrismaService } from '@/database/prisma.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { passwordHashMock } from 'mock/password.hash.mock';
+import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
-import { SinginController } from './singin.controller';
+import { SignInController } from './signin.controller';
 
-describe('SinginController Tests', () => {
-  let singinController: SinginController;
+describe('SignInController Tests', () => {
+  let signInController: SignInController;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      controllers: [SinginController],
+      controllers: [SignInController],
       providers: [
         jwtServiceMock,
         passwordHashMock,
         userRepositoryMock,
+        uploadServiceMock,
         {
           provide: PrismaService,
           useValue: {
@@ -26,15 +28,15 @@ describe('SinginController Tests', () => {
       ],
     }).compile();
 
-    singinController = moduleFixture.get<SinginController>(SinginController);
+    signInController = moduleFixture.get<SignInController>(SignInController);
   });
 
   it('Should be defined', () => {
-    expect(singinController).toBeDefined();
+    expect(signInController).toBeDefined();
   });
 
   it('Login valid user', async () => {
-    const result = await singinController.postSingIn({
+    const result = await signInController.postSignIn({
       email: 'jonhdoe@jonhdoe.com',
       password: '12345',
       socialLogin: false,
@@ -45,7 +47,7 @@ describe('SinginController Tests', () => {
 
   it('Login invalid user', async () => {
     await expect(
-      singinController.postSingIn({
+      signInController.postSignIn({
         email: 'invalidemail@jonhdoe.com',
         password: '12345',
         socialLogin: false,
@@ -55,7 +57,7 @@ describe('SinginController Tests', () => {
 
   it('Inactive user', async () => {
     await expect(
-      singinController.postSingIn({
+      signInController.postSignIn({
         email: 'jonhdoe1@jonhdoe.com',
         password: '12345',
         socialLogin: false,
@@ -65,7 +67,7 @@ describe('SinginController Tests', () => {
 
   it('Invalid password', async () => {
     await expect(
-      singinController.postSingIn({
+      signInController.postSignIn({
         email: 'jonhdoe@jonhdoe.com',
         password: 'InvalidPassword',
         socialLogin: false,
@@ -74,7 +76,7 @@ describe('SinginController Tests', () => {
   });
 
   it('Login Social with invalid password', async () => {
-    const result = await singinController.postSingIn({
+    const result = await signInController.postSignIn({
       email: 'jonhdoe@jonhdoe.com',
       password: 'InvalidPassword',
       socialLogin: true,

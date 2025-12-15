@@ -5,14 +5,14 @@ import { UploadService } from '@/utils/upload.service';
 import { Body, Controller, Post } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { SingInDTO } from './singin.Dto';
+import { SignInDTO } from './signin.Dto';
 
 const UnauthorizedUser = 'Usuário não autorizado.';
 const AccountInactive = UnauthorizedUser + ' Conta inativa.';
 
 @ApiTags('User')
 @Controller('users')
-export class SinginController {
+export class SignInController {
   constructor(
     private user: UserRepository,
 
@@ -27,7 +27,7 @@ export class SinginController {
     summary: 'User Sign-In',
     description: 'Authenticate user and return JWT token.',
   })
-  @ApiBody({ type: SingInDTO })
+  @ApiBody({ type: SignInDTO })
   @ApiResponse({
     status: 201,
     description: 'User authenticated successfully.',
@@ -51,8 +51,8 @@ export class SinginController {
       },
     },
   })
-  @Post('singin')
-  async postSingIn(@Body() body: SingInDTO) {
+  @Post('signin')
+  async postSignIn(@Body() body: SignInDTO) {
     const { email, password, socialLogin } = body;
 
     const user = await this.user.findByEmail({ email });
