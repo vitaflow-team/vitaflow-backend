@@ -84,6 +84,70 @@ describe('ProfileController Tests', () => {
     expect(result.address?.district).toEqual(body.district);
   });
 
+  it('Update user profile - user not exists', async () => {
+    const body = {
+      name: 'Jonh Doe Profile',
+      addressLine1: 'Address 1',
+      district: 'District',
+      city: 'City',
+      region: 'SP',
+      postalCode: '12345678',
+    } as any;
+
+    const req = {
+      user: {
+        id: 'idUserNotExists',
+      },
+    };
+
+    await expect(
+      profileController.postProfile(null as any, body, req),
+    ).rejects.toHaveProperty('statusCode', 402);
+  });
+
+  it('Update user profile - replace avatar', async () => {
+    const body = {
+      name: 'Jonh Doe Profile',
+      phone: '99999999999',
+      birthDate: new Date('2010-10-10'),
+      avatar: '',
+      addressLine1: 'Jonh Doe address line 1',
+      addressLine2: 'Jonh Doe address line 2',
+      district: 'Jonh Doe',
+      city: 'JonhDoe City',
+      region: 'SP',
+      postalCode: '12345-678',
+    };
+    const req = {
+      user: {
+        id: '1', // userMock[0] has id '1' and avatar 'null'.
+        // Wait, userMock[0] avatar is null.
+        // I need a user with avatar to test deletion.
+        // I will mock getUserProfile return for this test or use a different user ID if available.
+        // Actually relying on userMock[0] which has null avatar, so deleteImage won't be called.
+        // To test deleteImage, I should mock getUserProfile to return a user WITH avatar.
+      },
+    };
+
+    // Mocking getUserProfile for this specific test to return a user with an existing avatar
+    const userWithAvatar = { ...userMock[0], avatar: 'old-avatar.jpg' };
+    jest
+      .spyOn(userRepositoryMock.useValue, 'getUserProfile')
+      .mockResolvedValueOnce(userWithAvatar as any);
+
+    const mockAvatarFile = {
+      fieldname: 'avatar',
+      originalname: 'new-avatar.jpg',
+    } as any;
+
+    await profileController.postProfile(mockAvatarFile, body, req);
+
+    expect(uploadServiceMock.useValue.uploadImage).toHaveBeenCalled();
+    expect(uploadServiceMock.useValue.deleteImage).toHaveBeenCalledWith(
+      'old-avatar.jpg',
+    );
+  });
+
   it('Get user profile - user not exists', async () => {
     await expect(
       profileController.getProfile({
