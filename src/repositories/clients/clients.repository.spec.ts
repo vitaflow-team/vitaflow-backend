@@ -1,0 +1,123 @@
+import { PrismaService } from '@/database/prisma.service';
+import { Test, TestingModule } from '@nestjs/testing';
+import { Client, Prisma } from '@prisma/client';
+import { clientMock } from 'mock/clients.repository.mock';
+import { ClientsRepository } from './clients.repository';
+
+describe('UserRepository Tests', () => {
+  let clientsRepository: ClientsRepository;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ClientsRepository,
+        {
+          provide: PrismaService,
+          useValue: {
+            client: {
+              create: jest
+                .fn()
+                .mockImplementation(
+                  ({ data }: { data: Prisma.ClientCreateInput }) => {
+                    return Promise.resolve({
+                      id: 'idNewClient',
+                      name: data.name,
+                      email: data.email,
+                      birthDate: new Date('1990-05-20'),
+                      phone: data.phone,
+                      professionalId: data.professional.connect!.id!,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    } satisfies Client);
+                  },
+                ),
+              findUnique: jest.fn().mockImplementation(({ where }) => {
+                const client = clientMock.filter((client) => {
+                  if (
+                    client.email === where.email_professionalId.email &&
+                    client.professionalId ===
+                      where.email_professionalId.professionalId
+                  ) {
+                    return client;
+                  }
+                });
+                if (client[0]) {
+                  return Promise.resolve(client[0]);
+                } else {
+                  return Promise.resolve(null);
+                }
+              }),
+            },
+          },
+        },
+      ],
+    }).compile();
+
+    clientsRepository = module.get<ClientsRepository>(ClientsRepository);
+  });
+
+  it('should be defined and instantiated', () => {
+    expect(clientsRepository).toBeDefined();
+  });
+
+  it('Locate user by email and professional id', async () => {
+    const newClient = {
+      name: 'New Jonh Doe',
+      email: 'jonhdoe@id1.com',
+      birthDate: new Date('1990-05-20'),
+      phone: '987654321',
+    };
+    const req = {
+      user: {
+        id: 'User1',
+      },
+    };
+
+    const client = await clientsRepository.findByEmailAndProfessionalId(
+      newClient.email,
+      req.user.id,
+    );
+
+    expect(client).toBeDefined();
+    expect(client?.id).toEqual('1');
+  });
+
+  it('Locate user by email and professional id - not found', async () => {
+    const newClient = {
+      name: 'New Jonh Doe',
+      email: 'jonhdoe@idNotFound.com',
+      birthDate: new Date('1990-05-20'),
+      phone: '987654321',
+    };
+    const req = {
+      user: {
+        id: 'User1',
+      },
+    };
+
+    const client = await clientsRepository.findByEmailAndProfessionalId(
+      newClient.email,
+      req.user.id,
+    );
+
+    expect(client).toBeNull();
+  });
+
+  it('Create user', async () => {
+    const newClient = {
+      name: 'New Jonh Doe',
+      email: 'jonhdoe@id1.com',
+      birthDate: new Date('1990-05-20'),
+      professional: {
+        connect: {
+          id: 'User1',
+        },
+      },
+      phone: '987654321',
+    };
+
+    const client = await clientsRepository.create(newClient);
+
+    expect(client.id).toEqual('idNewClient');
+  });
+});
