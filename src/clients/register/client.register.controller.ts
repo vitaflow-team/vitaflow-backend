@@ -1,7 +1,14 @@
 import { AuthGuard } from '@/auth/auth.guard';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { AppError } from '@/utils/app.erro';
-import { Body, Controller, Post, Request, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -17,6 +24,25 @@ import { ClientRegisterDTO } from './client.register.Dto';
 @UseGuards(AuthGuard)
 export class ClientRegisterController {
   constructor(private clients: ClientsRepository) {}
+
+  @ApiOperation({
+    summary: 'Get Clients',
+    description: 'Get clients for the professional.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Clients successfully retrieved.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized access.',
+  })
+  @Get('clients')
+  async getClients(@Request() req) {
+    const result = await this.clients.getAllByProfessionalId(req.user.id);
+
+    return result;
+  }
 
   @ApiOperation({
     summary: 'Update User Profile',

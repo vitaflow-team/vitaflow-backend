@@ -25,4 +25,12 @@ export class ClientsRepository {
       },
     });
   }
+
+  async getAllByProfessionalId(professionalId: string): Promise<Client[]> {
+    return await this.prisma.client.findMany({
+      where: {
+        professionalId,
+      },
+    });
+  }
 }
