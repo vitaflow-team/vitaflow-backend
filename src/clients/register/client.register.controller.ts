@@ -57,7 +57,7 @@ export class ClientRegisterController {
       email,
       phone,
       birthDate,
-      professionalId: req.user.id,
+      professional: { connect: { id: req.user.id } },
     });
 
     return result;
