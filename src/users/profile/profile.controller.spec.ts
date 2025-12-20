@@ -120,12 +120,7 @@ describe('ProfileController Tests', () => {
     };
     const req = {
       user: {
-        id: '1', // userMock[0] has id '1' and avatar 'null'.
-        // Wait, userMock[0] avatar is null.
-        // I need a user with avatar to test deletion.
-        // I will mock getUserProfile return for this test or use a different user ID if available.
-        // Actually relying on userMock[0] which has null avatar, so deleteImage won't be called.
-        // To test deleteImage, I should mock getUserProfile to return a user WITH avatar.
+        id: '1',
       },
     };
 

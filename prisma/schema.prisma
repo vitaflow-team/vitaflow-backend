@@ -27,8 +27,25 @@ model Users {
   updatedAt     DateTime     @updatedAt
   usersTokens   UsersToken[]
   userAddresses UserAddress?
+  clients       Client[]
 
   @@unique([email])
+}
+
+model Client {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String
+  email     String
+  birthDate DateTime?
+
+  professional   Users  @relation(fields: [professionalId], references: [id])
+  professionalId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([email, professionalId])
 }
 
 model UsersToken {

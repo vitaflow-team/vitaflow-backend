@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { ClientsModule } from './clients/clients.module';
 import { PrismaService } from './database/prisma.service';
 import { MailModule } from './mail/mail.module';
 import { UsersModule } from './users/users.module';
@@ -16,6 +17,7 @@ import { UsersModule } from './users/users.module';
       signOptions: { expiresIn: '12h' },
     }),
     UsersModule,
+    ClientsModule,
   ],
   controllers: [],
   providers: [PrismaService],
