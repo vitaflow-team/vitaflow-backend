@@ -65,5 +65,13 @@ export const ClientsRepositoryMock = {
           return Promise.resolve(null);
         }
       }),
+    getAllByProfessionalId: jest.fn().mockImplementation((userId) => {
+      const client = clientMock.filter((client) => {
+        if (client.professionalId === userId) {
+          return client;
+        }
+      });
+      return Promise.resolve(client);
+    }),
   },
 };

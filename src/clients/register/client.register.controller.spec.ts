@@ -72,4 +72,13 @@ describe('ClientRegisterController Tests', () => {
       ).rejects.toHaveProperty('statusCode', 402);
     });
   });
+
+  describe('ClientRegisterController.getClients - Tests', () => {
+    it('Get clients - Success', async () => {
+      const result = await controller.getClients(req);
+
+      expect(result).toBeDefined();
+      expect(result?.length).toBeGreaterThan(0);
+    });
+  });
 });

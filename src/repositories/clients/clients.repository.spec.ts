@@ -47,6 +47,14 @@ describe('UserRepository Tests', () => {
                   return Promise.resolve(null);
                 }
               }),
+              findMany: jest.fn().mockImplementation(({ where }) => {
+                const client = clientMock.filter((client) => {
+                  if (client.professionalId === where.professionalId) {
+                    return client;
+                  }
+                });
+                return Promise.resolve(client);
+              }),
             },
           },
         },
@@ -101,6 +109,19 @@ describe('UserRepository Tests', () => {
     );
 
     expect(client).toBeNull();
+  });
+
+  it('Locate client by professional id', async () => {
+    const req = {
+      user: {
+        id: 'User1',
+      },
+    };
+
+    const client = await clientsRepository.getAllByProfessionalId(req.user.id);
+
+    expect(client).toBeDefined();
+    expect(client?.length).toBeGreaterThan(0);
   });
 
   it('Create user', async () => {
