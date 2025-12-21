@@ -68,3 +68,32 @@ model UserAddress {
   user   Users  @relation(fields: [userId], references: [id])
   userId String @unique
 }
+
+model ProductGroup {
+  id        String    @id @default(cuid())
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id           String        @id @default(cuid())
+  name         String
+  price        Float
+  group        ProductGroup  @relation(fields: [groupId], references: [id])
+  groupId      String
+  stripeId     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  productInfos ProductInfo[]
+}
+
+model ProductInfo {
+  id          String   @id @default(cuid())
+  description String
+  product     Product  @relation(fields: [productId], references: [id])
+  productId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

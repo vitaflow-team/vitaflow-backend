@@ -128,5 +128,8 @@
       "eslint"
     ],
     "*.ts": "eslint"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }
