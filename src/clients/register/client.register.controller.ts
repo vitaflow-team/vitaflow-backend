@@ -37,7 +37,7 @@ export class ClientRegisterController {
     status: 401,
     description: 'Unauthorized access.',
   })
-  @Get('clients')
+  @Get()
   async getClients(@Request() req) {
     const result = await this.clients.getAllByProfessionalId(req.user.id);
 
@@ -63,7 +63,7 @@ export class ClientRegisterController {
     status: 401,
     description: 'Unauthorized access.',
   })
-  @Post('register')
+  @Post()
   async postRegister(@Body() body: ClientRegisterDTO, @Request() req) {
     const { name, email, phone, birthDate } = body;
 

@@ -48,7 +48,7 @@ export class ProfileController {
     status: 401,
     description: 'Unauthorized access.',
   })
-  @Post('profile')
+  @Post()
   @UseInterceptors(FileInterceptor('avatar'))
   async postProfile(
     @UploadedFile() avatar: Express.Multer.File,
@@ -122,7 +122,7 @@ export class ProfileController {
     status: 402,
     description: 'User not found.',
   })
-  @Get('profile')
+  @Get()
   async getProfile(@Request() req) {
     const user = await this.user.getUserProfile(req.user.id);
 

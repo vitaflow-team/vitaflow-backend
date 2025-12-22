@@ -18,7 +18,7 @@ export class ProductsController {
     status: 200,
     description: 'Products successfully retrieved.',
   })
-  @Get('products')
+  @Get()
   async getProducts(): Promise<ProductGroupWithDetails[]> {
     const result = await this.products.getAllProducts();
 
