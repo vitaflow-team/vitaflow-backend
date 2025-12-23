@@ -22,6 +22,8 @@ model Users {
   active    Boolean   @default(false)
   phone     String?
   birthDate DateTime?
+  product   Product?  @relation(fields: [productId], references: [id])
+  productId String?
 
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -87,6 +89,7 @@ model Product {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   productInfos ProductInfo[]
+  users        Users[]
 }
 
 model ProductInfo {

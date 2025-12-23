@@ -81,6 +81,8 @@ export class SignInController {
     const payload = {
       name: user.name,
       email: user.email,
+      productId: user.productId,
+      productGroupId: user.product?.groupId,
       avatar: signedAvatarUrl,
       id: user.id,
     };
