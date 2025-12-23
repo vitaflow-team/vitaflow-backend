@@ -92,6 +92,8 @@ export class SignInController {
       name: user.name,
       email: user.email,
       avatar: signedAvatarUrl,
+      productId: user.productId,
+      productGroupId: user.product?.groupId,
       accessToken: await this.jwtService.signAsync(payload),
     };
   }
