@@ -1,7 +1,7 @@
 import { PrismaService } from '@/database/prisma.service';
 import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
 import { Injectable } from '@nestjs/common';
-import { Prisma, UserAddress, Users } from '@prisma/client';
+import { Prisma, Product, UserAddress, Users } from '@prisma/client';
 
 @Injectable()
 export class UserRepository {
@@ -21,9 +21,12 @@ export class UserRepository {
 
   async findByEmail(
     where: Prisma.UsersWhereUniqueInput,
-  ): Promise<Users | null> {
+  ): Promise<(Users & { product: Product | null }) | null> {
     return await this.prisma.users.findUnique({
       where,
+      include: {
+        product: true,
+      },
     });
   }
 

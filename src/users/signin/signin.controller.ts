@@ -81,6 +81,8 @@ export class SignInController {
     const payload = {
       name: user.name,
       email: user.email,
+      productId: user.productId,
+      productGroupId: user.product?.groupId,
       avatar: signedAvatarUrl,
       id: user.id,
     };
@@ -90,6 +92,8 @@ export class SignInController {
       name: user.name,
       email: user.email,
       avatar: signedAvatarUrl,
+      productId: user.productId,
+      productGroupId: user.product?.groupId,
       accessToken: await this.jwtService.signAsync(payload),
     };
   }
