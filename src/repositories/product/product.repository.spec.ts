@@ -16,6 +16,7 @@ const productGroupsMock: ProductGroupWithDetails[] = [
         id: 'prod-1',
         name: 'Premium',
         price: 29.9,
+        type: 'USER',
         groupId: 'group-1',
         stripeId: 'st_123',
         createdAt: new Date(),

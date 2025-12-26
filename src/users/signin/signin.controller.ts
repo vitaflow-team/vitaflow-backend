@@ -82,6 +82,7 @@ export class SignInController {
       name: user.name,
       email: user.email,
       productId: user.productId,
+      productType: user.product?.type,
       productGroupId: user.product?.groupId,
       avatar: signedAvatarUrl,
       id: user.id,
@@ -93,6 +94,7 @@ export class SignInController {
       email: user.email,
       avatar: signedAvatarUrl,
       productId: user.productId,
+      productType: user.product?.type,
       productGroupId: user.product?.groupId,
       accessToken: await this.jwtService.signAsync(payload),
     };
