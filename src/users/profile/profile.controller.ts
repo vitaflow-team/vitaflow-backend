@@ -53,7 +53,7 @@ export class ProfileController {
   async postProfile(
     @UploadedFile() avatar: Express.Multer.File,
     @Body() body: ProfileDTO,
-    @Request() req,
+    @Request() req: { user: { id: string } },
   ) {
     const existingUser = await this.user.getUserProfile(req.user.id);
     if (!existingUser) {
@@ -123,7 +123,7 @@ export class ProfileController {
     description: 'User not found.',
   })
   @Get()
-  async getProfile(@Request() req) {
+  async getProfile(@Request() req: { user: { id: string } }) {
     const user = await this.user.getUserProfile(req.user.id);
 
     if (!user) {
