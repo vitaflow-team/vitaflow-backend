@@ -13,6 +13,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ProductType {
+  USER
+  NUTRITIONIST
+  PHYSICAL_EDUCATOR
+}
+
 model Users {
   id        String    @id @default(uuid(7))
   name      String
@@ -85,6 +91,7 @@ model Product {
   price        Float
   group        ProductGroup  @relation(fields: [groupId], references: [id])
   groupId      String
+  type         ProductType   @default(USER)
   stripeId     String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

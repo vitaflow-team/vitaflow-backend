@@ -10,6 +10,7 @@ async function main() {
           name: 'Gratuito',
           price: 0,
           stripeId: null,
+          type: 'USER',
           productInfos: [
             {
               description:
@@ -24,6 +25,7 @@ async function main() {
           name: 'Premium',
           price: 19.9,
           stripeId: 'prod_Te49KpxtqSQghj',
+          type: 'USER',
           productInfos: [
             { description: 'Todas as funcionalidades do plano gratuito' },
             {
@@ -45,6 +47,7 @@ async function main() {
           name: 'Profissional',
           price: 59.9,
           stripeId: 'prod_Te4DmqDejVwQ7g',
+          type: 'PHYSICAL_EDUCATOR',
           productInfos: [
             { description: 'Cadastro ilimitado de alunos' },
             { description: 'Criação e prescrição de treinos personalizados' },
@@ -61,6 +64,7 @@ async function main() {
           name: 'Premium',
           price: 99.9,
           stripeId: 'prod_Te4F7Bg79FS5nM',
+          type: 'PHYSICAL_EDUCATOR',
           productInfos: [
             { description: 'Todas as funcionalidades do plano profissional' },
             {
@@ -86,6 +90,7 @@ async function main() {
           name: 'Profissional',
           price: 79.9,
           stripeId: 'prod_Te4IMbdj8Vy4QF',
+          type: 'NUTRITIONIST',
           productInfos: [
             { description: 'Cadastro ilimitado de pacientes' },
             { description: 'Criação e prescrição de cardápios personalizados' },
@@ -103,6 +108,7 @@ async function main() {
           name: 'Premium',
           price: 129.9,
           stripeId: 'prod_Te4KiWwQUkgn5g',
+          type: 'NUTRITIONIST',
           productInfos: [
             { description: 'Todas as funcionalidades do plano profissional' },
             {
