@@ -14,7 +14,7 @@ datasource db {
 }
 
 model Users {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid(7))
   name      String
   email     String
   password  String
@@ -35,7 +35,7 @@ model Users {
 }
 
 model Client {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid(7))
   name      String
   phone     String
   email     String
@@ -51,7 +51,7 @@ model Client {
 }
 
 model UsersToken {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid(7))
   user      Users    @relation(fields: [userID], references: [id])
   userID    String
   createdAt DateTime @default(now())
@@ -59,7 +59,7 @@ model UsersToken {
 }
 
 model UserAddress {
-  id           String  @id @default(cuid())
+  id           String  @id @default(uuid(7))
   addressLine1 String?
   addressLine2 String?
   district     String?
@@ -72,7 +72,7 @@ model UserAddress {
 }
 
 model ProductGroup {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid(7))
   name      String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -80,7 +80,7 @@ model ProductGroup {
 }
 
 model Product {
-  id           String        @id @default(cuid())
+  id           String        @id @default(uuid(7))
   name         String
   price        Float
   group        ProductGroup  @relation(fields: [groupId], references: [id])
@@ -93,7 +93,7 @@ model Product {
 }
 
 model ProductInfo {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid(7))
   description String
   product     Product  @relation(fields: [productId], references: [id])
   productId   String

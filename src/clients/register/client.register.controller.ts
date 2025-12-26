@@ -38,7 +38,7 @@ export class ClientRegisterController {
     description: 'Unauthorized access.',
   })
   @Get()
-  async getClients(@Request() req) {
+  async getClients(@Request() req: { user: { id: string } }) {
     const result = await this.clients.getAllByProfessionalId(req.user.id);
 
     return result;
@@ -64,7 +64,10 @@ export class ClientRegisterController {
     description: 'Unauthorized access.',
   })
   @Post()
-  async postRegister(@Body() body: ClientRegisterDTO, @Request() req) {
+  async postRegister(
+    @Body() body: ClientRegisterDTO,
+    @Request() req: { user: { id: string } },
+  ) {
     const { name, email, phone, birthDate } = body;
 
     const clientExists = await this.clients.findByEmailAndProfessionalId(
