@@ -43,6 +43,23 @@ describe('ClientRegisterController Tests', () => {
 
       expect(result.id).toEqual('idNewClient');
       expect(result.email).toEqual(newClient.email);
+      expect(result.userId).toBeNull();
+      expect(result.birthDate).toBeInstanceOf(Date);
+    });
+
+    it('Register new client - Success - User already exists', async () => {
+      const newClient = {
+        name: 'New Jonh Doe',
+        email: 'jonhdoeActive@jonhdoe.com',
+        birthDate: new Date('1990-05-20'),
+        phone: '987654321',
+      };
+
+      const result = await controller.postRegister(newClient, req);
+
+      expect(result.id).toEqual('idNewClient');
+      expect(result.email).toEqual(newClient.email);
+      expect(result.userId).toEqual('3');
       expect(result.birthDate).toBeInstanceOf(Date);
     });
 

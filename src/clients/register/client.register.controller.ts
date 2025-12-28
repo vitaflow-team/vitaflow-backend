@@ -1,5 +1,6 @@
 import { AuthGuard } from '@/auth/auth.guard';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import {
   Body,
@@ -23,7 +24,11 @@ import { ClientRegisterDTO } from './client.register.Dto';
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard)
 export class ClientRegisterController {
-  constructor(private clients: ClientsRepository) {}
+  constructor(
+    private clients: ClientsRepository,
+
+    private users: UserRepository,
+  ) {}
 
   @ApiOperation({
     summary: 'Get Clients',
@@ -81,11 +86,16 @@ export class ClientRegisterController {
       );
     }
 
+    const user = await this.users.findByEmail({
+      email,
+    });
+
     const result = await this.clients.create({
       name,
       email,
       phone,
       birthDate,
+      userId: user?.id,
       professional: { connect: { id: req.user.id } },
     });
 

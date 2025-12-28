@@ -46,6 +46,7 @@ export const ClientsRepositoryMock = {
           email: data.email,
           birthDate: new Date('1990-05-20'),
           phone: data.phone,
+          userId: data.userId || null,
           professionalId: data.professionalId,
           createdAt: new Date(),
           updatedAt: new Date(),
