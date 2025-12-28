@@ -1,5 +1,6 @@
 import { PrismaService } from '@/database/prisma.service';
 import { MailModule } from '@/mail/mail.module';
+import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
@@ -31,6 +32,7 @@ import { SignUpController } from './signup/signup.controller';
     UserRepository,
     UserTokenRepository,
     UploadService,
+    ClientsRepository,
   ],
 })
 export class UsersModule {}

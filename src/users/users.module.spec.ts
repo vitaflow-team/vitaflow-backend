@@ -1,4 +1,5 @@
 import { PrismaService } from '@/database/prisma.service';
+import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
@@ -72,6 +73,12 @@ describe('UsersModule Test', () => {
     const userTokenRepository =
       moduleRef.get<UserTokenRepository>(UserTokenRepository);
     expect(userTokenRepository).toBeDefined();
+  });
+
+  it('should register ClientsRepository provider', () => {
+    const clientsRepository =
+      moduleRef.get<ClientsRepository>(ClientsRepository);
+    expect(clientsRepository).toBeDefined();
   });
 
   it('should register UploadService provider', () => {

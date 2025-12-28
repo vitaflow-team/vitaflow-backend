@@ -55,6 +55,7 @@ describe('UserRepository Tests', () => {
                 });
                 return Promise.resolve(client);
               }),
+              updateMany: jest.fn().mockImplementation(),
             },
           },
         },
@@ -140,5 +141,23 @@ describe('UserRepository Tests', () => {
     const client = await clientsRepository.create(newClient);
 
     expect(client.id).toEqual('idNewClient');
+  });
+
+  it('should set all client user', async () => {
+    const userId = 'newUserId';
+    const email = 'test@example.com';
+
+    await clientsRepository.setAllClientUser(userId, email);
+
+    expect(
+      (clientsRepository as any).prisma.client.updateMany,
+    ).toHaveBeenCalledWith({
+      where: {
+        email,
+      },
+      data: {
+        userId,
+      },
+    });
   });
 });

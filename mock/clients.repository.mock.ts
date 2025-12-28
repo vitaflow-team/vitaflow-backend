@@ -74,5 +74,6 @@ export const ClientsRepositoryMock = {
       });
       return Promise.resolve(client);
     }),
+    setAllClientUser: jest.fn().mockImplementation(),
   },
 };

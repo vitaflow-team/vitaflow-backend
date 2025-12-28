@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { mailServiceMock } from 'mock/mail.service.mok';
 import { passwordHashMock } from 'mock/password.hash.mock';
@@ -18,6 +19,7 @@ describe('SignUpController Tests', () => {
         jwtServiceMock,
         mailServiceMock,
         userTokenServiceMock,
+        ClientsRepositoryMock,
       ],
     }).compile();
 
