@@ -1,11 +1,7 @@
-export class AppError extends Error {
-  public readonly statusCode: number;
+import { HttpException } from '@nestjs/common';
 
+export class AppError extends HttpException {
   constructor(message: string, statusCode = 400) {
-    super(message);
-    this.statusCode = statusCode;
-
-    Object.setPrototypeOf(this, new.target.prototype);
-    this.name = AppError.name;
+    super(message, statusCode);
   }
 }

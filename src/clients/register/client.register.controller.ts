@@ -50,8 +50,8 @@ export class ClientRegisterController {
   }
 
   @ApiOperation({
-    summary: 'Update User Profile',
-    description: 'Updates the user profile with the provided information.',
+    summary: 'Create new client by User',
+    description: 'Create new client by User.',
   })
   @ApiBody({
     type: ClientRegisterDTO,
