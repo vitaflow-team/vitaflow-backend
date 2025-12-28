@@ -45,6 +45,7 @@ model Client {
   name      String
   phone     String
   email     String
+  userId    String?   @map("user_id")
   birthDate DateTime?
 
   professional   Users  @relation(fields: [professionalId], references: [id])
@@ -54,6 +55,7 @@ model Client {
   updatedAt DateTime @updatedAt
 
   @@unique([email, professionalId])
+  @@index([email])
 }
 
 model UsersToken {
