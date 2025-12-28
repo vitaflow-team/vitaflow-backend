@@ -1,4 +1,5 @@
 import { MailService } from '@/mail/mail.service';
+import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { AppError } from '@/utils/app.erro';
@@ -14,6 +15,8 @@ import { SignUpDTO } from './signup.Dto';
 export class SignUpController {
   constructor(
     private user: UserRepository,
+
+    private client: ClientsRepository,
 
     private hash: PasswordHash,
 
@@ -85,6 +88,8 @@ export class SignUpController {
       './activation',
       activationLink,
     );
+
+    await this.client.setAllClientUser(userCreated.id, email);
 
     return {
       ...userCreated,

@@ -33,4 +33,15 @@ export class ClientsRepository {
       },
     });
   }
+
+  async setAllClientUser(userId: string, email: string): Promise<void> {
+    await this.prisma.client.updateMany({
+      where: {
+        email,
+      },
+      data: {
+        userId,
+      },
+    });
+  }
 }
