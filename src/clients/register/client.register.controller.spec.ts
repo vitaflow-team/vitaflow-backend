@@ -84,9 +84,9 @@ describe('ClientRegisterController Tests', () => {
         phone: '987654321',
       };
 
-      await expect(
-        controller.postRegister(newClient, req),
-      ).rejects.toHaveProperty('statusCode', 402);
+      await expect(controller.postRegister(newClient, req)).rejects.toThrow(
+        'Client already registered for the professional.',
+      );
     });
   });
 
@@ -96,6 +96,21 @@ describe('ClientRegisterController Tests', () => {
 
       expect(result).toBeDefined();
       expect(result?.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('ClientRegisterController.getClientById - Tests', () => {
+    it('Get client by id - Another user client', async () => {
+      await expect(controller.getClientById('2', req)).rejects.toThrow(
+        'Unauthorized access.',
+      );
+    });
+
+    it('Get client by id - Success', async () => {
+      const result = await controller.getClientById('1', req);
+
+      expect(result).toBeDefined();
+      expect(result?.id).toEqual('1');
     });
   });
 });

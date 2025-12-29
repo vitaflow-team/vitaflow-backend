@@ -6,6 +6,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Request,
   UseGuards,
@@ -17,6 +18,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { ClientEntity } from '../client.entity';
 import { ClientRegisterDTO } from './client.register.Dto';
 
 @ApiTags('Clients')
@@ -37,6 +39,7 @@ export class ClientRegisterController {
   @ApiResponse({
     status: 200,
     description: 'Clients successfully retrieved.',
+    type: [ClientEntity],
   })
   @ApiResponse({
     status: 401,
@@ -50,6 +53,33 @@ export class ClientRegisterController {
   }
 
   @ApiOperation({
+    summary: 'Get Client by ID',
+    description: 'Get client by ID.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Client successfully retrieved.',
+    type: ClientEntity || null,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized access.',
+  })
+  @Get(':id')
+  async getClientById(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    const client = await this.clients.getClientById(id);
+
+    if (client && client.professionalId !== req.user.id) {
+      throw new AppError('Unauthorized access.', 401);
+    }
+
+    return client;
+  }
+
+  @ApiOperation({
     summary: 'Create new client by User',
     description: 'Create new client by User.',
   })
@@ -59,6 +89,7 @@ export class ClientRegisterController {
   @ApiResponse({
     status: 201,
     description: 'User profile updated successfully.',
+    type: ClientEntity,
   })
   @ApiResponse({
     status: 400,
