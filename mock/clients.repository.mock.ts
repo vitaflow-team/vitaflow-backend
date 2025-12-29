@@ -52,6 +52,19 @@ export const ClientsRepositoryMock = {
           updatedAt: new Date(),
         } satisfies Client);
       }),
+    update: jest.fn().mockImplementation((id, data) => {
+      const client = clientMock.find((client: Client) => client.id === id);
+
+      if (!client) {
+        return Promise.resolve(null);
+      }
+
+      const newClient = {
+        ...data,
+        id: client.id,
+      };
+      return Promise.resolve(newClient);
+    }),
     findByEmailAndProfessionalId: jest
       .fn()
       .mockImplementation((email, userId) => {

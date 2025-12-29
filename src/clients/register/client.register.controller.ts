@@ -104,32 +104,42 @@ export class ClientRegisterController {
     @Body() body: ClientRegisterDTO,
     @Request() req: { user: { id: string } },
   ) {
-    const { name, email, phone, birthDate } = body;
+    const { id, name, email, phone, birthDate } = body;
 
     const clientExists = await this.clients.findByEmailAndProfessionalId(
       email,
       req.user.id,
     );
-    if (clientExists) {
-      throw new AppError(
-        'Client already registered for the professional.',
-        402,
-      );
+    if (!id && clientExists) {
+      throw new AppError('Cliente já cadastrado para o profissional.', 402);
+    }
+
+    if (id && clientExists && clientExists.id !== id) {
+      throw new AppError('Cliente cadastrado com outro ID.', 402);
     }
 
     const user = await this.users.findByEmail({
       email,
     });
 
-    const result = await this.clients.create({
-      name,
-      email,
-      phone,
-      birthDate,
-      userId: user?.id,
-      professional: { connect: { id: req.user.id } },
-    });
-
-    return result;
+    if (!id) {
+      const result = await this.clients.create({
+        name,
+        email,
+        phone,
+        birthDate,
+        userId: user?.id,
+        professional: { connect: { id: req.user.id } },
+      });
+      return result;
+    } else {
+      const result = await this.clients.update(id, {
+        name,
+        email,
+        phone,
+        birthDate,
+      });
+      return result;
+    }
   }
 }
