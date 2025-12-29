@@ -32,6 +32,12 @@ describe('UserRepository Tests', () => {
                   },
                 ),
               findUnique: jest.fn().mockImplementation(({ where }) => {
+                if (where.id) {
+                  return Promise.resolve(
+                    clientMock.find((client) => client.id === where.id),
+                  );
+                }
+
                 const client = clientMock.filter((client) => {
                   if (
                     client.email === where.email_professionalId.email &&
@@ -123,6 +129,13 @@ describe('UserRepository Tests', () => {
 
     expect(client).toBeDefined();
     expect(client?.length).toBeGreaterThan(0);
+  });
+
+  it('Locate client by id', async () => {
+    const client = await clientsRepository.getClientById('1');
+
+    expect(client).toBeDefined();
+    expect(client?.id).toEqual('1');
   });
 
   it('Create user', async () => {

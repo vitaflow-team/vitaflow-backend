@@ -26,6 +26,14 @@ export class ClientsRepository {
     });
   }
 
+  async getClientById(id: string): Promise<Client | null> {
+    return await this.prisma.client.findUnique({
+      where: {
+        id,
+      },
+    });
+  }
+
   async getAllByProfessionalId(professionalId: string): Promise<Client[]> {
     return await this.prisma.client.findMany({
       where: {

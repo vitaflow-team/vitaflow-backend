@@ -57,7 +57,7 @@ describe('RecoverPassController Tests', () => {
 
       await expect(
         recoverPassController.postChangePassword(tokenData),
-      ).rejects.toHaveProperty('statusCode', 400);
+      ).rejects.toThrow('Token inválido ou expirado.');
     });
 
     it('Recover password - Token expired', async () => {
@@ -69,7 +69,7 @@ describe('RecoverPassController Tests', () => {
 
       await expect(
         recoverPassController.postChangePassword(tokenData),
-      ).rejects.toHaveProperty('statusCode', 400);
+      ).rejects.toThrow('Token inválido ou expirado.');
     });
 
     it('Recover password - password different the checkPassword', async () => {
@@ -81,7 +81,7 @@ describe('RecoverPassController Tests', () => {
 
       await expect(
         recoverPassController.postChangePassword(tokenData),
-      ).rejects.toHaveProperty('statusCode', 401);
+      ).rejects.toThrow('A confirmação da senha não corresponde à senha.');
     });
 
     it('Recover password - change password', async () => {

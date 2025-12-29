@@ -52,7 +52,7 @@ describe('SignInController Tests', () => {
         password: '12345',
         socialLogin: false,
       }),
-    ).rejects.toHaveProperty('statusCode', 401);
+    ).rejects.toThrow('Usuário não autorizado.');
   });
 
   it('Inactive user', async () => {
@@ -62,7 +62,7 @@ describe('SignInController Tests', () => {
         password: '12345',
         socialLogin: false,
       }),
-    ).rejects.toHaveProperty('statusCode', 401);
+    ).rejects.toThrow('Usuário não autorizado. Conta inativa.');
   });
 
   it('Invalid password', async () => {
@@ -72,7 +72,7 @@ describe('SignInController Tests', () => {
         password: 'InvalidPassword',
         socialLogin: false,
       }),
-    ).rejects.toHaveProperty('statusCode', 401);
+    ).rejects.toThrow('Usuário não autorizado.');
   });
 
   it('Login Social with invalid password', async () => {

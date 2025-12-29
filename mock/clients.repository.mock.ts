@@ -74,6 +74,14 @@ export const ClientsRepositoryMock = {
       });
       return Promise.resolve(client);
     }),
+    getClientById: jest.fn().mockImplementation((id) => {
+      const client = clientMock.find((client) => {
+        if (client.id === id) {
+          return client;
+        }
+      });
+      return Promise.resolve(client);
+    }),
     setAllClientUser: jest.fn().mockImplementation(),
   },
 };

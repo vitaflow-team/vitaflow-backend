@@ -57,7 +57,7 @@ export class ProfileController {
   ) {
     const existingUser = await this.user.getUserProfile(req.user.id);
     if (!existingUser) {
-      throw new AppError('User not found', 402);
+      throw new AppError('Usuário não encontrado.', 402);
     }
 
     const {
@@ -127,7 +127,7 @@ export class ProfileController {
     const user = await this.user.getUserProfile(req.user.id);
 
     if (!user) {
-      throw new AppError('User not found', 402);
+      throw new AppError('Usuário não encontrado.', 402);
     }
 
     const signedAvatarUrl = user.avatar
