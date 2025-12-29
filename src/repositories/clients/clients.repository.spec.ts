@@ -77,6 +77,7 @@ describe('UserRepository Tests', () => {
                 return Promise.resolve(newClient);
               }),
               updateMany: jest.fn().mockImplementation(),
+              delete: jest.fn().mockImplementation(),
             },
           },
         },
@@ -144,6 +145,19 @@ describe('UserRepository Tests', () => {
 
     expect(client).toBeDefined();
     expect(client?.length).toBeGreaterThan(0);
+  });
+
+  it('Delete client by id', async () => {
+    const id = '1';
+    await clientsRepository.delete(id);
+
+    expect(
+      (clientsRepository as any).prisma.client.delete,
+    ).toHaveBeenCalledWith({
+      where: {
+        id,
+      },
+    });
   });
 
   it('Locate client by id', async () => {
