@@ -115,7 +115,7 @@ export class SignUpController {
     const userToken = await this.userToken.findById({ id: token });
     if (userToken) {
       if (differenceInHours(Date.now(), userToken.createdAt) > 2) {
-        throw new AppError('Token expired.', 400);
+        throw new AppError('Token expirado.', 400);
       }
 
       await this.userToken.deleteAll({

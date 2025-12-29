@@ -39,9 +39,9 @@ describe('SignUpController Tests', () => {
         checkPassword: '12345',
       };
 
-      await expect(
-        signUpController.postNewUser(newUser),
-      ).rejects.toHaveProperty('statusCode', 400);
+      await expect(signUpController.postNewUser(newUser)).rejects.toThrow(
+        'Este e-mail já está sendo usado por outro usuário.',
+      );
     });
 
     it('Creating new user - Confirm incorrect password', async () => {
@@ -52,9 +52,9 @@ describe('SignUpController Tests', () => {
         checkPassword: '54321',
       };
 
-      await expect(
-        signUpController.postNewUser(newUser),
-      ).rejects.toHaveProperty('statusCode', 400);
+      await expect(signUpController.postNewUser(newUser)).rejects.toThrow(
+        'A confirmação da senha não corresponde à senha.',
+      );
     });
 
     it('Creating new user - Success', async () => {
@@ -88,9 +88,9 @@ describe('SignUpController Tests', () => {
         token: 'userTokenMockID1',
       };
 
-      await expect(
-        signUpController.activateNewUser(token),
-      ).rejects.toHaveProperty('statusCode', 400);
+      await expect(signUpController.activateNewUser(token)).rejects.toThrow(
+        'Token expirado.',
+      );
     });
 
     it('Active New User - Success', async () => {

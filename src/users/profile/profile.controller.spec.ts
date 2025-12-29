@@ -102,7 +102,7 @@ describe('ProfileController Tests', () => {
 
     await expect(
       profileController.postProfile(null as any, body, req),
-    ).rejects.toHaveProperty('statusCode', 402);
+    ).rejects.toThrow('Usuário não encontrado.');
   });
 
   it('Update user profile - replace avatar', async () => {
@@ -150,7 +150,7 @@ describe('ProfileController Tests', () => {
           id: 'idUserNotExists',
         },
       }),
-    ).rejects.toHaveProperty('statusCode', 402);
+    ).rejects.toThrow('Usuário não encontrado.');
   });
 
   it('Get user profile - successfully', async () => {

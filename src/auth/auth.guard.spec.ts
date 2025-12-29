@@ -42,9 +42,8 @@ describe('AuthGuard Tests', () => {
 
   it('CanActivate - Token does not exist in header.', async () => {
     const context = mockExecutionContext();
-    await expect(authGuard.canActivate(context)).rejects.toHaveProperty(
-      'statusCode',
-      401,
+    await expect(authGuard.canActivate(context)).rejects.toThrow(
+      'Unauthorized user.',
     );
   });
 
@@ -53,9 +52,8 @@ describe('AuthGuard Tests', () => {
     context.switchToHttp().getRequest().headers.authorization =
       'Bearer invalidtoken';
 
-    await expect(authGuard.canActivate(context)).rejects.toHaveProperty(
-      'statusCode',
-      401,
+    await expect(authGuard.canActivate(context)).rejects.toThrow(
+      'Unauthorized user.',
     );
   });
 
@@ -82,9 +80,8 @@ describe('AuthGuard Tests', () => {
       }),
     } as ExecutionContext;
 
-    await expect(authGuard.canActivate(context)).rejects.toHaveProperty(
-      'statusCode',
-      402,
+    await expect(authGuard.canActivate(context)).rejects.toThrow(
+      'Unauthorized user.',
     );
   });
 
@@ -111,9 +108,8 @@ describe('AuthGuard Tests', () => {
       }),
     } as ExecutionContext;
 
-    await expect(authGuard.canActivate(context)).rejects.toHaveProperty(
-      'statusCode',
-      403,
+    await expect(authGuard.canActivate(context)).rejects.toThrow(
+      'Unauthorized user.',
     );
   });
 

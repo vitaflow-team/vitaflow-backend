@@ -8,7 +8,7 @@ describe('AppError Test', () => {
     const error = new AppError(message, statusCode);
 
     expect(error.message).toBe(message);
-    expect(error.statusCode).toBe(statusCode);
+    expect(error.getStatus()).toBe(statusCode);
   });
 
   it('Must boot with default status code (400) if not provided', () => {
@@ -17,6 +17,6 @@ describe('AppError Test', () => {
     const error = new AppError(message);
 
     expect(error.message).toBe(message);
-    expect(error.statusCode).toBe(400);
+    expect(error.getStatus()).toBe(400);
   });
 });
