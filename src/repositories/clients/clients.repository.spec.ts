@@ -61,6 +61,21 @@ describe('UserRepository Tests', () => {
                 });
                 return Promise.resolve(client);
               }),
+              update: jest.fn().mockImplementation(({ where, data }) => {
+                const client = clientMock.find(
+                  (client: Client) => client.id === where.id,
+                );
+
+                if (!client) {
+                  return Promise.resolve(null);
+                }
+
+                const newClient = {
+                  ...data,
+                  id: client.id,
+                };
+                return Promise.resolve(newClient);
+              }),
               updateMany: jest.fn().mockImplementation(),
             },
           },
@@ -154,6 +169,25 @@ describe('UserRepository Tests', () => {
     const client = await clientsRepository.create(newClient);
 
     expect(client.id).toEqual('idNewClient');
+  });
+
+  it('Update user', async () => {
+    const client = {
+      name: 'New Jonh Doe',
+      email: 'jonhdoe@id1.com',
+      birthDate: new Date('1990-05-20'),
+      professional: {
+        connect: {
+          id: 'User1',
+        },
+      },
+      phone: '987654321',
+    };
+
+    const updatedClient = await clientsRepository.update('1', client);
+
+    expect(updatedClient.id).toEqual('1');
+    expect(updatedClient.name).toEqual('New Jonh Doe');
   });
 
   it('should set all client user', async () => {

@@ -9,6 +9,8 @@ import {
 } from 'class-validator';
 
 export class ClientRegisterDTO {
+  id?: string;
+
   @ApiProperty({
     description: 'Full name of the client.',
     example: 'John Doe',

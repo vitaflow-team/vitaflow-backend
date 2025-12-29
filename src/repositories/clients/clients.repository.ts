@@ -12,6 +12,15 @@ export class ClientsRepository {
     });
   }
 
+  async update(id: string, data: Prisma.ClientUpdateInput): Promise<Client> {
+    return await this.prisma.client.update({
+      where: {
+        id,
+      },
+      data,
+    });
+  }
+
   async findByEmailAndProfessionalId(
     email: string,
     professionalId: string,

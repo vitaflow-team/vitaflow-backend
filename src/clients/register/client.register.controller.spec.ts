@@ -85,8 +85,36 @@ describe('ClientRegisterController Tests', () => {
       };
 
       await expect(controller.postRegister(newClient, req)).rejects.toThrow(
-        'Client already registered for the professional.',
+        'Cliente já cadastrado para o profissional',
       );
+    });
+
+    it('Register new client - Client already exists with another id', async () => {
+      const newClient = {
+        id: '2',
+        name: 'New Jonh Doe',
+        email: 'jonhdoe@id1.com',
+        birthDate: new Date('1990-05-20'),
+        phone: '987654321',
+      };
+
+      await expect(controller.postRegister(newClient, req)).rejects.toThrow(
+        'Cliente cadastrado com outro ID.',
+      );
+    });
+
+    it('Update client - Success', async () => {
+      const newClient = {
+        id: '1',
+        name: 'New Jonh Doe',
+        email: 'jonhdoe@id1.com',
+        birthDate: new Date('1990-05-20'),
+        phone: '987654321',
+      };
+
+      const updateUser = await controller.postRegister(newClient, req);
+
+      expect(updateUser.name).toEqual(newClient.name);
     });
   });
 
