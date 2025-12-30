@@ -56,6 +56,9 @@ export class ClientsRepository {
       where: {
         professionalId,
       },
+      orderBy: {
+        name: 'asc',
+      },
     });
   }
 
