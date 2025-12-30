@@ -5,6 +5,7 @@ import { AppError } from '@/utils/app.erro';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -77,6 +78,36 @@ export class ClientRegisterController {
     }
 
     return client;
+  }
+
+  @ApiOperation({
+    summary: 'Delete Client by ID',
+    description: 'Delete client by ID.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Client successfully deleted.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized access.',
+  })
+  @Delete(':id')
+  async deleteClientById(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    const client = await this.clients.getClientById(id);
+
+    if (client) {
+      if (client.professionalId !== req.user.id) {
+        throw new AppError('Exclusão não permitida.', 401);
+      }
+
+      await this.clients.delete(id);
+    }
+
+    return;
   }
 
   @ApiOperation({

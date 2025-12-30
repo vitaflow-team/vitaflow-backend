@@ -21,6 +21,14 @@ export class ClientsRepository {
     });
   }
 
+  async delete(id: string): Promise<void> {
+    await this.prisma.client.delete({
+      where: {
+        id,
+      },
+    });
+  }
+
   async findByEmailAndProfessionalId(
     email: string,
     professionalId: string,
