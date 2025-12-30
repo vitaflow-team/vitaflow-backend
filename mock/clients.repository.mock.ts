@@ -96,5 +96,6 @@ export const ClientsRepositoryMock = {
       return Promise.resolve(client);
     }),
     setAllClientUser: jest.fn().mockImplementation(),
+    delete: jest.fn().mockImplementation(),
   },
 };

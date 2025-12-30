@@ -127,6 +127,20 @@ describe('ClientRegisterController Tests', () => {
     });
   });
 
+  describe('ClientRegisterController.deleteClientById - Tests', () => {
+    it('Delete client - Unauthorized access', async () => {
+      await expect(controller.deleteClientById('2', req)).rejects.toThrow(
+        'Exclusão não permitida.',
+      );
+    });
+
+    it('Delete client - Success', async () => {
+      await expect(
+        controller.deleteClientById('1', req),
+      ).resolves.not.toThrow();
+    });
+  });
+
   describe('ClientRegisterController.getClientById - Tests', () => {
     it('Get client by id - Another user client', async () => {
       await expect(controller.getClientById('2', req)).rejects.toThrow(
