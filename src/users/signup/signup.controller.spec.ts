@@ -6,6 +6,7 @@ import { passwordHashMock } from 'mock/password.hash.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
 import { userTokenServiceMock } from 'mock/userToken.repository.mock';
 import { SignUpController } from './signup.controller';
+import { SignUpService } from './signup.service';
 
 describe('SignUpController Tests', () => {
   let signUpController: SignUpController;
@@ -20,6 +21,7 @@ describe('SignUpController Tests', () => {
         mailServiceMock,
         userTokenServiceMock,
         ClientsRepositoryMock,
+        SignUpService,
       ],
     }).compile();
 
