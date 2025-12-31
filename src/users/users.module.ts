@@ -10,7 +10,9 @@ import { JwtModule } from '@nestjs/jwt';
 import { ProfileController } from './profile/profile.controller';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
 import { SignInController } from './signin/signin.controller';
+import { SignInService } from './signin/signin.service';
 import { SignUpController } from './signup/signup.controller';
+import { SignUpService } from './signup/signup.service';
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { SignUpController } from './signup/signup.controller';
     UserTokenRepository,
     UploadService,
     ClientsRepository,
+    SignUpService,
+    SignInService,
   ],
 })
 export class UsersModule {}

@@ -9,7 +9,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ProfileController } from './profile/profile.controller';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
 import { SignInController } from './signin/signin.controller';
+import { SignInService } from './signin/signin.service';
 import { SignUpController } from './signup/signup.controller';
+import { SignUpService } from './signup/signup.service';
 import { UsersModule } from './users.module';
 
 describe('UsersModule Test', () => {
@@ -84,5 +86,15 @@ describe('UsersModule Test', () => {
   it('should register UploadService provider', () => {
     const uploadService = moduleRef.get<UploadService>(UploadService);
     expect(uploadService).toBeDefined();
+  });
+
+  it('should register SignUpService provider', () => {
+    const signUpService = moduleRef.get<SignUpService>(SignUpService);
+    expect(signUpService).toBeDefined();
+  });
+
+  it('should register SignInService provider', () => {
+    const signInService = moduleRef.get<SignInService>(SignInService);
+    expect(signInService).toBeDefined();
   });
 });
