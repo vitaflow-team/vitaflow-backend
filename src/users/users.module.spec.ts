@@ -7,6 +7,7 @@ import { UploadService } from '@/utils/upload.service';
 import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfileController } from './profile/profile.controller';
+import { ProfileService } from './profile/profile.service';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
 import { RecoverpassService } from './recoverpass/recoverpass.service';
 import { SignInController } from './signin/signin.controller';
@@ -103,5 +104,10 @@ describe('UsersModule Test', () => {
     const recoverpassService =
       moduleRef.get<RecoverpassService>(RecoverpassService);
     expect(recoverpassService).toBeDefined();
+  });
+
+  it('should register ProfileService', () => {
+    const profileService = moduleRef.get<ProfileService>(ProfileService);
+    expect(profileService).toBeDefined();
   });
 });

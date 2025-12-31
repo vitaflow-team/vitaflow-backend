@@ -4,6 +4,7 @@ import {
 } from '@/repositories/product/product.repository';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProductsController } from './product.controller';
+import { ProductsService } from './product.service';
 
 const productGroupsMock: ProductGroupWithDetails[] = [
   {
@@ -50,6 +51,7 @@ describe('ProductsController Tests', () => {
           provide: ProductsRepository,
           useValue: productsRepositoryMock,
         },
+        ProductsService,
       ],
     }).compile();
 

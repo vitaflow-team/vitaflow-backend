@@ -8,6 +8,7 @@ import { UploadService } from '@/utils/upload.service';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ProfileController } from './profile/profile.controller';
+import { ProfileService } from './profile/profile.service';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
 import { RecoverpassService } from './recoverpass/recoverpass.service';
 import { SignInController } from './signin/signin.controller';
@@ -39,6 +40,7 @@ import { SignUpService } from './signup/signup.service';
     SignUpService,
     SignInService,
     RecoverpassService,
+    ProfileService,
   ],
 })
 export class UsersModule {}

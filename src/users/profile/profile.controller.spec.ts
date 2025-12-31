@@ -5,6 +5,7 @@ import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
 import { ProfileDTO } from './profile.Dto';
 import { ProfileController } from './profile.controller';
+import { ProfileService } from './profile.service';
 
 describe('ProfileController Tests', () => {
   let profileController: ProfileController;
@@ -12,7 +13,12 @@ describe('ProfileController Tests', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [ProfileController],
-      providers: [userRepositoryMock, jwtServiceMock, uploadServiceMock],
+      providers: [
+        userRepositoryMock,
+        jwtServiceMock,
+        uploadServiceMock,
+        ProfileService,
+      ],
     }).compile();
 
     profileController = moduleFixture.get<ProfileController>(ProfileController);
