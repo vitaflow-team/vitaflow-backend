@@ -38,6 +38,6 @@ export class SignInController {
   })
   @Post('signin')
   async postSignIn(@Body() body: SignInDTO) {
-    return this.service.postSignIn(body);
+    return await this.service.postSignIn(body);
   }
 }

@@ -33,7 +33,7 @@ export class SignUpController {
   })
   @Post('signup')
   async postNewUser(@Body() body: SignUpDTO) {
-    return this.service.postNewUser(body);
+    return await this.service.postNewUser(body);
   }
 
   @ApiOperation({
@@ -49,6 +49,6 @@ export class SignUpController {
   })
   @Post('/activate')
   async activateNewUser(@Body() body: ActiveDTO) {
-    return this.service.activateNewUser(body);
+    return await this.service.activateNewUser(body);
   }
 }

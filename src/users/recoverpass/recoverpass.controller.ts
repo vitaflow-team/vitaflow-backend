@@ -1,25 +1,13 @@
-import { MailService } from '@/mail/mail.service';
-import { UserRepository } from '@/repositories/users/user.repository';
-import { UserTokenRepository } from '@/repositories/users/userToken.repository';
-import { AppError } from '@/utils/app.erro';
-import { PasswordHash } from '@/utils/password.hash';
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { NewPasswordDto } from './newPassword.Dto';
 import { RecoverpassDTO } from './recoverpass.Dto';
+import { RecoverpassService } from './recoverpass.service';
 
 @ApiTags('User')
 @Controller('users')
 export class RecoverpassController {
-  constructor(
-    private user: UserRepository,
-
-    private userToken: UserTokenRepository,
-
-    private mailService: MailService,
-
-    private hash: PasswordHash,
-  ) {}
+  constructor(private recoverpassService: RecoverpassService) {}
 
   @ApiOperation({
     summary: 'Send password recovery email',
@@ -36,36 +24,7 @@ export class RecoverpassController {
   })
   @Post('recoverpass')
   async postRecoverpass(@Body() body: RecoverpassDTO) {
-    const { email } = body;
-
-    const userExists = await this.user.findByEmail({ email });
-    if (userExists) {
-      await this.userToken.deleteAll({
-        userID: userExists.id,
-      });
-
-      const token = await this.userToken.create({
-        user: {
-          connect: userExists,
-        },
-      });
-
-      if (token) {
-        const recoveryUrl = `${process.env.APP_URL}/signin?token=${token.id}`;
-
-        await this.mailService.sendEmailPassword(
-          userExists.name,
-          email,
-          'Recuperação de senha',
-          './resetpassword',
-          recoveryUrl,
-        );
-
-        return true;
-      }
-    }
-
-    return false;
+    return await this.recoverpassService.postRecoverpass(body);
   }
 
   @ApiOperation({
@@ -83,30 +42,6 @@ export class RecoverpassController {
   })
   @Post('newpassword')
   async postChangePassword(@Body() body: NewPasswordDto) {
-    const { token, password, checkPassword } = body;
-
-    const userToken = await this.userToken.findById({ id: token });
-    if (userToken) {
-      await this.userToken.deleteAll({
-        userID: userToken.userID,
-      });
-
-      if (userToken.createdAt.getTime() + 10800000 > Date.now()) {
-        if (checkPassword !== password) {
-          throw new AppError(
-            'A confirmação da senha não corresponde à senha.',
-            401,
-          );
-        }
-
-        const hasPassword = await this.hash.generateHash(password);
-
-        await this.user.updatePassword(userToken.userID, hasPassword);
-
-        return true;
-      }
-    }
-
-    throw new AppError('Token inválido ou expirado.', 400);
+    return await this.recoverpassService.postChangePassword(body);
   }
 }

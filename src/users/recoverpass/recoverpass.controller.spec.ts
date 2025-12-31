@@ -2,8 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { mailServiceMock } from 'mock/mail.service.mok';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
-import { userTokenServiceMock } from 'mock/userToken.repository.mock';
+import { userTokenRepositoryMock } from 'mock/userToken.repository.mock';
 import { RecoverpassController } from './recoverpass.controller';
+import { RecoverpassService } from './recoverpass.service';
 
 describe('RecoverPassController Tests', () => {
   let recoverPassController: RecoverpassController;
@@ -13,10 +14,10 @@ describe('RecoverPassController Tests', () => {
       controllers: [RecoverpassController],
       providers: [
         userRepositoryMock,
-        userTokenServiceMock,
+        userTokenRepositoryMock,
         mailServiceMock,
         passwordHashMock,
-        mailServiceMock,
+        RecoverpassService,
       ],
     }).compile();
 
