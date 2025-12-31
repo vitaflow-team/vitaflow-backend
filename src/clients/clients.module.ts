@@ -4,6 +4,7 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ClientRegisterController } from './register/client.register.controller';
+import { ClientRegisterService } from './register/client.register.service';
 
 @Module({
   imports: [
@@ -13,6 +14,11 @@ import { ClientRegisterController } from './register/client.register.controller'
     }),
   ],
   controllers: [ClientRegisterController],
-  providers: [PrismaService, UserRepository, ClientsRepository],
+  providers: [
+    PrismaService,
+    UserRepository,
+    ClientsRepository,
+    ClientRegisterService,
+  ],
 })
 export class ClientsModule {}

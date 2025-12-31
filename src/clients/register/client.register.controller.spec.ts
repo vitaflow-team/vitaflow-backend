@@ -5,6 +5,7 @@ import { jwtServiceMock } from 'mock/jwtService.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
 import { ClientRegisterDTO } from './client.register.Dto';
 import { ClientRegisterController } from './client.register.controller';
+import { ClientRegisterService } from './client.register.service';
 
 describe('ClientRegisterController Tests', () => {
   let controller: ClientRegisterController;
@@ -18,7 +19,12 @@ describe('ClientRegisterController Tests', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [ClientRegisterController],
-      providers: [userRepositoryMock, ClientsRepositoryMock, jwtServiceMock],
+      providers: [
+        ClientRegisterService,
+        userRepositoryMock,
+        ClientsRepositoryMock,
+        jwtServiceMock,
+      ],
     }).compile();
 
     controller = moduleFixture.get<ClientRegisterController>(
