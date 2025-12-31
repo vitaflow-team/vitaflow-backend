@@ -5,6 +5,7 @@ import { passwordHashMock } from 'mock/password.hash.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
 import { SignInController } from './signin.controller';
+import { SignInService } from './signin.service';
 
 describe('SignInController Tests', () => {
   let signInController: SignInController;
@@ -13,6 +14,7 @@ describe('SignInController Tests', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [SignInController],
       providers: [
+        SignInService,
         jwtServiceMock,
         passwordHashMock,
         userRepositoryMock,

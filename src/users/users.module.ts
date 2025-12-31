@@ -8,9 +8,13 @@ import { UploadService } from '@/utils/upload.service';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ProfileController } from './profile/profile.controller';
+import { ProfileService } from './profile/profile.service';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
+import { RecoverpassService } from './recoverpass/recoverpass.service';
 import { SignInController } from './signin/signin.controller';
+import { SignInService } from './signin/signin.service';
 import { SignUpController } from './signup/signup.controller';
+import { SignUpService } from './signup/signup.service';
 
 @Module({
   imports: [
@@ -33,6 +37,10 @@ import { SignUpController } from './signup/signup.controller';
     UserTokenRepository,
     UploadService,
     ClientsRepository,
+    SignUpService,
+    SignInService,
+    RecoverpassService,
+    ProfileService,
   ],
 })
 export class UsersModule {}

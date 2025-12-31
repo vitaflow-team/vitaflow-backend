@@ -4,8 +4,9 @@ import { jwtServiceMock } from 'mock/jwtService.mock';
 import { mailServiceMock } from 'mock/mail.service.mok';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
-import { userTokenServiceMock } from 'mock/userToken.repository.mock';
+import { userTokenRepositoryMock } from 'mock/userToken.repository.mock';
 import { SignUpController } from './signup.controller';
+import { SignUpService } from './signup.service';
 
 describe('SignUpController Tests', () => {
   let signUpController: SignUpController;
@@ -18,8 +19,9 @@ describe('SignUpController Tests', () => {
         userRepositoryMock,
         jwtServiceMock,
         mailServiceMock,
-        userTokenServiceMock,
+        userTokenRepositoryMock,
         ClientsRepositoryMock,
+        SignUpService,
       ],
     }).compile();
 

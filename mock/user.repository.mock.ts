@@ -56,6 +56,7 @@ export const userRepositoryMock = {
         phone: '999999999',
         createdAt: new Date(),
         updatedAt: new Date(),
+        productId: null,
       } satisfies Users);
     }),
     findByEmail: jest.fn().mockImplementation(({ email }) => {

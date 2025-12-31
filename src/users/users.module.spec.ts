@@ -7,9 +7,13 @@ import { UploadService } from '@/utils/upload.service';
 import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfileController } from './profile/profile.controller';
+import { ProfileService } from './profile/profile.service';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
+import { RecoverpassService } from './recoverpass/recoverpass.service';
 import { SignInController } from './signin/signin.controller';
+import { SignInService } from './signin/signin.service';
 import { SignUpController } from './signup/signup.controller';
+import { SignUpService } from './signup/signup.service';
 import { UsersModule } from './users.module';
 
 describe('UsersModule Test', () => {
@@ -84,5 +88,26 @@ describe('UsersModule Test', () => {
   it('should register UploadService provider', () => {
     const uploadService = moduleRef.get<UploadService>(UploadService);
     expect(uploadService).toBeDefined();
+  });
+
+  it('should register SignUpService provider', () => {
+    const signUpService = moduleRef.get<SignUpService>(SignUpService);
+    expect(signUpService).toBeDefined();
+  });
+
+  it('should register SignInService provider', () => {
+    const signInService = moduleRef.get<SignInService>(SignInService);
+    expect(signInService).toBeDefined();
+  });
+
+  it('should register RecoverpassService', () => {
+    const recoverpassService =
+      moduleRef.get<RecoverpassService>(RecoverpassService);
+    expect(recoverpassService).toBeDefined();
+  });
+
+  it('should register ProfileService', () => {
+    const profileService = moduleRef.get<ProfileService>(ProfileService);
+    expect(profileService).toBeDefined();
   });
 });

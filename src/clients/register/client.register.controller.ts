@@ -1,7 +1,4 @@
 import { AuthGuard } from '@/auth/auth.guard';
-import { ClientsRepository } from '@/repositories/clients/clients.repository';
-import { UserRepository } from '@/repositories/users/user.repository';
-import { AppError } from '@/utils/app.erro';
 import {
   Body,
   Controller,
@@ -21,17 +18,14 @@ import {
 } from '@nestjs/swagger';
 import { ClientEntity } from '../client.entity';
 import { ClientRegisterDTO } from './client.register.Dto';
+import { ClientRegisterService } from './client.register.service';
 
 @ApiTags('Clients')
 @Controller('clients')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard)
 export class ClientRegisterController {
-  constructor(
-    private clients: ClientsRepository,
-
-    private users: UserRepository,
-  ) {}
+  constructor(private service: ClientRegisterService) {}
 
   @ApiOperation({
     summary: 'Get Clients',
@@ -48,9 +42,7 @@ export class ClientRegisterController {
   })
   @Get()
   async getClients(@Request() req: { user: { id: string } }) {
-    const result = await this.clients.getAllByProfessionalId(req.user.id);
-
-    return result;
+    return await this.service.getClients(req.user.id);
   }
 
   @ApiOperation({
@@ -71,13 +63,7 @@ export class ClientRegisterController {
     @Param('id') id: string,
     @Request() req: { user: { id: string } },
   ) {
-    const client = await this.clients.getClientById(id);
-
-    if (client && client.professionalId !== req.user.id) {
-      throw new AppError('Unauthorized access.', 401);
-    }
-
-    return client;
+    return await this.service.getClientById(id, req.user.id);
   }
 
   @ApiOperation({
@@ -97,17 +83,7 @@ export class ClientRegisterController {
     @Param('id') id: string,
     @Request() req: { user: { id: string } },
   ) {
-    const client = await this.clients.getClientById(id);
-
-    if (client) {
-      if (client.professionalId !== req.user.id) {
-        throw new AppError('Exclusão não permitida.', 401);
-      }
-
-      await this.clients.delete(id);
-    }
-
-    return;
+    return await this.service.deleteClientById(id, req.user.id);
   }
 
   @ApiOperation({
@@ -135,42 +111,6 @@ export class ClientRegisterController {
     @Body() body: ClientRegisterDTO,
     @Request() req: { user: { id: string } },
   ) {
-    const { id, name, email, phone, birthDate } = body;
-
-    const clientExists = await this.clients.findByEmailAndProfessionalId(
-      email,
-      req.user.id,
-    );
-    if (!id && clientExists) {
-      throw new AppError('Cliente já cadastrado para o profissional.', 402);
-    }
-
-    if (id && clientExists && clientExists.id !== id) {
-      throw new AppError('Cliente cadastrado com outro ID.', 402);
-    }
-
-    const user = await this.users.findByEmail({
-      email,
-    });
-
-    if (!id) {
-      const result = await this.clients.create({
-        name,
-        email,
-        phone,
-        birthDate,
-        userId: user?.id,
-        professional: { connect: { id: req.user.id } },
-      });
-      return result;
-    } else {
-      const result = await this.clients.update(id, {
-        name,
-        email,
-        phone,
-        birthDate,
-      });
-      return result;
-    }
+    return await this.service.postRegister(body, req.user.id);
   }
 }
