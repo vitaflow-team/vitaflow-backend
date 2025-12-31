@@ -3,6 +3,7 @@ import {
   ProductsRepository,
 } from '@/repositories/product/product.repository';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ProductType } from '@prisma/client';
 import { ProductsController } from './product.controller';
 import { ProductsService } from './product.service';
 
@@ -18,6 +19,7 @@ const productGroupsMock: ProductGroupWithDetails[] = [
         name: 'Premium',
         price: 29.9,
         groupId: 'group-1',
+        type: ProductType.USER,
         stripeId: 'st_123',
         createdAt: new Date(),
         updatedAt: new Date(),
