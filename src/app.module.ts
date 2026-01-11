@@ -6,8 +6,8 @@ import { ClientsModule } from './clients/clients.module';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { PrismaService } from './database/prisma.service';
 import { MailModule } from './mail/mail.module';
-import { ProductsController } from './product/product.controller';
-import { ProductsRepository } from './repositories/product/product.repository';
+
+import { ProductsModule } from './product/product.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -22,11 +22,11 @@ import { UsersModule } from './users/users.module';
     }),
     UsersModule,
     ClientsModule,
+    ProductsModule,
   ],
-  controllers: [ProductsController],
+  controllers: [],
   providers: [
     PrismaService,
-    ProductsRepository,
     {
       provide: APP_GUARD,
       useClass: ApiKeyGuard,

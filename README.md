@@ -5,8 +5,8 @@
 <h1 align="center">Vitaflow Backend</h1>
 
 <p align="center">
-  API robusta e escalável para a plataforma Vitaflow, construída com NestJS e Prisma.
-  Gerencia autenticação, usuários, planos de treino, dietas e comunicação entre nutricionistas, personal trainers e alunos.
+  Robust and scalable API for the Vitaflow platform, built with NestJS and Prisma.
+  Manages authentication, users, workout plans, diets, and communication between nutritionists, personal trainers, and students.
 </p>
 
 <div align="center">
@@ -15,132 +15,132 @@
 [![NestJS](https://img.shields.io/badge/nestjs-%23E0234E.svg?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
 [![Prisma](https://img.shields.io/badge/Prisma-3982CE?style=for-the-badge&logo=Prisma&logoColor=white)](https://www.prisma.io/)
 [![Postgres](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Jest](https://img.shields.io/badge/-jest-%23C21325?style=for-the-badge&logo=jest&logoColor=white)](https://jestjs.io/)
+[![Jest](https://img.shields.io/badge/-jest-%23C21325.svg?style=for-the-badge&logo=jest&logoColor=white)](https://jestjs.io/)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 
 </div>
 
-## 🚀 Tecnologias
+## 🚀 Technologies
 
-Este projeto foi desenvolvido utilizando as seguintes tecnologias:
+This project was developed using the following technologies:
 
-- **[NestJS](https://nestjs.com/)**: Framework Node.js progressivo para construir aplicações do lado do servidor eficientes e escaláveis.
-- **[Prisma](https://www.prisma.io/)**: ORM moderno para Node.js e TypeScript.
-- **[TypeScript](https://www.typescriptlang.org/)**: Superset tipado de JavaScript.
-- **[PostgreSQL](https://www.postgresql.org/)**: Banco de dados relacional robusto.
-- **[Jest](https://jestjs.io/)**: Framework de testes focado em simplicidade.
-- **[Node Mailer](https://nodemailer.com/)**: Para envio de emails transacionais.
-- **[Google Cloud Storage](https://cloud.google.com/storage)**: Para gerenciar uploads de arquivos.
+- **[NestJS](https://nestjs.com/)**: Progressive Node.js framework for building efficient and scalable server-side applications.
+- **[Prisma](https://www.prisma.io/)**: Modern ORM for Node.js and TypeScript.
+- **[TypeScript](https://www.typescriptlang.org/)**: Typed superset of JavaScript.
+- **[PostgreSQL](https://www.postgresql.org/)**: Robust relational database.
+- **[Jest](https://jestjs.io/)**: Delightful JavaScript Testing Framework.
+- **[Node Mailer](https://nodemailer.com/)**: For sending transactional emails.
+- **[Google Cloud Storage](https://cloud.google.com/storage)**: For managing file uploads.
 
-## 🛡️ Segurança
+## 🛡️ Security
 
-A segurança é uma prioridade no backend da Vitaflow. Implementamos:
+Security is a priority in the Vitaflow backend. We implement:
 
-- **Autenticação JWT**: Proteção robusta de rotas utilizando JSON Web Tokens.
-- **Guards Personalizados**: `ApiKeyGuard` para serviços internos e `AuthGuard` para validação de sessão.
-- **Hashing de Senha**: Utilização de Bcrypt para armazenamento seguro de credenciais.
-- **Validação de Dados**: Pipes de validação global com `class-validator` para garantir a integridade dos dados recebidos.
+- **JWT Authentication**: Robust route protection using JSON Web Tokens.
+- **Custom Guards**: `ApiKeyGuard` for internal services and `AuthGuard` for session validation.
+- **Password Hashing**: Using Bcrypt for secure credential storage.
+- **Data Validation**: Global validation pipes with `class-validator` to ensure data integrity.
 
-## 🛠️ Instalação e Configuração
+## 🛠️ Installation and Setup
 
-Siga os passos abaixo para rodar o projeto localmente.
+Follow the steps below to run the project locally.
 
-### 1. Pré-requisitos
+### 1. Prerequisites
 
-Certifique-se de ter instalado:
+Ensure you have installed:
 
-- **Node.js** (v18 ou superior)
-- **NPM** ou **Yarn**
-- **PostgreSQL** (Rodando localmente ou via Docker)
+- **Node.js** (v18 or higher)
+- **NPM** or **Yarn**
+- **PostgreSQL** (Running locally or via Docker)
 
-### 2. Variáveis de Ambiente
+### 2. Environment Variables
 
-Crie um arquivo `.env` na raiz do projeto e configure as seguintes variáveis (baseado no `.env.example` se disponível):
+Create a `.env` file in the project root and configure the following variables (based on `.env.example` if available):
 
 ```env
-# Banco de Dados
+# Database
 DATABASE_URL="postgresql://user:password@localhost:5432/vitaflow_db?schema=public"
 
-# Autenticação
-JWT_SECRET="seu-segredo-jwt-seguro"
-APPLICATION_SECRET="segredo-para-api-key-guard"
+# Authentication
+JWT_SECRET="your-secure-jwt-secret"
+APPLICATION_SECRET="secret-for-api-key-guard"
 
-# Configurações de Porta (Opcional)
+# Port Configuration (Optional)
 PORT=3333
 
-# Outros serviços (Exemplos)
+# Other services (Examples)
 MAIL_HOST=smtp.example.com
 MAIL_USER=user@example.com
 MAIL_PASS=password
 ```
 
-### 3. Rodando o Projeto
+### 3. Running the Project
 
-Instale as dependências:
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-Gere os artefatos do Prisma:
+Generate Prisma artifacts:
 
 ```bash
 npx prisma generate
 ```
 
-(Opcional) Rode as migrations para criar as tabelas no banco:
+(Optional) Run migrations to create database tables:
 
 ```bash
 npx prisma migrate dev
 ```
 
-Inicie o servidor de desenvolvimento:
+Start the development server:
 
 ```bash
 npm run start:dev
 ```
 
-O servidor estará rodando em `http://localhost:3333` (ou na porta definida no `.env`).
+The server will be running at `http://localhost:3333` (or the port defined in `.env`).
 
-## 📂 Estrutura do Projeto
+## 📂 Project Structure
 
-A estrutura de pastas segue os padrões modulares do NestJS:
+The folder structure follows NestJS modular patterns:
 
 ```
 src/
-├── auth/           # Guards e lógica de autorização
-├── common/         # Decorators, filters e interceptors globais
-├── config/         # Configurações de ambiente
-├── database/       # Configuração do Prisma
-├── modules/        # Módulos de funcionalidade (Users, Clients, Products)
-├── repositories/   # Camada de acesso a dados
-├── utils/          # Funções utilitárias e helpers
-├── app.module.ts   # Módulo raiz da aplicação
-└── main.ts         # Ponto de entrada da aplicação
+├── auth/           # Guards and authorization logic
+├── common/         # Global decorators, filters, and interceptors
+├── config/         # Environment configurations
+├── database/       # Prisma configuration
+├── modules/        # Feature modules (Users, Clients, Products)
+├── repositories/   # Data access layer
+├── utils/          # Utility functions and helpers
+├── app.module.ts   # Root application module
+└── main.ts         # Application entry point
 ```
 
-## 📝 Scripts Disponíveis
+## 📝 Available Scripts
 
-- `npm run start`: Inicia a aplicação em produção.
-- `npm run start:dev`: Inicia a aplicação em modo de desenvolvimento (watch).
-- `npm run build`: Compila o projeto para a pasta `dist`.
-- `npm run test`: Executa os testes unitários via Jest.
-- `npm run test:cov`: Gera relatório de cobertura de testes.
-- `npm run lint`: Executa o ESLint para verificar e corrigir problemas de código.
-- `npm run format`: Formata o código usando Prettier.
+- `npm run start`: Starts the application in production mode.
+- `npm run start:dev`: Starts the application in development mode (watch).
+- `npm run build`: Compiles the project to the `dist` folder.
+- `npm run test`: Runs unit tests via Jest.
+- `npm run test:cov`: Generates test coverage report.
+- `npm run lint`: Runs ESLint to check and fix code issues.
+- `npm run format`: Formats code using Prettier.
 
-## 🤝 Contribuição
+## 🤝 Contribution
 
-As contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou enviar pull requests.
+Contributions are welcome! Feel free to open issues or submit pull requests.
 
-1. Faça um Fork do projeto
-2. Crie uma Branch para sua Feature (`git checkout -b feature/MinhaFeature`)
-3. Faça o Commit de suas mudanças (`git commit -m 'Adiciona MinhaFeature'`)
-4. Faça o Push para a Branch (`git push origin feature/MinhaFeature`)
-5. Abra um Pull Request
+1. Fork the project
+2. Create a Branch for your Feature (`git checkout -b feature/MyFeature`)
+3. Commit your changes (`git commit -m 'Add MyFeature'`)
+4. Push to the Branch (`git push origin feature/MyFeature`)
+5. Open a Pull Request
 
 ---
 
 <p align="center">
-  Desenvolvido com ❤️ pela equipe Vitaflow
+  Developed with ❤️ by the Vitaflow team
 </p>
