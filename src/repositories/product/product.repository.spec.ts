@@ -1,7 +1,9 @@
 import { PrismaService } from '@/database/prisma.service';
 import { Test, TestingModule } from '@nestjs/testing';
+import { productsMock } from 'mock/product.repository.mock';
 import {
   ProductGroupWithDetails,
+  ProductWithInfos,
   ProductsRepository,
 } from './product.repository';
 
@@ -48,6 +50,17 @@ describe('ProductsRepository Tests', () => {
           useValue: {
             productGroup: {
               findMany: jest.fn().mockResolvedValue(productGroupsMock),
+            },
+            product: {
+              findUnique: jest
+                .fn()
+                .mockImplementation(
+                  (args: { where: { id: string } }) =>
+                    productsMock.find(
+                      (product: ProductWithInfos) =>
+                        product.id === args.where.id,
+                    ) || null,
+                ),
             },
           },
         },
@@ -96,6 +109,21 @@ describe('ProductsRepository Tests', () => {
 
       expect(result).toEqual([]);
       expect(result.length).toBe(0);
+    });
+  });
+
+  describe('getProductById', () => {
+    it('should return product', async () => {
+      const result = await productsRepository.getProductById('1');
+
+      expect(result).toEqual(productsMock[0]);
+      expect(result?.productInfos[0].description).toEqual('Suporte 24h');
+    });
+
+    it('should return null if no product is found', async () => {
+      const result = await productsRepository.getProductById('123');
+
+      expect(result).toEqual(null);
     });
   });
 });
