@@ -1,4 +1,7 @@
-import { ProductGroupWithDetails } from '@/repositories/product/product.repository';
+import {
+  ProductGroupWithDetails,
+  ProductWithInfos,
+} from '@/repositories/product/product.repository';
 import { Controller, Get, Param } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ProductsService } from './product.service';
@@ -24,7 +27,7 @@ export class ProductsController {
   @Get(':id')
   async getProductById(
     @Param('id') id: string,
-  ): Promise<ProductGroupWithDetails> {
+  ): Promise<ProductWithInfos | null> {
     return await this.service.getProductById(id);
   }
 }

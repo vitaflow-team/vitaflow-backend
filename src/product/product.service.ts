@@ -1,5 +1,6 @@
 import {
   ProductGroupWithDetails,
+  ProductWithInfos,
   ProductsRepository,
 } from '@/repositories/product/product.repository';
 import { Injectable } from '@nestjs/common';
@@ -12,7 +13,7 @@ export class ProductsService {
     return await this.products.getAllProducts();
   }
 
-  async getProductById(id: string): Promise<ProductGroupWithDetails> {
+  async getProductById(id: string): Promise<ProductWithInfos | null> {
     return await this.products.getProductById(id);
   }
 }
