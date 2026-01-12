@@ -11,4 +11,8 @@ export class ProductsService {
   async getProducts(): Promise<ProductGroupWithDetails[]> {
     return await this.products.getAllProducts();
   }
+
+  async getProductById(id: string): Promise<ProductGroupWithDetails> {
+    return await this.products.getProductById(id);
+  }
 }

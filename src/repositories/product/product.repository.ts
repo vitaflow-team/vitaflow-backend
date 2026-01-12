@@ -18,6 +18,15 @@ export type ProductGroupWithDetails = Prisma.ProductGroupGetPayload<{
 export class ProductsRepository {
   constructor(private prisma: PrismaService) {}
 
+  async getProductById(id: string): Promise<ProductGroupWithDetails> {
+    return (await this.prisma.productGroup.findUnique({
+      where: {
+        id,
+      },
+      include: productGroupInclude,
+    })) as ProductGroupWithDetails;
+  }
+
   async getAllProducts(): Promise<ProductGroupWithDetails[]> {
     return (await this.prisma.productGroup.findMany({
       include: productGroupInclude,
