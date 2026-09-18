@@ -23,7 +23,14 @@ export class SignUpService {
     private mailService: MailService,
   ) {}
 
-  async postNewUser({ email, name, password, checkPassword }: SignUpDTO) {
+  async postNewUser({
+    email,
+    name,
+    password,
+    checkPassword,
+    termsAccepted,
+    healthDataConsent,
+  }: SignUpDTO) {
     if (checkPassword !== password) {
       throw new AppError(
         'A confirmação da senha não corresponde à senha.',
@@ -46,6 +53,8 @@ export class SignUpService {
       email,
       password: hasPassword,
       active: false,
+      termsAcceptedAt: termsAccepted ? new Date() : null,
+      healthDataConsentAt: healthDataConsent ? new Date() : null,
     });
 
     const userTokenCreated = await this.userToken.create({

@@ -52,6 +52,8 @@ export const userRepositoryMock = {
         password: data.password,
         avatar: data.avatar ?? null,
         active: data.active ?? false,
+        termsAcceptedAt: (data.termsAcceptedAt as Date | null) ?? null,
+        healthDataConsentAt: (data.healthDataConsentAt as Date | null) ?? null,
         birthDate: new Date('1990-05-20'),
         phone: '999999999',
         createdAt: new Date(),

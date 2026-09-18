@@ -30,6 +30,10 @@ describe('UserRepository Tests', () => {
                       birthDate: new Date('1990-05-20'),
                       avatar: data.avatar ?? null,
                       active: data.active ?? false,
+                      termsAcceptedAt:
+                        (data.termsAcceptedAt as Date | null) ?? null,
+                      healthDataConsentAt:
+                        (data.healthDataConsentAt as Date | null) ?? null,
                       createdAt: new Date(),
                       updatedAt: new Date(),
                     } satisfies Users);

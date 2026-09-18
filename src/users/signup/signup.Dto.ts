@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, Matches, MinLength } from 'class-validator';
+import {
+  Equals,
+  IsBoolean,
+  IsNotEmpty,
+  Matches,
+  MinLength,
+} from 'class-validator';
 
 export class SignUpDTO {
   @ApiProperty({
@@ -41,4 +47,28 @@ export class SignUpDTO {
       'The confirm password must contain uppercase, lowercase letters, and at least one number or special character.',
   })
   checkPassword: string;
+
+  @ApiProperty({
+    description:
+      'Acceptance of the Terms of Use and Privacy Policy. Must be true.',
+    example: true,
+  })
+  @IsBoolean({ message: 'termsAccepted must be a boolean value.' })
+  @Equals(true, {
+    message: 'You must accept the Terms of Use and Privacy Policy.',
+  })
+  termsAccepted: boolean;
+
+  @ApiProperty({
+    description:
+      'Specific, highlighted consent for processing sensitive health data ' +
+      '(weight, height, measurements, workouts, meal plans), as required by ' +
+      'LGPD art. 11 for sensitive personal data. Must be true.',
+    example: true,
+  })
+  @IsBoolean({ message: 'healthDataConsent must be a boolean value.' })
+  @Equals(true, {
+    message: 'You must consent to the processing of your health data.',
+  })
+  healthDataConsent: boolean;
 }

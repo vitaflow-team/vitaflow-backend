@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { mailServiceMock } from 'mock/mail.service.mok';
@@ -13,6 +14,7 @@ describe('SignUpController Tests', () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 5 }])],
       controllers: [SignUpController],
       providers: [
         passwordHashMock,
@@ -39,6 +41,8 @@ describe('SignUpController Tests', () => {
         name: 'Jonh Doe',
         password: '12345',
         checkPassword: '12345',
+        termsAccepted: true,
+        healthDataConsent: true,
       };
 
       await expect(signUpController.postNewUser(newUser)).rejects.toThrow(
@@ -52,6 +56,8 @@ describe('SignUpController Tests', () => {
         name: 'Jonh Doe',
         password: '12345',
         checkPassword: '54321',
+        termsAccepted: true,
+        healthDataConsent: true,
       };
 
       await expect(signUpController.postNewUser(newUser)).rejects.toThrow(
@@ -65,6 +71,8 @@ describe('SignUpController Tests', () => {
         name: 'Jonh Doe',
         password: '12345',
         checkPassword: '12345',
+        termsAccepted: true,
+        healthDataConsent: true,
       };
 
       const result = await signUpController.postNewUser(newUser);
@@ -73,6 +81,8 @@ describe('SignUpController Tests', () => {
       expect(result.email).toEqual(newUser.email);
       expect(result.active).toEqual(false);
       expect(result.password).toBeUndefined();
+      expect(result.termsAcceptedAt).toBeInstanceOf(Date);
+      expect(result.healthDataConsentAt).toBeInstanceOf(Date);
     });
 
     it('Active New User - Error', async () => {

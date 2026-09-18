@@ -31,8 +31,14 @@ model Users {
   product   Product?  @relation(fields: [productId], references: [id])
   productId String?
 
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  // Timestamp doubles as proof-of-consent (LGPD art. 8º requires the
+  // controller to be able to demonstrate consent was given) and as the
+  // "did they consent" flag — null means no consent on record.
+  termsAcceptedAt     DateTime?
+  healthDataConsentAt DateTime?
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   usersTokens   UsersToken[]
   userAddresses UserAddress?
   clients       Client[]
