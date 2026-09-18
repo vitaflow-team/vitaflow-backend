@@ -30,6 +30,33 @@ export class UserRepository {
     });
   }
 
+  async findByEmailInsensitive(
+    email: string,
+  ): Promise<(Users & { product: Product | null }) | null> {
+    return await this.prisma.users.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: 'insensitive',
+        },
+      },
+      include: {
+        product: true,
+      },
+    });
+  }
+
+  async findByIdWithProduct(
+    id: string,
+  ): Promise<(Users & { product: Product | null }) | null> {
+    return await this.prisma.users.findUnique({
+      where: { id },
+      include: {
+        product: true,
+      },
+    });
+  }
+
   async activateUser(id: string): Promise<Users> {
     return await this.prisma.users.update({
       where: { id },
