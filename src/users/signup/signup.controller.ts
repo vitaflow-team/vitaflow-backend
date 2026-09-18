@@ -1,4 +1,5 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { DualBucketThrottlerGuard } from '@/auth/dual-bucket-throttler.guard';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ActiveDTO } from './activate.Dto';
 import { SignUpDTO } from './signup.Dto';
@@ -32,6 +33,7 @@ export class SignUpController {
     description: 'Este e-mail já está sendo usado por outro usuário.',
   })
   @Post('signup')
+  @UseGuards(DualBucketThrottlerGuard)
   async postNewUser(@Body() body: SignUpDTO) {
     return await this.service.postNewUser(body);
   }

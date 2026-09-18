@@ -1,10 +1,14 @@
+import { AuditLogger } from '@/auth/audit-logger.service';
 import { PrismaService } from '@/database/prisma.service';
+import { AppError } from '@/utils/app.erro';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
 import { SignInController } from './signin.controller';
+import { SignInDTO } from './signin.Dto';
 import { SignInService } from './signin.service';
 
 describe('SignInController Tests', () => {
@@ -12,6 +16,7 @@ describe('SignInController Tests', () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 5 }])],
       controllers: [SignInController],
       providers: [
         SignInService,
@@ -19,6 +24,10 @@ describe('SignInController Tests', () => {
         passwordHashMock,
         userRepositoryMock,
         uploadServiceMock,
+        {
+          provide: AuditLogger,
+          useValue: { log: jest.fn(), warn: jest.fn() },
+        },
         {
           provide: PrismaService,
           useValue: {
@@ -41,7 +50,6 @@ describe('SignInController Tests', () => {
     const result = await signInController.postSignIn({
       email: 'jonhdoe@jonhdoe.com',
       password: '12345',
-      socialLogin: false,
     });
 
     expect(result.id).toEqual(userMock[0].id);
@@ -52,7 +60,6 @@ describe('SignInController Tests', () => {
       signInController.postSignIn({
         email: 'invalidemail@jonhdoe.com',
         password: '12345',
-        socialLogin: false,
       }),
     ).rejects.toThrow('Usuário não autorizado.');
   });
@@ -62,7 +69,6 @@ describe('SignInController Tests', () => {
       signInController.postSignIn({
         email: 'jonhdoe1@jonhdoe.com',
         password: '12345',
-        socialLogin: false,
       }),
     ).rejects.toThrow('Usuário não autorizado. Conta inativa.');
   });
@@ -72,18 +78,22 @@ describe('SignInController Tests', () => {
       signInController.postSignIn({
         email: 'jonhdoe@jonhdoe.com',
         password: 'InvalidPassword',
-        socialLogin: false,
       }),
     ).rejects.toThrow('Usuário não autorizado.');
   });
 
-  it('Login Social with invalid password', async () => {
-    const result = await signInController.postSignIn({
+  it('rejects the legacy socialLogin bypass with an invalid password', async () => {
+    const legacyBody = {
       email: 'jonhdoe@jonhdoe.com',
       password: 'InvalidPassword',
       socialLogin: true,
-    });
+    } as SignInDTO;
 
-    expect(result.id).toEqual(userMock[0].id);
+    const error = await signInController
+      .postSignIn(legacyBody)
+      .catch((caught: AppError) => caught);
+
+    expect(error).toBeInstanceOf(AppError);
+    expect(error.getStatus()).toBe(401);
   });
 });

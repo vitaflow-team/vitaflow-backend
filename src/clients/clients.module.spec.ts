@@ -1,7 +1,6 @@
 import { PrismaService } from '@/database/prisma.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
-import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ClientsModule } from './clients.module';
 import { ClientRegisterController } from './register/client.register.controller';
@@ -12,13 +11,7 @@ describe('UsersModule Test', () => {
 
   beforeEach(async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [
-        JwtModule.register({
-          secret: process.env.JWT_SECRET,
-          signOptions: { expiresIn: '12h' },
-        }),
-        ClientsModule,
-      ],
+      imports: [ClientsModule],
     }).compile();
   });
 

@@ -1,6 +1,5 @@
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
-import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProductsModule } from './product.module';
 import { ProductsService } from './product.service';
@@ -10,13 +9,7 @@ describe('UsersModule Test', () => {
 
   beforeEach(async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [
-        JwtModule.register({
-          secret: process.env.JWT_SECRET,
-          signOptions: { expiresIn: '12h' },
-        }),
-        ProductsModule,
-      ],
+      imports: [ProductsModule],
     }).compile();
   });
 

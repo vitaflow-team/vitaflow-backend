@@ -1,3 +1,4 @@
+import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
 import { MailModule } from '@/mail/mail.module';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
@@ -6,7 +7,6 @@ import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { ProfileController } from './profile/profile.controller';
 import { ProfileService } from './profile/profile.service';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
@@ -17,13 +17,7 @@ import { SignUpController } from './signup/signup.controller';
 import { SignUpService } from './signup/signup.service';
 
 @Module({
-  imports: [
-    MailModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET,
-      signOptions: { expiresIn: '12h' },
-    }),
-  ],
+  imports: [AuthModule, MailModule],
   controllers: [
     SignUpController,
     SignInController,
