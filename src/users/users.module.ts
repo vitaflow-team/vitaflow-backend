@@ -2,6 +2,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
 import { MailModule } from '@/mail/mail.module';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
@@ -15,6 +16,8 @@ import { SignInController } from './signin/signin.controller';
 import { SignInService } from './signin/signin.service';
 import { SignUpController } from './signup/signup.controller';
 import { SignUpService } from './signup/signup.service';
+import { SubscriptionController } from './subscription/subscription.controller';
+import { SubscriptionService } from './subscription/subscription.service';
 
 @Module({
   imports: [AuthModule, MailModule],
@@ -23,6 +26,7 @@ import { SignUpService } from './signup/signup.service';
     SignInController,
     RecoverpassController,
     ProfileController,
+    SubscriptionController,
   ],
   providers: [
     PasswordHash,
@@ -31,10 +35,12 @@ import { SignUpService } from './signup/signup.service';
     UserTokenRepository,
     UploadService,
     ClientsRepository,
+    ProductsRepository,
     SignUpService,
     SignInService,
     RecoverpassService,
     ProfileService,
+    SubscriptionService,
   ],
 })
 export class UsersModule {}
