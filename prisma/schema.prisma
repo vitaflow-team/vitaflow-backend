@@ -37,6 +37,14 @@ model Users {
   termsAcceptedAt     DateTime?
   healthDataConsentAt DateTime?
 
+  // Mirrors Stripe's own state so the app can answer "is this user
+  // subscribed" without calling Stripe on every request. Stripe (via
+  // webhooks) is still the source of truth — these are a cache of it.
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  subscriptionStatus   String?
+  subscriptionCancelAt DateTime?
+
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   usersTokens   UsersToken[]
