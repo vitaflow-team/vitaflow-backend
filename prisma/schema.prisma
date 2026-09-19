@@ -45,14 +45,30 @@ model Users {
   subscriptionStatus   String?
   subscriptionCancelAt DateTime?
 
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  usersTokens   UsersToken[]
-  userAddresses UserAddress?
-  clients       Client[]
-  oAuthIdentity OAuthIdentity?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  usersTokens        UsersToken[]
+  userAddresses      UserAddress?
+  clients            Client[]
+  oAuthIdentity      OAuthIdentity?
+  measurementRecords MeasurementRecord[]
 
   @@unique([email])
+}
+
+model MeasurementRecord {
+  id         String   @id @default(uuid(7))
+  user       Users    @relation(fields: [userId], references: [id])
+  userId     String
+  weightKg   Float
+  heightCm   Float
+  waistCm    Float?
+  hipCm      Float?
+  recordedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, recordedAt])
 }
 
 model OAuthIdentity {
