@@ -8,6 +8,7 @@ import { PrismaService } from './database/prisma.service';
 import { MailModule } from './mail/mail.module';
 
 import { ProductsModule } from './product/product.module';
+import { ProgressModule } from './progress/progress.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -20,6 +21,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     ClientsModule,
     ProductsModule,
+    ProgressModule,
   ],
   controllers: [],
   providers: [
