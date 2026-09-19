@@ -85,6 +85,10 @@ export class ProfileService {
       birthDate: user.birthDate,
       avatar: signedAvatarUrl,
       phone: user.phone ?? null,
+      productId: user.productId,
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionCancelAt: user.subscriptionCancelAt,
+      hasStripeCustomer: Boolean(user.stripeCustomerId),
       address: user.userAddresses
         ? {
             addressLine1: user.userAddresses.addressLine1,

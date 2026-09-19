@@ -27,7 +27,7 @@ export const productsMock = [
     price: 29.9,
     type: 'USER',
     groupId: 'group-1',
-    stripeId: 'st_123',
+    stripeId: 'st_456',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [
@@ -72,6 +72,12 @@ export const ProductsRepositoryMock = {
     }),
     getAllProducts: jest.fn().mockImplementation(() => {
       return Promise.resolve(productsMock);
+    }),
+    findByStripeId: jest.fn().mockImplementation((stripeId: string) => {
+      const product = productsMock.find(
+        (product: Product) => product.stripeId === stripeId,
+      );
+      return Promise.resolve(product ?? null);
     }),
   },
 };

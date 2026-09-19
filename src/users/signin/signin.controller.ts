@@ -1,4 +1,5 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { DualBucketThrottlerGuard } from '@/auth/dual-bucket-throttler.guard';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SignInDTO } from './signin.Dto';
 import { SignInService } from './signin.service';
@@ -37,6 +38,7 @@ export class SignInController {
     },
   })
   @Post('signin')
+  @UseGuards(DualBucketThrottlerGuard)
   async postSignIn(@Body() body: SignInDTO) {
     return await this.service.postSignIn(body);
   }

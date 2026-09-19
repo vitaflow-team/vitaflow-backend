@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { JwtModule } from '@nestjs/jwt';
+import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { PrismaService } from './database/prisma.service';
@@ -16,10 +16,7 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET,
-      signOptions: { expiresIn: '12h' },
-    }),
+    AuthModule,
     UsersModule,
     ClientsModule,
     ProductsModule,

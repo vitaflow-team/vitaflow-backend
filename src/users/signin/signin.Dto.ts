@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsNotEmpty } from 'class-validator';
 
 export class SignInDTO {
   @ApiProperty({
@@ -15,15 +15,4 @@ export class SignInDTO {
   })
   @IsNotEmpty({ message: 'Password is mandatory.' })
   password: string;
-
-  @ApiProperty({
-    description:
-      'Indicates whether the user signed up or logged in using a social provider (e.g., Google, Facebook).',
-    example: false,
-  })
-  @IsBoolean({
-    message: 'The socialLogin field must be a boolean value (true or false).',
-  })
-  @IsOptional()
-  socialLogin: boolean;
 }

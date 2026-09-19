@@ -31,13 +31,41 @@ model Users {
   product   Product?  @relation(fields: [productId], references: [id])
   productId String?
 
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  // Timestamp doubles as proof-of-consent (LGPD art. 8º requires the
+  // controller to be able to demonstrate consent was given) and as the
+  // "did they consent" flag — null means no consent on record.
+  termsAcceptedAt     DateTime?
+  healthDataConsentAt DateTime?
+
+  // Mirrors Stripe's own state so the app can answer "is this user
+  // subscribed" without calling Stripe on every request. Stripe (via
+  // webhooks) is still the source of truth — these are a cache of it.
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  subscriptionStatus   String?
+  subscriptionCancelAt DateTime?
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   usersTokens   UsersToken[]
   userAddresses UserAddress?
   clients       Client[]
+  oAuthIdentity OAuthIdentity?
 
   @@unique([email])
+}
+
+model OAuthIdentity {
+  id                String   @id @default(uuid(7))
+  provider          String
+  providerAccountId String
+  user              Users    @relation(fields: [userId], references: [id])
+  userId            String   @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@unique([provider, userId])
 }
 
 model Client {

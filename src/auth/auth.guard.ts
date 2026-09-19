@@ -13,7 +13,9 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user?: unknown }>();
     const token = this.extractTokenFromHeader(request);
 
     const UnauthorizedUser = 'Unauthorized user.';
@@ -22,20 +24,25 @@ export class AuthGuard implements CanActivate {
       throw new AppError(UnauthorizedUser, 401);
     }
 
-    const payload = await this.jwtService.verifyAsync(token, {
-      secret: process.env.JWT_SECRET,
-    });
+    let payload: { id: string; email: string };
+    try {
+      payload = await this.jwtService.verifyAsync(token, {
+        secret: process.env.JWT_SECRET,
+      });
+    } catch {
+      throw new AppError(UnauthorizedUser, 401);
+    }
 
     const existsUser = await this.user.findUnique({ id: payload.id });
     if (!existsUser) {
-      throw new AppError(UnauthorizedUser, 402);
+      throw new AppError(UnauthorizedUser, 401);
     }
 
     if (existsUser.email !== payload.email) {
-      throw new AppError(UnauthorizedUser, 403);
+      throw new AppError(UnauthorizedUser, 401);
     }
 
-    request['user'] = { ...existsUser, password: undefined };
+    request.user = { ...existsUser, password: undefined };
     return true;
   }
 

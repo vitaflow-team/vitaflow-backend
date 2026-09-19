@@ -30,6 +30,15 @@ describe('UserRepository Tests', () => {
                       birthDate: new Date('1990-05-20'),
                       avatar: data.avatar ?? null,
                       active: data.active ?? false,
+                      termsAcceptedAt:
+                        (data.termsAcceptedAt as Date | null) ?? null,
+                      healthDataConsentAt:
+                        (data.healthDataConsentAt as Date | null) ?? null,
+                      stripeCustomerId: null,
+                      stripeSubscriptionId: null,
+                      subscriptionStatus: null,
+                      subscriptionCancelAt: null,
+                      productId: null,
                       createdAt: new Date(),
                       updatedAt: new Date(),
                     } satisfies Users);
@@ -130,6 +139,13 @@ describe('UserRepository Tests', () => {
       birthDate: new Date('1990-05-20'),
       active: true,
       avatar: null,
+      productId: null,
+      termsAcceptedAt: null,
+      healthDataConsentAt: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      subscriptionStatus: null,
+      subscriptionCancelAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

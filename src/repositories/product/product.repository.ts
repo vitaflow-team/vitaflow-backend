@@ -38,4 +38,11 @@ export class ProductsRepository {
       include: productGroupInclude,
     })) as ProductGroupWithDetails[];
   }
+
+  async findByStripeId(stripeId: string): Promise<ProductWithInfos | null> {
+    return await this.prisma.product.findFirst({
+      where: { stripeId },
+      include: productInclude,
+    });
+  }
 }

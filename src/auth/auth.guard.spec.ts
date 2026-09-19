@@ -1,141 +1,85 @@
-import { PrismaService } from '@/database/prisma.service';
+import { UserRepository } from '@/repositories/users/user.repository';
+import { AppError } from '@/utils/app.erro';
 import { ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Test, TestingModule } from '@nestjs/testing';
-import { userRepositoryMock } from 'mock/user.repository.mock';
 import { AuthGuard } from './auth.guard';
 
-describe('AuthGuard Tests', () => {
-  let authGuard: AuthGuard;
-  let jwtService: JwtService;
+describe('AuthGuard', () => {
+  const jwtService = { verifyAsync: jest.fn() };
+  const users = { findUnique: jest.fn() };
+  let guard: AuthGuard;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AuthGuard,
-        JwtService,
-        userRepositoryMock,
-        {
-          provide: PrismaService,
-          useValue: {
-            onModuleInit: jest.fn().mockImplementation(() => {
-              return Promise.resolve(true);
-            }),
-          },
-        },
-      ],
-    }).compile();
-
-    authGuard = module.get<AuthGuard>(AuthGuard);
-    jwtService = module.get<JwtService>(JwtService);
-  });
-
-  const mockExecutionContext = () =>
-    ({
-      switchToHttp: () => ({
-        getRequest: () => ({
-          headers: {},
-          user: userRepositoryMock,
-        }),
-      }),
-    }) as unknown as ExecutionContext;
-
-  it('CanActivate - Token does not exist in header.', async () => {
-    const context = mockExecutionContext();
-    await expect(authGuard.canActivate(context)).rejects.toThrow(
-      'Unauthorized user.',
+  beforeEach(() => {
+    jest.clearAllMocks();
+    guard = new AuthGuard(
+      jwtService as unknown as JwtService,
+      users as unknown as UserRepository,
     );
   });
 
-  it('CanActivate - Invalid token', async () => {
-    const context = mockExecutionContext();
-    context.switchToHttp().getRequest().headers.authorization =
-      'Bearer invalidtoken';
-
-    await expect(authGuard.canActivate(context)).rejects.toThrow(
-      'Unauthorized user.',
-    );
-  });
-
-  it('CanActivate - Non-existing user', async () => {
-    const payload = {
-      name: 'JonhDoe',
-      email: 'jonhdoeNon-existing@jonhdoe.com',
-      id: 'idNonExisting',
+  function context(authorization?: string) {
+    const request: {
+      headers: { authorization?: string };
+      user?: Record<string, unknown>;
+    } = { headers: { authorization } };
+    return {
+      request,
+      executionContext: {
+        switchToHttp: () => ({ getRequest: () => request }),
+      } as ExecutionContext,
     };
+  }
 
-    const accessToken = await jwtService.signAsync(payload, {
-      secret: process.env.JWT_SECRET,
+  async function expectUnauthorized(executionContext: ExecutionContext) {
+    const error = await guard
+      .canActivate(executionContext)
+      .catch((caught: AppError) => caught);
+    expect(error).toBeInstanceOf(AppError);
+    expect(error.getStatus()).toBe(401);
+  }
+
+  it('UT-030 returns 401 when the Authorization header is missing', async () => {
+    await expectUnauthorized(context().executionContext);
+  });
+
+  it('UT-031 returns 401 when JWT verification fails', async () => {
+    jwtService.verifyAsync.mockRejectedValue(new Error('expired token'));
+
+    await expectUnauthorized(context('Bearer invalid').executionContext);
+  });
+
+  it('UT-032 returns 401 when the JWT user no longer exists', async () => {
+    jwtService.verifyAsync.mockResolvedValue({
+      id: 'deleted-user',
+      email: 'deleted@example.com',
+    });
+    users.findUnique.mockResolvedValue(null);
+
+    await expectUnauthorized(context('Bearer valid').executionContext);
+  });
+
+  it('UT-033 returns 401 when the JWT email differs from the stored user', async () => {
+    jwtService.verifyAsync.mockResolvedValue({
+      id: 'user-1',
+      email: 'old@example.com',
+    });
+    users.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'new@example.com',
+      password: 'secret-hash',
     });
 
-    const mockRequest = {
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-      },
-    };
-
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => mockRequest,
-      }),
-    } as ExecutionContext;
-
-    await expect(authGuard.canActivate(context)).rejects.toThrow(
-      'Unauthorized user.',
-    );
+    await expectUnauthorized(context('Bearer valid').executionContext);
   });
 
-  it('CanActivate - Invalid user email', async () => {
-    const payload = {
-      name: 'JonhDoe',
-      email: 'invalidEmail@jonhdoe.com',
-      id: '1',
-    };
+  it('UT-034 allows a matching user and removes the password', async () => {
+    const payload = { id: 'user-1', email: 'user@example.com' };
+    const storedUser = { ...payload, name: 'User', password: 'secret-hash' };
+    jwtService.verifyAsync.mockResolvedValue(payload);
+    users.findUnique.mockResolvedValue(storedUser);
+    const { request, executionContext } = context('Bearer valid');
 
-    const accessToken = await jwtService.signAsync(payload, {
-      secret: process.env.JWT_SECRET,
-    });
-
-    const mockRequest = {
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-      },
-    };
-
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => mockRequest,
-      }),
-    } as ExecutionContext;
-
-    await expect(authGuard.canActivate(context)).rejects.toThrow(
-      'Unauthorized user.',
-    );
-  });
-
-  it('CanActivate - Successful login', async () => {
-    const payload = {
-      name: 'JonhDoe',
-      email: 'jonhdoe@jonhdoe.com',
-      id: '1',
-    };
-
-    const accessToken = await jwtService.signAsync(payload, {
-      secret: process.env.JWT_SECRET,
-    });
-
-    const mockRequest = {
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-      },
-    };
-
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => mockRequest,
-      }),
-    } as ExecutionContext;
-
-    expect(await authGuard.canActivate(context)).toBe(true);
+    await expect(guard.canActivate(executionContext)).resolves.toBe(true);
+    expect(request.user).toEqual({ ...storedUser, password: undefined });
   });
 });

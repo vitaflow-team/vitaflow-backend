@@ -4,7 +4,6 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
-import { JwtModule } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfileController } from './profile/profile.controller';
 import { ProfileService } from './profile/profile.service';
@@ -21,13 +20,7 @@ describe('UsersModule Test', () => {
 
   beforeEach(async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [
-        JwtModule.register({
-          secret: process.env.JWT_SECRET,
-          signOptions: { expiresIn: '12h' },
-        }),
-        UsersModule,
-      ],
+      imports: [UsersModule],
     }).compile();
   });
 
