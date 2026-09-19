@@ -28,7 +28,7 @@ export class RecoverpassService {
 
       const token = await this.userToken.create({
         user: {
-          connect: userExists,
+          connect: { id: userExists.id },
         },
       });
 

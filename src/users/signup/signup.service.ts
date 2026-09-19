@@ -58,7 +58,7 @@ export class SignUpService {
     });
 
     const userTokenCreated = await this.userToken.create({
-      user: { connect: userCreated },
+      user: { connect: { id: userCreated.id } },
     });
 
     const activationLink = `${process.env.APP_URL}/signin/activate?token=${userTokenCreated.id}`;
