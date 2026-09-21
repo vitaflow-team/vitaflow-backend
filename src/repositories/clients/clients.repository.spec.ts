@@ -77,6 +77,7 @@ describe('UserRepository Tests', () => {
                 return Promise.resolve(newClient);
               }),
               updateMany: jest.fn().mockImplementation(),
+              count: jest.fn().mockResolvedValue(3),
               delete: jest.fn().mockImplementation(),
             },
           },
@@ -220,5 +221,19 @@ describe('UserRepository Tests', () => {
         userId,
       },
     });
+  });
+
+  // UT-004
+  it('Count clients by professional id', async () => {
+    const total = await clientsRepository.countByProfessionalId('p1');
+
+    expect(total).toEqual(3);
+    expect((clientsRepository as any).prisma.client.count).toHaveBeenCalledWith(
+      {
+        where: {
+          professionalId: 'p1',
+        },
+      },
+    );
   });
 });

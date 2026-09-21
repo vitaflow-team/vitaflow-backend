@@ -36,6 +36,20 @@ export class UploadService {
     });
   }
 
+  // `deleteImage` and `getSignedUrl` key off the last URL segment only, so
+  // an external avatar (a Google one, say) could resolve to a same-named
+  // object in our bucket. Callers that may hold a foreign URL gate on this
+  // first: only files this app actually hosts are ours to touch.
+  isBucketUrl(url: string | null | undefined): boolean {
+    if (!url) {
+      return false;
+    }
+
+    const prefix = `https://storage.googleapis.com/${this.bucket.name}/`;
+
+    return url.startsWith(prefix) && url.length > prefix.length;
+  }
+
   async deleteImage(fileUrl: string): Promise<void> {
     if (!fileUrl) {
       return;

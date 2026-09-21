@@ -236,4 +236,30 @@ describe('UploadService', () => {
       expect(url).toBe('');
     });
   });
+
+  describe('isBucketUrl', () => {
+    // UT-005
+    it('accepts a file hosted in the app bucket', () => {
+      expect(
+        service.isBucketUrl(
+          'https://storage.googleapis.com/test-bucket/1-a.png',
+        ),
+      ).toBe(true);
+    });
+
+    // UT-006
+    it('rejects external, other-bucket and empty URLs', () => {
+      expect(
+        service.isBucketUrl('https://lh3.googleusercontent.com/a/abc=s96-c'),
+      ).toBe(false);
+      expect(
+        service.isBucketUrl(
+          'https://storage.googleapis.com/other-bucket/1-a.png',
+        ),
+      ).toBe(false);
+      expect(service.isBucketUrl('')).toBe(false);
+      expect(service.isBucketUrl(null)).toBe(false);
+      expect(service.isBucketUrl(undefined)).toBe(false);
+    });
+  });
 });

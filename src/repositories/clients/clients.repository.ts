@@ -62,6 +62,14 @@ export class ClientsRepository {
     });
   }
 
+  async countByProfessionalId(professionalId: string): Promise<number> {
+    return await this.prisma.client.count({
+      where: {
+        professionalId,
+      },
+    });
+  }
+
   async setAllClientUser(userId: string, email: string): Promise<void> {
     await this.prisma.client.updateMany({
       where: {

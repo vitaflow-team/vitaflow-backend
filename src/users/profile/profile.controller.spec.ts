@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
+import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
@@ -17,6 +18,7 @@ describe('ProfileController Tests', () => {
         userRepositoryMock,
         jwtServiceMock,
         uploadServiceMock,
+        ClientsRepositoryMock,
         ProfileService,
       ],
     }).compile();
@@ -170,6 +172,65 @@ describe('ProfileController Tests', () => {
     expect(profile.email).toEqual(userMock[0].email);
   });
 
+  describe('Get user profile - plan fields', () => {
+    // UT-051
+    it('returns productName and subscriptionCurrentPeriodEnd, and no Stripe identifiers', async () => {
+      const periodEnd = new Date('2026-10-18T15:00:00.000Z');
+      jest
+        .spyOn(userRepositoryMock.useValue, 'getUserProfile')
+        .mockResolvedValueOnce({
+          ...userMock[0],
+          productId: 'product-1',
+          product: { id: 'product-1', name: 'Plano Premium' },
+          stripeCustomerId: 'cus_123',
+          stripeSubscriptionId: 'sub_123',
+          subscriptionStatus: 'active',
+          subscriptionCancelAt: null,
+          subscriptionCurrentPeriodEnd: periodEnd,
+          userAddresses: null,
+        } as any);
+
+      const profile = await profileController.getProfile({
+        user: { id: userMock[0].id },
+      });
+
+      expect(profile.productName).toEqual('Plano Premium');
+      expect(profile.subscriptionCurrentPeriodEnd).toEqual(periodEnd);
+      expect(profile.subscriptionStatus).toEqual('active');
+      expect(profile.hasStripeCustomer).toBe(true);
+      expect(profile).not.toHaveProperty('stripeCustomerId');
+      expect(profile).not.toHaveProperty('stripeSubscriptionId');
+      expect(JSON.stringify(profile)).not.toContain('cus_123');
+      expect(JSON.stringify(profile)).not.toContain('sub_123');
+    });
+
+    // UT-052
+    it('returns nulls for a user with no product', async () => {
+      jest
+        .spyOn(userRepositoryMock.useValue, 'getUserProfile')
+        .mockResolvedValueOnce({
+          ...userMock[0],
+          productId: null,
+          product: null,
+          stripeCustomerId: null,
+          stripeSubscriptionId: null,
+          subscriptionStatus: null,
+          subscriptionCancelAt: null,
+          subscriptionCurrentPeriodEnd: null,
+          userAddresses: null,
+        } as any);
+
+      const profile = await profileController.getProfile({
+        user: { id: userMock[0].id },
+      });
+
+      expect(profile.productName).toBeNull();
+      expect(profile.subscriptionCurrentPeriodEnd).toBeNull();
+      expect(profile.hasStripeCustomer).toBe(false);
+      expect(profile).not.toHaveProperty('stripeCustomerId');
+    });
+  });
+
   it('Update user profile - string conversion to DTO', () => {
     const plainData = {
       name: 'Jonh Doe Profile',
@@ -188,5 +249,31 @@ describe('ProfileController Tests', () => {
 
     expect(body.birthDate).toBeInstanceOf(Date);
     expect(body.district).toBeDefined();
+  });
+
+  // UT-014
+  describe('Delete user profile', () => {
+    it('acts only on the authenticated user, ignoring ids in the request', async () => {
+      const deleteAccount = jest.spyOn(
+        userRepositoryMock.useValue,
+        'deleteAccount',
+      );
+      deleteAccount.mockClear();
+
+      // Bound to a const so the extra keys survive: the point of the case
+      // is that an id smuggled in via params or body changes nothing.
+      const req = {
+        user: { id: '1' },
+        params: { id: '2' },
+        body: { id: '2' },
+      };
+
+      const result = await profileController.deleteProfile(req);
+
+      expect(result).toBeUndefined();
+      expect(deleteAccount).toHaveBeenCalledTimes(1);
+      expect(deleteAccount).toHaveBeenCalledWith('1');
+      expect(deleteAccount).not.toHaveBeenCalledWith('2');
+    });
   });
 });

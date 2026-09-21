@@ -2,7 +2,9 @@ import { AuthGuard } from '@/auth/auth.guard';
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Post,
   Request,
   UploadedFile,
@@ -72,5 +74,26 @@ export class ProfileController {
   @Get()
   async getProfile(@Request() req: { user: { id: string } }) {
     return await this.service.getProfile(req.user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Delete the authenticated user account',
+    description:
+      'Erases every record owned by the requester in one transaction and ' +
+      'then removes an app-hosted avatar file. Acts on the authenticated ' +
+      'user only — no identifier is accepted from the request.',
+  })
+  @ApiResponse({
+    status: 204,
+    description: 'Account deleted successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized user.',
+  })
+  @Delete()
+  @HttpCode(204)
+  async deleteProfile(@Request() req: { user: { id: string } }) {
+    await this.service.deleteProfile(req.user.id);
   }
 }
