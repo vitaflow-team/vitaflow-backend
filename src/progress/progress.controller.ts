@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -15,11 +16,14 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import {
   CreateMeasurementRecordDTO,
+  DashboardQueryDTO,
+  DEFAULT_DASHBOARD_WEEKS,
   UpdateMeasurementRecordDTO,
 } from './progress.Dto';
 import { ProgressService } from './progress.service';
@@ -39,9 +43,22 @@ export class ProgressController {
     description: 'Dashboard successfully retrieved.',
   })
   @ApiResponse({ status: 401, description: 'Unauthorized access.' })
+  @ApiResponse({ status: 400, description: 'Invalid dashboard period.' })
+  @ApiQuery({
+    name: 'weeks',
+    required: false,
+    enum: [4, 8, 12],
+    description: 'Dashboard chart period in weeks. Defaults to 8.',
+  })
   @Get('dashboard')
-  async getDashboard(@Request() req: AuthenticatedRequest) {
-    return await this.service.getDashboard(req.user.id);
+  async getDashboard(
+    @Request() req: AuthenticatedRequest,
+    @Query() query: DashboardQueryDTO,
+  ) {
+    return await this.service.getDashboard(
+      req.user.id,
+      query.weeks ?? DEFAULT_DASHBOARD_WEEKS,
+    );
   }
 
   @ApiOperation({ summary: 'Create a measurement record' })

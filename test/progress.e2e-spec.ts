@@ -138,6 +138,11 @@ describe('Progress records integration', () => {
       weightSeries: [],
       bmiSeries: [],
       history: [],
+      period: {
+        weeks: 8,
+        start: expect.any(String),
+        end: expect.any(String),
+      },
     });
   });
 
@@ -252,6 +257,11 @@ describe('Progress records integration', () => {
       weightSeries: [],
       bmiSeries: [],
       history: [],
+      period: {
+        weeks: 8,
+        start: expect.any(String),
+        end: expect.any(String),
+      },
     });
   });
 
@@ -323,5 +333,200 @@ describe('Progress records integration', () => {
     expect(dashboard.body.latest.id).toBe(second.body.id);
     expect(dashboard.body.weightVariationKg).toBe(-0.5);
     expect(dashboard.body.weightSeries).toHaveLength(2);
+  });
+
+  describe('Dashboard period (progress-dashboard-refresh)', () => {
+    const fixedNow = new Date('2026-09-19T12:00:00.000Z');
+    const dayInMs = 86_400_000;
+
+    beforeEach(() => {
+      jest.spyOn(Date, 'now').mockReturnValue(fixedNow.getTime());
+    });
+
+    it('IT-001 returns the default 8-week period and filters the series', async () => {
+      await seedRecord(
+        owner.id,
+        64,
+        168,
+        new Date(fixedNow.getTime() - 57 * dayInMs),
+      );
+      await seedRecord(
+        owner.id,
+        63,
+        168,
+        new Date(fixedNow.getTime() - 56 * dayInMs),
+      );
+      await seedRecord(
+        owner.id,
+        62,
+        168,
+        new Date(fixedNow.getTime() - 7 * dayInMs),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/progress-records/dashboard')
+        .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+        .expect(200);
+
+      expect(response.body.period).toEqual({
+        weeks: 8,
+        start: '2026-07-25T12:00:00.000Z',
+        end: fixedNow.toISOString(),
+      });
+      expect(
+        response.body.weightSeries.map(
+          ({ weightKg }: { weightKg: number }) => weightKg,
+        ),
+      ).toEqual([63, 62]);
+    });
+
+    it('IT-002 returns the 4-week period with inclusive boundary filtering', async () => {
+      await seedRecord(
+        owner.id,
+        66,
+        168,
+        new Date(fixedNow.getTime() - 6 * 7 * dayInMs),
+      );
+      await seedRecord(
+        owner.id,
+        64,
+        168,
+        new Date(fixedNow.getTime() - 4 * 7 * dayInMs),
+      );
+      await seedRecord(
+        owner.id,
+        63,
+        168,
+        new Date(fixedNow.getTime() - 3 * 7 * dayInMs),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/progress-records/dashboard?weeks=4')
+        .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+        .expect(200);
+
+      expect(response.body.period).toEqual({
+        weeks: 4,
+        start: '2026-08-22T12:00:00.000Z',
+        end: fixedNow.toISOString(),
+      });
+      expect(
+        response.body.weightSeries.map(
+          ({ weightKg }: { weightKg: number }) => weightKg,
+        ),
+      ).toEqual([64, 63]);
+    });
+
+    it('IT-003 returns 12 weeks without changing latest or history', async () => {
+      await seedRecord(
+        owner.id,
+        66,
+        168,
+        new Date(fixedNow.getTime() - 6 * 7 * dayInMs),
+      );
+      await seedRecord(
+        owner.id,
+        64,
+        168,
+        new Date(fixedNow.getTime() - 4 * 7 * dayInMs),
+      );
+      await seedRecord(
+        owner.id,
+        63,
+        168,
+        new Date(fixedNow.getTime() - 3 * 7 * dayInMs),
+      );
+      const token = await tokenFor(owner);
+
+      const fourWeeks = await request(app.getHttpServer())
+        .get('/progress-records/dashboard?weeks=4')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const twelveWeeks = await request(app.getHttpServer())
+        .get('/progress-records/dashboard?weeks=12')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(twelveWeeks.body.period).toEqual({
+        weeks: 12,
+        start: '2026-06-27T12:00:00.000Z',
+        end: fixedNow.toISOString(),
+      });
+      expect(
+        twelveWeeks.body.weightSeries.map(
+          ({ weightKg }: { weightKg: number }) => weightKg,
+        ),
+      ).toEqual([66, 64, 63]);
+      expect(twelveWeeks.body.latest).toEqual(fourWeeks.body.latest);
+      expect(twelveWeeks.body.history).toEqual(fourWeeks.body.history);
+    });
+
+    it.each(['6', '0', '13'])(
+      'IT-004 rejects an out-of-set weeks value: %s',
+      async (weeks) => {
+        await request(app.getHttpServer())
+          .get(`/progress-records/dashboard?weeks=${weeks}`)
+          .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+          .expect(400);
+      },
+    );
+
+    it.each(['abc', '', '4.5'])(
+      'IT-005 rejects a malformed weeks value: %s',
+      async (weeks) => {
+        await request(app.getHttpServer())
+          .get(`/progress-records/dashboard?weeks=${weeks}`)
+          .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+          .expect(400);
+      },
+    );
+
+    it('IT-006 rejects repeated weeks parameters with 400', async () => {
+      await request(app.getHttpServer())
+        .get('/progress-records/dashboard?weeks=4&weeks=8')
+        .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+        .expect(400);
+    });
+
+    it('IT-007 rejects an unauthenticated period request', async () => {
+      await request(app.getHttpServer())
+        .get('/progress-records/dashboard?weeks=4')
+        .expect(401);
+    });
+
+    it('IT-008 isolates 12-week dashboard records by user', async () => {
+      const ownerRecord = await seedRecord(
+        owner.id,
+        62,
+        168,
+        new Date(fixedNow.getTime() - 7 * dayInMs),
+      );
+      const otherRecord = await seedRecord(
+        otherUser.id,
+        91,
+        180,
+        new Date(fixedNow.getTime() - 7 * dayInMs),
+      );
+
+      const ownerResponse = await request(app.getHttpServer())
+        .get('/progress-records/dashboard?weeks=12')
+        .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+        .expect(200);
+      const otherResponse = await request(app.getHttpServer())
+        .get('/progress-records/dashboard?weeks=12')
+        .set('Authorization', `Bearer ${await tokenFor(otherUser)}`)
+        .expect(200);
+
+      expect(ownerResponse.body.latest.id).toBe(ownerRecord.id);
+      expect(ownerResponse.body.history).toHaveLength(1);
+      expect(ownerResponse.body.weightSeries).toEqual([
+        expect.objectContaining({ weightKg: 62 }),
+      ]);
+      expect(otherResponse.body.latest.id).toBe(otherRecord.id);
+      expect(otherResponse.body.history).toHaveLength(1);
+      expect(otherResponse.body.weightSeries).toEqual([
+        expect.objectContaining({ weightKg: 91 }),
+      ]);
+    });
   });
 });

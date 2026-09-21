@@ -3,6 +3,8 @@ import { AppError } from '@/utils/app.erro';
 import { MeasurementRecord } from '@prisma/client';
 import { ProgressService } from './progress.service';
 
+const FIXED_NOW = new Date('2026-09-19T12:00:00.000Z');
+
 function record(
   id: string,
   weightKg: number,
@@ -37,9 +39,136 @@ describe('ProgressService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers().setSystemTime(FIXED_NOW);
     service = new ProgressService(
       repository as unknown as MeasurementRecordsRepository,
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('UT-007 defaults to an exact 8-week window and reports it', async () => {
+    repository.findRecentByUser.mockResolvedValue([]);
+    repository.findByUserSince.mockResolvedValue([]);
+
+    const dashboard = await service.getDashboard('user-1');
+
+    expect(repository.findByUserSince).toHaveBeenCalledWith(
+      'user-1',
+      new Date('2026-07-25T12:00:00.000Z'),
+    );
+    expect(dashboard.period).toEqual({
+      weeks: 8,
+      start: '2026-07-25T12:00:00.000Z',
+      end: '2026-09-19T12:00:00.000Z',
+    });
+  });
+
+  it('UT-008 uses and reports an exact 4-week window', async () => {
+    repository.findRecentByUser.mockResolvedValue([]);
+    repository.findByUserSince.mockResolvedValue([]);
+
+    const dashboard = await service.getDashboard('user-1', 4);
+
+    expect(repository.findByUserSince).toHaveBeenCalledWith(
+      'user-1',
+      new Date('2026-08-22T12:00:00.000Z'),
+    );
+    expect(dashboard.period.weeks).toBe(4);
+  });
+
+  it('UT-009 uses and reports an exact 12-week window', async () => {
+    repository.findRecentByUser.mockResolvedValue([]);
+    repository.findByUserSince.mockResolvedValue([]);
+
+    const dashboard = await service.getDashboard('user-1', 12);
+
+    expect(repository.findByUserSince).toHaveBeenCalledWith(
+      'user-1',
+      new Date('2026-06-27T12:00:00.000Z'),
+    );
+    expect(dashboard.period.weeks).toBe(12);
+  });
+
+  it.each([
+    [4, '2026-08-22T12:00:00.000Z'],
+    [8, '2026-07-25T12:00:00.000Z'],
+    [12, '2026-06-27T12:00:00.000Z'],
+  ] as const)(
+    'UT-010 reports the exact repository window for %i weeks',
+    async (weeks, expectedStart) => {
+      repository.findRecentByUser.mockResolvedValue([]);
+      repository.findByUserSince.mockResolvedValue([]);
+
+      const dashboard = await service.getDashboard('user-1', weeks);
+      const since = repository.findByUserSince.mock.calls.at(-1)?.[1] as Date;
+
+      expect(dashboard.period).toEqual({
+        weeks,
+        start: since.toISOString(),
+        end: FIXED_NOW.toISOString(),
+      });
+      expect(dashboard.period.start).toBe(expectedStart);
+    },
+  );
+
+  it('UT-011 keeps latest, variation, and history independent of weeks', async () => {
+    const previous = record('1', 63, '2026-09-12T12:00:00.000Z');
+    const latest = record('2', 62, '2026-09-18T12:00:00.000Z');
+    repository.findRecentByUser.mockResolvedValue([latest, previous]);
+    repository.findByUserSince.mockResolvedValue([previous, latest]);
+
+    const dashboards = await Promise.all(
+      ([4, 8, 12] as const).map((weeks) =>
+        service.getDashboard('user-1', weeks),
+      ),
+    );
+
+    const independentFields = dashboards.map(
+      ({ latest: current, weightVariationKg, history }) => ({
+        latest: current,
+        weightVariationKg,
+        history,
+      }),
+    );
+    expect(independentFields[1]).toEqual(independentFields[0]);
+    expect(independentFields[2]).toEqual(independentFields[0]);
+  });
+
+  it('UT-012 includes a record exactly at the period start once', async () => {
+    const boundary = record('boundary', 62, '2026-08-22T12:00:00.000Z');
+    const older = record('older', 63, '2026-08-22T11:59:59.999Z');
+    repository.findRecentByUser.mockResolvedValue([boundary, older]);
+    repository.findByUserSince.mockImplementation(
+      (_userId: string, since: Date) =>
+        Promise.resolve(
+          [older, boundary].filter((item) => item.recordedAt >= since),
+        ),
+    );
+
+    const dashboard = await service.getDashboard('user-1', 4);
+
+    expect(dashboard.weightSeries).toEqual([
+      { recordedAt: boundary.recordedAt.toISOString(), weightKg: 62 },
+    ]);
+  });
+
+  it('UT-013 keeps an older record in latest/history but out of series', async () => {
+    const old = record('old', 62, '2026-08-08T12:00:00.000Z');
+    repository.findRecentByUser.mockResolvedValue([old]);
+    repository.findByUserSince.mockImplementation(
+      (_userId: string, since: Date) =>
+        Promise.resolve([old].filter((item) => item.recordedAt >= since)),
+    );
+
+    const dashboard = await service.getDashboard('user-1', 4);
+
+    expect(dashboard.latest?.id).toBe('old');
+    expect(dashboard.history.map(({ id }) => id)).toEqual(['old']);
+    expect(dashboard.weightSeries).toEqual([]);
+    expect(dashboard.bmiSeries).toEqual([]);
   });
 
   it('UT-023 aggregates latest, variation, history, and both series', async () => {
@@ -88,6 +217,11 @@ describe('ProgressService', () => {
       weightSeries: [],
       bmiSeries: [],
       history: [],
+      period: {
+        weeks: 8,
+        start: '2026-07-25T12:00:00.000Z',
+        end: '2026-09-19T12:00:00.000Z',
+      },
     });
   });
 
