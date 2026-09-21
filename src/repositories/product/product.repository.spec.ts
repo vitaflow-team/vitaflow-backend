@@ -1,7 +1,7 @@
 import { PrismaService } from '@/database/prisma.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Product } from '@prisma/client';
-import { productsMock } from 'mock/product.repository.mock';
+import { planProductsMock, productsMock } from 'mock/product.repository.mock';
 import {
   ProductGroupWithDetails,
   ProductWithInfos,
@@ -65,6 +65,7 @@ describe('ProductsRepository Tests', () => {
             },
             product: {
               findFirst: jest.fn().mockResolvedValue(null),
+              findMany: jest.fn().mockResolvedValue(planProductsMock),
               findUnique: jest
                 .fn()
                 .mockImplementation(
@@ -137,6 +138,45 @@ describe('ProductsRepository Tests', () => {
       const result = await productsRepository.getProductById('123');
 
       expect(result).toEqual(null);
+    });
+  });
+
+  describe('listPlans (plan categories)', () => {
+    // UT-005
+    it('filters by the given type and orders by price then name', async () => {
+      const result = await productsRepository.listPlans('NUTRITIONIST');
+
+      expect(result).toEqual(planProductsMock);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.findMany).toHaveBeenCalledWith({
+        where: { type: 'NUTRITIONIST' },
+        orderBy: [{ price: 'asc' }, { name: 'asc' }],
+        include: { productInfos: true },
+      });
+    });
+
+    // UT-006
+    it('asks for every plan when no type is given', async () => {
+      await productsRepository.listPlans();
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.findMany).toHaveBeenCalledWith({
+        orderBy: [{ price: 'asc' }, { name: 'asc' }],
+        include: { productInfos: true },
+      });
+
+      const [args] = (prismaService.product.findMany as jest.Mock).mock
+        .calls[0] as [Record<string, unknown>];
+      expect(args).not.toHaveProperty('where');
+    });
+
+    // UT-006
+    it('returns an empty list when the category has no plans', async () => {
+      jest.spyOn(prismaService.product, 'findMany').mockResolvedValueOnce([]);
+
+      await expect(
+        productsRepository.listPlans('PHYSICAL_EDUCATOR'),
+      ).resolves.toEqual([]);
     });
   });
 

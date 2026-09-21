@@ -4,6 +4,7 @@ import {
   ProductsRepository,
 } from '@/repositories/product/product.repository';
 import { Injectable } from '@nestjs/common';
+import { PlanCategory, typeOfCategory } from './planCategory';
 
 @Injectable()
 export class ProductsService {
@@ -11,6 +12,14 @@ export class ProductsService {
 
   async getProducts(): Promise<ProductGroupWithDetails[]> {
     return await this.products.getAllProducts();
+  }
+
+  // `category` arrives already validated by PlansQueryDTO, so the only
+  // mapping left is API name -> stored type; no category means every plan.
+  async listPlans(category?: PlanCategory): Promise<ProductWithInfos[]> {
+    return await this.products.listPlans(
+      category ? typeOfCategory(category) : undefined,
+    );
   }
 
   async getProductById(id: string): Promise<ProductWithInfos | null> {

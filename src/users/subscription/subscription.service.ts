@@ -3,6 +3,7 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { Injectable, Logger } from '@nestjs/common';
 import { SyncSubscriptionDTO, UpdateSubscriptionDTO } from './subscription.Dto';
+import { deriveExpiry } from './subscriptionExpiry';
 
 @Injectable()
 export class SubscriptionService {
@@ -19,6 +20,17 @@ export class SubscriptionService {
       throw new AppError('Usuário não encontrado.', 404);
     }
 
+    // No product is loaded on this server-to-server route, so the expiry is
+    // derived from the status alone: a Gratuito account cannot hold an
+    // active status after the free-plan restore, and the UI reads the
+    // profile endpoint, which does check the product.
+    const expiry = deriveExpiry({
+      status: user.subscriptionStatus,
+      cancelAt: user.subscriptionCancelAt,
+      periodEnd: user.subscriptionCurrentPeriodEnd,
+      planPrice: null,
+    });
+
     return {
       productId: user.productId,
       stripeCustomerId: user.stripeCustomerId,
@@ -26,6 +38,8 @@ export class SubscriptionService {
       subscriptionStatus: user.subscriptionStatus,
       subscriptionCancelAt: user.subscriptionCancelAt,
       subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd,
+      expiresAt: expiry.expiresAt,
+      autoRenew: expiry.autoRenew,
     };
   }
 
@@ -136,6 +150,13 @@ export class SubscriptionService {
   private toResponse(
     user: Awaited<ReturnType<UserRepository['updateSubscription']>>,
   ) {
+    const expiry = deriveExpiry({
+      status: user.subscriptionStatus,
+      cancelAt: user.subscriptionCancelAt,
+      periodEnd: user.subscriptionCurrentPeriodEnd,
+      planPrice: user.product?.price ?? null,
+    });
+
     return {
       id: user.id,
       productId: user.productId,
@@ -143,6 +164,8 @@ export class SubscriptionService {
       subscriptionStatus: user.subscriptionStatus,
       subscriptionCancelAt: user.subscriptionCancelAt,
       subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd,
+      expiresAt: expiry.expiresAt,
+      autoRenew: expiry.autoRenew,
     };
   }
 }

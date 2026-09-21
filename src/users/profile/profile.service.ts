@@ -3,6 +3,7 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { UploadService } from '@/utils/upload.service';
 import { Injectable, Logger } from '@nestjs/common';
+import { deriveExpiry } from '../subscription/subscriptionExpiry';
 import { ProfileDTO } from './profile.Dto';
 
 @Injectable()
@@ -87,6 +88,15 @@ export class ProfileService {
     // them — no branch on the user's product type needed.
     const clientsCount = await this.clients.countByProfessionalId(userId);
 
+    // The product is loaded here, so Gratuito (price 0) is recognised and
+    // never reports an expiry, however stale its subscription columns are.
+    const expiry = deriveExpiry({
+      status: user.subscriptionStatus,
+      cancelAt: user.subscriptionCancelAt,
+      periodEnd: user.subscriptionCurrentPeriodEnd,
+      planPrice: user.product?.price ?? null,
+    });
+
     return {
       id: user.id,
       name: user.name,
@@ -104,6 +114,9 @@ export class ProfileService {
       subscriptionStatus: user.subscriptionStatus,
       subscriptionCancelAt: user.subscriptionCancelAt,
       subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd,
+      // Derived server-side so the UI only formats and words them.
+      expiresAt: expiry.expiresAt,
+      autoRenew: expiry.autoRenew,
       // Deliberately a boolean, not the id: this response reaches client
       // components, so the raw Stripe identifiers never leave the server.
       hasStripeCustomer: Boolean(user.stripeCustomerId),

@@ -1,6 +1,7 @@
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Test, TestingModule } from '@nestjs/testing';
+import { PlansController } from './plans.controller';
 import { ProductsModule } from './product.module';
 import { ProductsService } from './product.service';
 
@@ -24,6 +25,11 @@ describe('UsersModule Test', () => {
 
   it('should register ProductsRepository controller', () => {
     const controller = moduleRef.get<ProductsRepository>(ProductsRepository);
+    expect(controller).toBeDefined();
+  });
+
+  it('should register the PlansController', () => {
+    const controller = moduleRef.get<PlansController>(PlansController);
     expect(controller).toBeDefined();
   });
 
