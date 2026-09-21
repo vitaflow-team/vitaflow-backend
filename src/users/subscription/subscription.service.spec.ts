@@ -107,6 +107,93 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
     });
   });
 
+  // UT-017 — plan expiry on the subscription responses
+  describe('expiresAt and autoRenew (plan expiry)', () => {
+    const periodEnd = new Date('2026-10-18T15:00:00.000Z');
+    const cancelAt = new Date('2026-10-10T15:00:00.000Z');
+
+    it('toResponse derives a renewing expiry from the stored plan price', async () => {
+      users.updateSubscription.mockResolvedValueOnce({
+        ...storedUser,
+        subscriptionCurrentPeriodEnd: periodEnd,
+        product: { id: 'product-1', name: 'Plano Premium', price: 29.9 },
+      });
+
+      const result = await service.updateForUser('user-1', {
+        productId: 'product-1',
+        stripeCustomerId: 'cus_123',
+        stripeSubscriptionId: 'sub_123',
+        subscriptionStatus: 'active',
+      });
+
+      expect(result.expiresAt).toEqual(periodEnd);
+      expect(result.autoRenew).toBe(true);
+    });
+
+    it('toResponse reports the cancellation date with autoRenew false', async () => {
+      users.updateSubscription.mockResolvedValueOnce({
+        ...storedUser,
+        subscriptionCancelAt: cancelAt,
+        subscriptionCurrentPeriodEnd: periodEnd,
+        product: { id: 'product-1', name: 'Plano Premium', price: 29.9 },
+      });
+
+      const result = await service.updateForUser('user-1', {
+        productId: 'product-1',
+        stripeCustomerId: 'cus_123',
+        stripeSubscriptionId: 'sub_123',
+        subscriptionStatus: 'active',
+      });
+
+      expect(result.expiresAt).toEqual(cancelAt);
+      expect(result.autoRenew).toBe(false);
+    });
+
+    it('toResponse reports no expiry for Gratuito', async () => {
+      users.updateSubscription.mockResolvedValueOnce({
+        ...storedUser,
+        subscriptionCurrentPeriodEnd: periodEnd,
+        product: { id: 'free-1', name: 'Gratuito', price: 0 },
+      });
+
+      const result = await service.updateForUser('user-1', {
+        productId: 'free-1',
+        stripeCustomerId: 'cus_123',
+        stripeSubscriptionId: 'sub_123',
+        subscriptionStatus: 'active',
+      });
+
+      expect(result.expiresAt).toBeNull();
+      expect(result.autoRenew).toBe(false);
+    });
+
+    // No product is loaded on this route, so the rule is status-only.
+    it('getForUser derives the expiry from the status alone', async () => {
+      users.findUnique.mockResolvedValueOnce({
+        ...storedUser,
+        subscriptionCurrentPeriodEnd: periodEnd,
+      });
+
+      const renewing = await service.getForUser('user-1');
+
+      expect(renewing.expiresAt).toEqual(periodEnd);
+      expect(renewing.autoRenew).toBe(true);
+      // Existing fields are untouched.
+      expect(renewing.stripeSubscriptionId).toBe('sub_123');
+
+      users.findUnique.mockResolvedValueOnce({
+        ...storedUser,
+        subscriptionStatus: 'canceled',
+        subscriptionCurrentPeriodEnd: periodEnd,
+      });
+
+      const canceled = await service.getForUser('user-1');
+
+      expect(canceled.expiresAt).toBeNull();
+      expect(canceled.autoRenew).toBe(false);
+    });
+  });
+
   describe('syncFromWebhook', () => {
     const baseDto = {
       stripeCustomerId: 'cus_123',

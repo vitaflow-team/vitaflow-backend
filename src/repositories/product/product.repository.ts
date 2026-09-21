@@ -1,6 +1,6 @@
 import { PrismaService } from '@/database/prisma.service';
 import { Injectable } from '@nestjs/common';
-import { Prisma, Product } from '@prisma/client';
+import { Prisma, Product, ProductType } from '@prisma/client';
 
 const productInclude = {
   productInfos: true,
@@ -37,6 +37,17 @@ export class ProductsRepository {
     return (await this.prisma.productGroup.findMany({
       include: productGroupInclude,
     })) as ProductGroupWithDetails[];
+  }
+
+  // The plan list the Plano tab renders: a flat, price-ordered catalog
+  // rather than the product groups `getAllProducts` returns. Name breaks
+  // price ties so two plans of the same price keep a stable order.
+  async listPlans(type?: ProductType): Promise<ProductWithInfos[]> {
+    return await this.prisma.product.findMany({
+      ...(type ? { where: { type } } : {}),
+      orderBy: [{ price: 'asc' }, { name: 'asc' }],
+      include: productInclude,
+    });
   }
 
   async findByStripeId(stripeId: string): Promise<ProductWithInfos | null> {

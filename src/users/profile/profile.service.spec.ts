@@ -181,5 +181,93 @@ describe('ProfileService Tests', () => {
       expect(planless.productType).toBeNull();
       expect(planless.productGroupId).toBeNull();
     });
+
+    // UT-015 — plan expiry
+    it('derives expiresAt and autoRenew for a renewing paid user', async () => {
+      const periodEnd = new Date('2026-10-18T03:00:00.000Z');
+      users.getUserProfile.mockResolvedValueOnce(
+        profileWith({
+          productId: 'prod-premium',
+          product: {
+            id: 'prod-premium',
+            name: 'Premium',
+            price: 29.9,
+            type: 'USER',
+            groupId: 'group-1',
+            stripeId: 'price_123',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          subscriptionStatus: 'active',
+          subscriptionCancelAt: null,
+          subscriptionCurrentPeriodEnd: periodEnd,
+        }),
+      );
+
+      const profile = await profileService.getProfile('1');
+
+      expect(profile.expiresAt).toEqual(periodEnd);
+      expect(profile.autoRenew).toBe(true);
+      // The raw fields stay for existing callers.
+      expect(profile.subscriptionStatus).toBe('active');
+      expect(profile.subscriptionCancelAt).toBeNull();
+      expect(profile.subscriptionCurrentPeriodEnd).toEqual(periodEnd);
+      expect(profile.productName).toBe('Premium');
+    });
+
+    // UT-015 — a scheduled cancellation expires on that date, not the period end
+    it('reports the cancellation date and autoRenew false when cancelled', async () => {
+      const cancelAt = new Date('2026-10-10T03:00:00.000Z');
+      users.getUserProfile.mockResolvedValueOnce(
+        profileWith({
+          productId: 'prod-premium',
+          product: {
+            id: 'prod-premium',
+            name: 'Premium',
+            price: 29.9,
+            type: 'USER',
+            groupId: 'group-1',
+            stripeId: 'price_123',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          subscriptionStatus: 'active',
+          subscriptionCancelAt: cancelAt,
+          subscriptionCurrentPeriodEnd: new Date('2026-10-18T03:00:00.000Z'),
+        }),
+      );
+
+      const profile = await profileService.getProfile('1');
+
+      expect(profile.expiresAt).toEqual(cancelAt);
+      expect(profile.autoRenew).toBe(false);
+    });
+
+    // UT-016 — Gratuito never reports an expiry, however stale its columns are
+    it('returns no expiry for a Gratuito user with stale subscription dates', async () => {
+      users.getUserProfile.mockResolvedValueOnce(
+        profileWith({
+          productId: 'free-1',
+          product: {
+            id: 'free-1',
+            name: 'Gratuito',
+            price: 0,
+            type: 'USER',
+            groupId: 'group-1',
+            stripeId: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          subscriptionStatus: 'active',
+          subscriptionCancelAt: new Date('2026-10-10T03:00:00.000Z'),
+          subscriptionCurrentPeriodEnd: new Date('2026-10-18T03:00:00.000Z'),
+        }),
+      );
+
+      const profile = await profileService.getProfile('1');
+
+      expect(profile.expiresAt).toBeNull();
+      expect(profile.autoRenew).toBe(false);
+    });
   });
 });

@@ -27,7 +27,9 @@ export class SubscriptionController {
       'Includes the Stripe subscription id — server-to-server use only ' +
       '(cancel/reactivate/change-plan actions). Never render this ' +
       'response into a Client Component prop; use GET /profile for ' +
-      'anything client-rendered.',
+      'anything client-rendered. `expiresAt` and `autoRenew` are derived ' +
+      'from the subscription status alone here (no product is loaded), ' +
+      'unlike GET /profile, which also checks the plan price.',
   })
   @ApiResponse({ status: 200, description: 'Subscription state.' })
   @ApiBearerAuth('jwt')
