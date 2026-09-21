@@ -24,6 +24,13 @@ export class MeasurementRecordsRepository {
     return await this.prisma.measurementRecord.findUnique({ where: { id } });
   }
 
+  async findLatestByUser(userId: string): Promise<MeasurementRecord | null> {
+    return await this.prisma.measurementRecord.findFirst({
+      where: { userId },
+      orderBy: [{ recordedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
   async findRecentByUser(
     userId: string,
     limit: number,

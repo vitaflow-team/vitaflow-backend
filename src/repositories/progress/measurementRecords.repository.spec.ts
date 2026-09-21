@@ -22,6 +22,7 @@ function makeRecord(index: number): MeasurementRecord {
 
 describe('MeasurementRecordsRepository', () => {
   const findMany = jest.fn();
+  const findFirst = jest.fn();
   let repository: MeasurementRecordsRepository;
 
   beforeEach(async () => {
@@ -31,7 +32,7 @@ describe('MeasurementRecordsRepository', () => {
         MeasurementRecordsRepository,
         {
           provide: PrismaService,
-          useValue: { measurementRecord: { findMany } },
+          useValue: { measurementRecord: { findMany, findFirst } },
         },
       ],
     }).compile();
@@ -71,5 +72,27 @@ describe('MeasurementRecordsRepository', () => {
       orderBy: { recordedAt: 'asc' },
     });
     expect(result).toEqual(records);
+  });
+
+  describe('latest record', () => {
+    it('UT-001 queries the user latest record ordered by record then creation date', async () => {
+      const latest = makeRecord(5);
+      findFirst.mockResolvedValue(latest);
+
+      const result = await repository.findLatestByUser('u1');
+
+      expect(findFirst).toHaveBeenCalledTimes(1);
+      expect(findFirst).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+        orderBy: [{ recordedAt: 'desc' }, { createdAt: 'desc' }],
+      });
+      expect(result).toBe(latest);
+    });
+
+    it('UT-002 returns null when the user has no records', async () => {
+      findFirst.mockResolvedValue(null);
+
+      await expect(repository.findLatestByUser('u1')).resolves.toBeNull();
+    });
   });
 });

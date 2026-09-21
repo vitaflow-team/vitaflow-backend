@@ -40,6 +40,7 @@ describe('ProgressController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    repository.findLatestByUser.mockResolvedValue(measurementRecordMock[0]);
     repository.findRecentByUser.mockResolvedValue(measurementRecordMock);
     repository.findByUserSince.mockResolvedValue(
       [...measurementRecordMock].reverse(),
@@ -149,5 +150,37 @@ describe('ProgressController', () => {
       .delete('/progress-records/record-1')
       .expect(204);
     expect(repository.delete.mock.calls).toContainEqual(['record-1']);
+  });
+
+  describe('latest record', () => {
+    it('wires GET /progress-records/latest to the authenticated user', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/progress-records/latest')
+        .expect(200);
+
+      expect(repository.findLatestByUser.mock.calls).toContainEqual(['User1']);
+      expect(response.body.latest).toEqual(
+        expect.objectContaining({ id: 'record-1', bmi: expect.any(Number) }),
+      );
+    });
+
+    it('UT-005 uses only the authenticated user id, never one from the request', async () => {
+      const service = {
+        getLatest: jest.fn().mockResolvedValue({ latest: null }),
+      };
+      const controller = new ProgressController(
+        service as unknown as ProgressService,
+      );
+
+      await controller.getLatest({ user: { id: 'u1' } });
+      await controller.getLatest({
+        user: { id: 'u1' },
+        params: { id: 'u2' },
+        query: { userId: 'u2' },
+        body: { userId: 'u2' },
+      } as unknown as { user: { id: string } });
+
+      expect(service.getLatest.mock.calls).toEqual([['u1'], ['u1']]);
+    });
   });
 });

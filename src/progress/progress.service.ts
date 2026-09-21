@@ -8,6 +8,7 @@ import {
   DashboardWeeks,
   DashboardResponseDTO,
   DEFAULT_DASHBOARD_WEEKS,
+  LatestRecordResponseDTO,
   MeasurementRecordResponseDTO,
   UpdateMeasurementRecordDTO,
 } from './progress.Dto';
@@ -51,6 +52,12 @@ export class ProgressService {
         end: now.toISOString(),
       },
     };
+  }
+
+  async getLatest(userId: string): Promise<LatestRecordResponseDTO> {
+    const record = await this.measurementRecords.findLatestByUser(userId);
+
+    return { latest: record ? this.toResponse(record) : null };
   }
 
   async create(

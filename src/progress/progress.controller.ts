@@ -61,6 +61,20 @@ export class ProgressController {
     );
   }
 
+  @ApiOperation({
+    summary: 'Get the latest measurement record of the authenticated user',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Latest measurement record, or { latest: null } when the user has none.',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized access.' })
+  @Get('latest')
+  async getLatest(@Request() req: AuthenticatedRequest) {
+    return await this.service.getLatest(req.user.id);
+  }
+
   @ApiOperation({ summary: 'Create a measurement record' })
   @ApiBody({ type: CreateMeasurementRecordDTO })
   @ApiResponse({ status: 201, description: 'Measurement record created.' })
