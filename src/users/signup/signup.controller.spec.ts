@@ -4,6 +4,7 @@ import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { mailServiceMock } from 'mock/mail.service.mok';
 import { passwordHashMock } from 'mock/password.hash.mock';
+import { ProductsRepositoryMock } from 'mock/product.repository.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
 import { userTokenRepositoryMock } from 'mock/userToken.repository.mock';
 import { SignUpController } from './signup.controller';
@@ -23,6 +24,7 @@ describe('SignUpController Tests', () => {
         mailServiceMock,
         userTokenRepositoryMock,
         ClientsRepositoryMock,
+        ProductsRepositoryMock,
         SignUpService,
       ],
     }).compile();

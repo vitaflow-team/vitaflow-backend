@@ -5,21 +5,27 @@ import { MeasurementRecord } from '@prisma/client';
 import { calculateBmi, classifyBmi } from './bmi.util';
 import {
   CreateMeasurementRecordDTO,
+  DashboardWeeks,
   DashboardResponseDTO,
+  DEFAULT_DASHBOARD_WEEKS,
   MeasurementRecordResponseDTO,
   UpdateMeasurementRecordDTO,
 } from './progress.Dto';
 
-const EIGHT_WEEKS_IN_MS = 8 * 7 * 24 * 60 * 60 * 1000;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class ProgressService {
   constructor(private measurementRecords: MeasurementRecordsRepository) {}
 
-  async getDashboard(userId: string): Promise<DashboardResponseDTO> {
+  async getDashboard(
+    userId: string,
+    weeks: DashboardWeeks = DEFAULT_DASHBOARD_WEEKS,
+  ): Promise<DashboardResponseDTO> {
+    const now = new Date(Date.now());
+    const since = new Date(now.getTime() - weeks * 7 * DAY_IN_MS);
     const recent = await this.measurementRecords.findRecentByUser(userId, 10);
-    const since = new Date(Date.now() - EIGHT_WEEKS_IN_MS);
-    const withinEightWeeks = await this.measurementRecords.findByUserSince(
+    const withinPeriod = await this.measurementRecords.findByUserSince(
       userId,
       since,
     );
@@ -30,15 +36,20 @@ export class ProgressService {
         recent.length >= 2
           ? Math.round((recent[0].weightKg - recent[1].weightKg) * 10) / 10
           : null,
-      weightSeries: withinEightWeeks.map((record) => ({
+      weightSeries: withinPeriod.map((record) => ({
         recordedAt: record.recordedAt.toISOString(),
         weightKg: record.weightKg,
       })),
-      bmiSeries: withinEightWeeks.map((record) => ({
+      bmiSeries: withinPeriod.map((record) => ({
         recordedAt: record.recordedAt.toISOString(),
         bmi: calculateBmi(record.weightKg, record.heightCm),
       })),
       history: recent.map((record) => this.toResponse(record)),
+      period: {
+        weeks,
+        start: since.toISOString(),
+        end: now.toISOString(),
+      },
     };
   }
 

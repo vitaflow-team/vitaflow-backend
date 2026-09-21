@@ -1,10 +1,11 @@
 import { MailService } from '@/mail/mail.service';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Product, ProductType, Users } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -38,6 +39,8 @@ export type GoogleSignInOutcome =
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly googleAuth: GoogleAuthService,
     private readonly identities: OAuthIdentityRepository,
@@ -47,6 +50,7 @@ export class AuthService {
     private readonly uploadService: UploadService,
     private readonly mailService: MailService,
     private readonly auditLogger: AuditLogger,
+    private readonly products: ProductsRepository,
   ) {}
 
   async signInWithGoogle(idToken: string): Promise<SignInResponse> {
@@ -157,6 +161,17 @@ export class AuthService {
     const name = verified.name?.trim() || email.split('@')[0];
     const password = await this.passwordHash.generateHash(randomUUID());
 
+    // Same rule as the password signup: Gratuito is resolved first so a
+    // missing catalog entry fails the sign-in instead of producing a
+    // plan-less Google account.
+    const freeProduct = await this.products.findFreeProduct();
+    if (!freeProduct) {
+      this.logger.error(
+        'free_product_missing at=google_signup — no USER product priced at 0 without a Stripe price id',
+      );
+      throw new AppError(GOOGLE_AUTH_FAILURE, 500, 'free_product_missing');
+    }
+
     let created: Users;
     try {
       created = await this.users.create({
@@ -165,6 +180,7 @@ export class AuthService {
         password,
         avatar: verified.picture,
         active: true,
+        product: { connect: { id: freeProduct.id } },
       });
     } catch (error) {
       if (!this.isUniqueConstraint(error)) {

@@ -1,5 +1,6 @@
 import { PrismaService } from '@/database/prisma.service';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Product } from '@prisma/client';
 import { productsMock } from 'mock/product.repository.mock';
 import {
   ProductGroupWithDetails,
@@ -37,6 +38,17 @@ const productGroupsMock: ProductGroupWithDetails[] = [
   },
 ];
 
+const freeProductMock: Product = {
+  id: 'free-1',
+  name: 'Gratuito',
+  price: 0,
+  type: 'USER',
+  groupId: 'group-1',
+  stripeId: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 describe('ProductsRepository Tests', () => {
   let productsRepository: ProductsRepository;
   let prismaService: PrismaService;
@@ -52,6 +64,7 @@ describe('ProductsRepository Tests', () => {
               findMany: jest.fn().mockResolvedValue(productGroupsMock),
             },
             product: {
+              findFirst: jest.fn().mockResolvedValue(null),
               findUnique: jest
                 .fn()
                 .mockImplementation(
@@ -124,6 +137,34 @@ describe('ProductsRepository Tests', () => {
       const result = await productsRepository.getProductById('123');
 
       expect(result).toEqual(null);
+    });
+  });
+
+  describe('findFreeProduct (free plan)', () => {
+    // UT-001
+    it('returns the Gratuito row matched by the free-plan rule', async () => {
+      jest
+        .spyOn(prismaService.product, 'findFirst')
+        .mockResolvedValueOnce(freeProductMock);
+
+      const result = await productsRepository.findFreeProduct();
+
+      expect(result).toEqual(freeProductMock);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.findFirst).toHaveBeenCalledWith({
+        where: { type: 'USER', price: 0, stripeId: null },
+      });
+    });
+
+    // UT-002
+    it('returns null when no product matches the rule', async () => {
+      jest
+        .spyOn(prismaService.product, 'findFirst')
+        .mockResolvedValueOnce(null);
+
+      const result = await productsRepository.findFreeProduct();
+
+      expect(result).toBeNull();
     });
   });
 });

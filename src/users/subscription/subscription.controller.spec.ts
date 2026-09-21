@@ -89,7 +89,7 @@ describe('SubscriptionController Tests', () => {
       expect(result?.productId).toEqual('2');
     });
 
-    it('clears productId when the price is explicitly null (subscription ended)', async () => {
+    it('restores the free product when the price is explicitly null (subscription ended)', async () => {
       const result = await controller.syncSubscription({
         stripeCustomerId: 'cus_unlinked',
         userId: userMock[0].id,
@@ -99,7 +99,7 @@ describe('SubscriptionController Tests', () => {
         subscriptionCancelAt: null,
       });
 
-      expect(result?.productId).toBeNull();
+      expect(result?.productId).toEqual('free-1');
     });
 
     it('no-ops when neither the customer id nor the userId hint match a user', async () => {

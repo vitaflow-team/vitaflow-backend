@@ -1,6 +1,23 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsOptional, Max, Min } from 'class-validator';
+import { Transform, TransformFnParams } from 'class-transformer';
+import { IsIn, IsNumber, IsOptional, Max, Min } from 'class-validator';
 import { BmiClassification } from './bmi.util';
+
+export const DASHBOARD_WEEKS = [4, 8, 12] as const;
+export const DEFAULT_DASHBOARD_WEEKS = 8;
+export type DashboardWeeks = (typeof DASHBOARD_WEEKS)[number];
+
+export class DashboardQueryDTO {
+  @IsOptional()
+  @Transform(({ value }: TransformFnParams) => {
+    const queryValue = value as unknown;
+    return typeof queryValue === 'string' && /^\d+$/.test(queryValue)
+      ? Number(queryValue)
+      : queryValue;
+  })
+  @IsIn(DASHBOARD_WEEKS as unknown as number[])
+  weeks?: DashboardWeeks;
+}
 
 export class CreateMeasurementRecordDTO {
   @ApiProperty({ example: 70.5, minimum: 20, maximum: 300 })
@@ -49,4 +66,5 @@ export interface DashboardResponseDTO {
   weightSeries: Array<{ recordedAt: string; weightKg: number }>;
   bmiSeries: Array<{ recordedAt: string; bmi: number }>;
   history: MeasurementRecordResponseDTO[];
+  period: { weeks: DashboardWeeks; start: string; end: string };
 }

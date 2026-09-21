@@ -54,6 +54,18 @@ export class UpdateSubscriptionDTO {
   @IsISO8601()
   @IsOptional()
   subscriptionCancelAt?: string | null;
+
+  @ApiProperty({
+    description:
+      'ISO timestamp when the current billing period ends, or null to ' +
+      'clear it. Omit the field entirely to leave the stored value ' +
+      'untouched.',
+    required: false,
+    nullable: true,
+  })
+  @IsISO8601()
+  @IsOptional()
+  subscriptionCurrentPeriodEnd?: string | null;
 }
 
 export class SyncSubscriptionDTO {
@@ -95,4 +107,17 @@ export class SyncSubscriptionDTO {
   @IsISO8601()
   @IsOptional()
   subscriptionCancelAt?: string | null;
+
+  @ApiProperty({
+    description:
+      'ISO timestamp when the current billing period ends. Omitted means ' +
+      "the event didn't carry one — the stored value is left unchanged. " +
+      'Explicit null clears it (sent only when the subscription is ' +
+      'deleted).',
+    required: false,
+    nullable: true,
+  })
+  @IsISO8601()
+  @IsOptional()
+  subscriptionCurrentPeriodEnd?: string | null;
 }

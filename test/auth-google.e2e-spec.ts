@@ -6,6 +6,7 @@ import { GoogleAuthService } from '@/auth/google-auth.service';
 import { PrismaService } from '@/database/prisma.service';
 import { MailService } from '@/mail/mail.service';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
@@ -53,6 +54,7 @@ describe('POST /auth/google integration', () => {
         PrismaService,
         UserRepository,
         OAuthIdentityRepository,
+        ProductsRepository,
         AuthService,
         DualBucketThrottlerGuard,
         { provide: GoogleAuthService, useValue: googleAuth },

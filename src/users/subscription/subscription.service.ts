@@ -25,6 +25,7 @@ export class SubscriptionService {
       stripeSubscriptionId: user.stripeSubscriptionId,
       subscriptionStatus: user.subscriptionStatus,
       subscriptionCancelAt: user.subscriptionCancelAt,
+      subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd,
     };
   }
 
@@ -46,6 +47,14 @@ export class SubscriptionService {
       ...(dto.subscriptionCancelAt !== undefined && {
         subscriptionCancelAt: dto.subscriptionCancelAt
           ? new Date(dto.subscriptionCancelAt)
+          : null,
+      }),
+      // Same three-way rule: Stripe doesn't always carry a period end, and
+      // a caller that can't report one must not wipe the date the sidebar
+      // renders. Only an explicit null clears it.
+      ...(dto.subscriptionCurrentPeriodEnd !== undefined && {
+        subscriptionCurrentPeriodEnd: dto.subscriptionCurrentPeriodEnd
+          ? new Date(dto.subscriptionCurrentPeriodEnd)
           : null,
       }),
     });
@@ -75,7 +84,20 @@ export class SubscriptionService {
 
     let productId = user.productId;
     if (dto.stripePriceId === null) {
-      productId = null;
+      // The subscription ended, so the user goes back to Gratuito rather
+      // than to no plan at all. If the catalog has no free product there is
+      // nothing safe to fall back to: keep whatever plan is stored (never
+      // null) and let the webhook succeed, since Stripe retries failures.
+      const freeProduct = await this.products.findFreeProduct();
+      if (freeProduct) {
+        productId = freeProduct.id;
+        this.logger.log(`subscription_ended_restored_free user=${user.id}`);
+      } else {
+        this.logger.error(
+          'free_product_missing at=webhook_sync — no USER product priced at 0 ' +
+            `without a Stripe price id; leaving productId unchanged for user ${user.id}.`,
+        );
+      }
     } else if (dto.stripePriceId) {
       const product = await this.products.findByStripeId(dto.stripePriceId);
       if (product) {
@@ -92,10 +114,20 @@ export class SubscriptionService {
       productId,
       stripeCustomerId: dto.stripeCustomerId,
       stripeSubscriptionId: dto.stripeSubscriptionId,
-      subscriptionStatus: dto.subscriptionStatus,
+      subscriptionStatus:
+        dto.stripePriceId === null ? 'canceled' : dto.subscriptionStatus,
       subscriptionCancelAt: dto.subscriptionCancelAt
         ? new Date(dto.subscriptionCancelAt)
         : null,
+      // Unlike the cancellation date above, an absent period end means the
+      // event simply didn't report one (the pinned Stripe API keeps it on
+      // the subscription item, which isn't always expanded) — leave the
+      // stored value alone rather than clearing it.
+      ...(dto.subscriptionCurrentPeriodEnd !== undefined && {
+        subscriptionCurrentPeriodEnd: dto.subscriptionCurrentPeriodEnd
+          ? new Date(dto.subscriptionCurrentPeriodEnd)
+          : null,
+      }),
     });
 
     return this.toResponse(updated);
@@ -110,6 +142,7 @@ export class SubscriptionService {
       productName: user.product?.name ?? null,
       subscriptionStatus: user.subscriptionStatus,
       subscriptionCancelAt: user.subscriptionCancelAt,
+      subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd,
     };
   }
 }

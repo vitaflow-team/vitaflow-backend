@@ -92,6 +92,24 @@ describe('ProgressController', () => {
     );
   });
 
+  it('UT-014 passes explicit and default weeks to the service', async () => {
+    const service = {
+      getDashboard: jest.fn().mockResolvedValue(undefined),
+    };
+    const controller = new ProgressController(
+      service as unknown as ProgressService,
+    );
+    const authenticatedRequest = { user: { id: 'User1' } };
+
+    await controller.getDashboard(authenticatedRequest, { weeks: 12 });
+    await controller.getDashboard(authenticatedRequest, {});
+
+    expect(service.getDashboard.mock.calls).toEqual([
+      ['User1', 12],
+      ['User1', 8],
+    ]);
+  });
+
   it('wires POST /progress-records and returns 201', async () => {
     const response = await request(app.getHttpServer())
       .post('/progress-records')

@@ -2,8 +2,62 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import {
   CreateMeasurementRecordDTO,
+  DashboardQueryDTO,
   UpdateMeasurementRecordDTO,
 } from './progress.Dto';
+
+describe('DashboardQueryDTO validation', () => {
+  it.each([
+    ['4', 4],
+    ['8', 8],
+    ['12', 12],
+  ])('UT-001 accepts and transforms weeks=%s', async (weeks, expected) => {
+    const dto = plainToInstance(DashboardQueryDTO, { weeks });
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.weeks).toBe(expected);
+  });
+
+  it('UT-002 accepts an omitted weeks value', async () => {
+    const dto = plainToInstance(DashboardQueryDTO, {});
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.weeks).toBeUndefined();
+  });
+
+  it.each(['6', '0', '13', '-4'])(
+    'UT-003 rejects an out-of-set weeks value: %s',
+    async (weeks) => {
+      expect(
+        await validate(plainToInstance(DashboardQueryDTO, { weeks })),
+      ).not.toHaveLength(0);
+    },
+  );
+
+  it.each(['', 'abc'])(
+    'UT-004 rejects an empty or non-numeric weeks value: %s',
+    async (weeks) => {
+      expect(
+        await validate(plainToInstance(DashboardQueryDTO, { weeks })),
+      ).not.toHaveLength(0);
+    },
+  );
+
+  it.each(['4.0', '8.5'])(
+    'UT-005 rejects a decimal weeks value: %s',
+    async (weeks) => {
+      expect(
+        await validate(plainToInstance(DashboardQueryDTO, { weeks })),
+      ).not.toHaveLength(0);
+    },
+  );
+
+  it('UT-006 rejects a repeated weeks parameter', async () => {
+    const dto = plainToInstance(DashboardQueryDTO, { weeks: ['4', '8'] });
+
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+});
 
 function buildDto(
   overrides: Record<string, unknown> = {},

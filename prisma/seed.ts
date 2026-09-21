@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { toProductType } from '../src/utils/product-type';
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -138,6 +140,7 @@ async function main() {
             name: product.name,
             price: product.price,
             stripeId: product.stripeId,
+            type: toProductType(product.type),
             productInfos: {
               create: product.productInfos.map((info) => ({
                 description: info.description,

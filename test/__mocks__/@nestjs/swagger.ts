@@ -3,6 +3,7 @@ export const ApiTags = () => () => {};
 export const ApiBearerAuth = () => () => {};
 export const ApiResponse = () => () => {};
 export const ApiOperation = () => () => {};
+export const ApiQuery = () => () => {};
 export const ApiBody = () => () => {};
 
 export class DocumentBuilder {

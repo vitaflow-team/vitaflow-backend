@@ -73,6 +73,7 @@ export class UserRepository {
       stripeSubscriptionId?: string | null;
       subscriptionStatus?: string | null;
       subscriptionCancelAt?: Date | null;
+      subscriptionCurrentPeriodEnd?: Date | null;
     },
   ): Promise<Users & { product: Product | null }> {
     return await this.prisma.users.update({
@@ -100,12 +101,38 @@ export class UserRepository {
 
   async getUserProfile(
     userId: string,
-  ): Promise<(Users & { userAddresses: UserAddress | null }) | null> {
+  ): Promise<
+    | (Users & { userAddresses: UserAddress | null; product: Product | null })
+    | null
+  > {
     return await this.prisma.users.findUnique({
       where: { id: userId },
       include: {
         userAddresses: true,
+        product: true,
       },
+    });
+  }
+
+  // Deletion is explicit because no relation in the schema cascades, and
+  // `Client.userId` is a plain column rather than a foreign key. One
+  // interactive transaction keeps it all-or-nothing: children first, the
+  // user last, so no statement ever hits a dangling reference.
+  async deleteAccount(userId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.measurementRecord.deleteMany({ where: { userId } });
+      await tx.usersToken.deleteMany({ where: { userID: userId } });
+      await tx.userAddress.deleteMany({ where: { userId } });
+      await tx.oAuthIdentity.deleteMany({ where: { userId } });
+      // Clients this user registered as a professional are their data.
+      await tx.client.deleteMany({ where: { professionalId: userId } });
+      // Clients registered by *other* professionals belong to them: keep
+      // the record and only drop the link to the user going away.
+      await tx.client.updateMany({
+        where: { userId },
+        data: { userId: null },
+      });
+      await tx.users.delete({ where: { id: userId } });
     });
   }
 

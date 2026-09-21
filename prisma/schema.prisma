@@ -45,6 +45,12 @@ model Users {
   subscriptionStatus   String?
   subscriptionCancelAt DateTime?
 
+  // End of the current billing period, so the app can answer "when does
+  // this renew?" without calling Stripe. Null means unknown — either no
+  // subscription, or a subscriber whose next Stripe event hasn't filled
+  // it in yet.
+  subscriptionCurrentPeriodEnd DateTime?
+
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   usersTokens        UsersToken[]
