@@ -61,6 +61,19 @@ export const productsMock = [
   },
 ] as Product[];
 
+// The Gratuito row every signup path now connects new users to: a USER
+// product priced at zero with no Stripe price id.
+export const freeProductMock = {
+  id: 'free-1',
+  name: 'Gratuito',
+  price: 0,
+  type: 'USER',
+  groupId: 'group-1',
+  stripeId: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+} as Product;
+
 export const ProductsRepositoryMock = {
   provide: ProductsRepository,
   useValue: {
@@ -78,6 +91,9 @@ export const ProductsRepositoryMock = {
         (product: Product) => product.stripeId === stripeId,
       );
       return Promise.resolve(product ?? null);
+    }),
+    findFreeProduct: jest.fn().mockImplementation(() => {
+      return Promise.resolve(freeProductMock);
     }),
   },
 };

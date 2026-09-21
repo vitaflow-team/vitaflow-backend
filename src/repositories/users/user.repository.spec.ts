@@ -38,6 +38,7 @@ describe('UserRepository Tests', () => {
                       stripeSubscriptionId: null,
                       subscriptionStatus: null,
                       subscriptionCancelAt: null,
+                      subscriptionCurrentPeriodEnd: null,
                       productId: null,
                       createdAt: new Date(),
                       updatedAt: new Date(),
@@ -146,6 +147,7 @@ describe('UserRepository Tests', () => {
       stripeSubscriptionId: null,
       subscriptionStatus: null,
       subscriptionCancelAt: null,
+      subscriptionCurrentPeriodEnd: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -299,6 +301,120 @@ describe('UserRepository Tests', () => {
 
       expect(newUser?.id).toEqual(userMock[0].id);
       expect(newUser?.name).toEqual(userMock[0].name);
+    });
+  });
+
+  // UT-001, UT-002, UT-003 — the deletion transaction. Built with its own
+  // Prisma double so the recorded call order is exactly this suite's.
+  describe('deleteAccount', () => {
+    let repository: UserRepository;
+    let calls: string[];
+    let tx: {
+      measurementRecord: { deleteMany: jest.Mock };
+      usersToken: { deleteMany: jest.Mock };
+      userAddress: { deleteMany: jest.Mock };
+      oAuthIdentity: { deleteMany: jest.Mock };
+      client: { deleteMany: jest.Mock; updateMany: jest.Mock };
+      users: { delete: jest.Mock };
+    };
+
+    const record = (name: string) =>
+      jest.fn().mockImplementation(() => {
+        calls.push(name);
+        return Promise.resolve({ count: 0 });
+      });
+
+    beforeEach(async () => {
+      calls = [];
+      tx = {
+        measurementRecord: {
+          deleteMany: record('measurementRecord.deleteMany'),
+        },
+        usersToken: { deleteMany: record('usersToken.deleteMany') },
+        userAddress: { deleteMany: record('userAddress.deleteMany') },
+        oAuthIdentity: { deleteMany: record('oAuthIdentity.deleteMany') },
+        client: {
+          deleteMany: record('client.deleteMany'),
+          updateMany: record('client.updateMany'),
+        },
+        users: { delete: record('users.delete') },
+      };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          UserRepository,
+          {
+            provide: PrismaService,
+            useValue: {
+              $transaction: jest
+                .fn()
+                .mockImplementation(
+                  async (callback: (client: typeof tx) => Promise<unknown>) =>
+                    await callback(tx),
+                ),
+            },
+          },
+        ],
+      }).compile();
+
+      repository = module.get<UserRepository>(UserRepository);
+    });
+
+    // UT-001
+    it('deletes every owned table inside one transaction, user last', async () => {
+      await repository.deleteAccount('u1');
+
+      expect(tx.measurementRecord.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
+      expect(tx.usersToken.deleteMany).toHaveBeenCalledWith({
+        where: { userID: 'u1' },
+      });
+      expect(tx.userAddress.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
+      expect(tx.oAuthIdentity.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
+      expect(tx.client.deleteMany).toHaveBeenCalledWith({
+        where: { professionalId: 'u1' },
+      });
+      expect(tx.users.delete).toHaveBeenCalledWith({ where: { id: 'u1' } });
+
+      expect(calls).toEqual([
+        'measurementRecord.deleteMany',
+        'usersToken.deleteMany',
+        'userAddress.deleteMany',
+        'oAuthIdentity.deleteMany',
+        'client.deleteMany',
+        'client.updateMany',
+        'users.delete',
+      ]);
+    });
+
+    // UT-002
+    it('propagates a failure from the final user delete', async () => {
+      const failure = new Error('delete failed');
+      tx.users.delete.mockRejectedValueOnce(failure);
+
+      await expect(repository.deleteAccount('u1')).rejects.toThrow(failure);
+
+      // Nothing past the failing statement ran, and the caller never sees a
+      // resolved promise it could mistake for success.
+      expect(calls).not.toContain('users.delete');
+    });
+
+    // UT-003
+    it('clears the user link on remaining clients before deleting the user', async () => {
+      await repository.deleteAccount('u1');
+
+      expect(tx.client.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+        data: { userId: null },
+      });
+      expect(calls.indexOf('client.updateMany')).toBeLessThan(
+        calls.indexOf('users.delete'),
+      );
     });
   });
 });

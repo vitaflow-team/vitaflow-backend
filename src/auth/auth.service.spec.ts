@@ -1,10 +1,12 @@
 import { AuditLogger } from '@/auth/audit-logger.service';
 import { MailService } from '@/mail/mail.service';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
+import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { OAuthIdentity } from '@prisma/client';
 import { AuthService } from './auth.service';
@@ -40,6 +42,17 @@ describe('AuthService.signInWithGoogle', () => {
     updatedAt: new Date(),
   } satisfies OAuthIdentity;
 
+  const freeProduct = {
+    id: 'free-1',
+    name: 'Gratuito',
+    price: 0,
+    type: 'USER' as const,
+    groupId: 'group-1',
+    stripeId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
   let googleAuth: { verify: jest.Mock };
   let identities: {
     findByProviderAccount: jest.Mock;
@@ -57,6 +70,7 @@ describe('AuthService.signInWithGoogle', () => {
   let uploadService: { getSignedUrl: jest.Mock };
   let mailService: { sendEmailPassword: jest.Mock };
   let auditLogger: { log: jest.Mock; warn: jest.Mock };
+  let products: { findFreeProduct: jest.Mock };
   let service: AuthService;
 
   beforeEach(() => {
@@ -79,6 +93,9 @@ describe('AuthService.signInWithGoogle', () => {
     };
     mailService = { sendEmailPassword: jest.fn().mockResolvedValue(undefined) };
     auditLogger = { log: jest.fn(), warn: jest.fn() };
+    products = {
+      findFreeProduct: jest.fn().mockResolvedValue(freeProduct),
+    };
     service = new AuthService(
       googleAuth as unknown as GoogleAuthService,
       identities as unknown as OAuthIdentityRepository,
@@ -88,6 +105,7 @@ describe('AuthService.signInWithGoogle', () => {
       uploadService as unknown as UploadService,
       mailService as unknown as MailService,
       auditLogger as unknown as AuditLogger,
+      products as unknown as ProductsRepository,
     );
   });
 
@@ -284,5 +302,46 @@ describe('AuthService.signInWithGoogle', () => {
     ]);
     expect(serialized).not.toContain(rawToken);
     expect(serialized).not.toContain('issued-jwt');
+  });
+
+  describe('free plan on Google creation', () => {
+    // UT-005
+    it('connects the free product before reading the created user back', async () => {
+      const order: string[] = [];
+      users.create.mockImplementation(() => {
+        order.push('create');
+        return Promise.resolve(activeUser);
+      });
+      users.findByIdWithProduct.mockImplementation(() => {
+        order.push('findByIdWithProduct');
+        return Promise.resolve(activeUser);
+      });
+
+      await service.signInWithGoogle('raw-id-token');
+
+      expect(users.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          product: { connect: { id: 'free-1' } },
+        }),
+      );
+      expect(order).toEqual(['create', 'findByIdWithProduct']);
+    });
+
+    // UT-006
+    it('fails with an AppError and creates no user when Gratuito is missing', async () => {
+      products.findFreeProduct.mockResolvedValue(null);
+      const logged = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      await expect(
+        service.signInWithGoogle('raw-id-token'),
+      ).rejects.toBeInstanceOf(AppError);
+
+      expect(users.create).not.toHaveBeenCalled();
+      expect(identities.create).not.toHaveBeenCalled();
+      expect(logged).toHaveBeenCalled();
+      logged.mockRestore();
+    });
   });
 });

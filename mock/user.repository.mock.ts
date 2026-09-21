@@ -58,6 +58,7 @@ export const userRepositoryMock = {
         stripeSubscriptionId: null,
         subscriptionStatus: null,
         subscriptionCancelAt: null,
+        subscriptionCurrentPeriodEnd: null,
         birthDate: new Date('1990-05-20'),
         phone: '999999999',
         createdAt: new Date(),
@@ -85,6 +86,7 @@ export const userRepositoryMock = {
       } as Users);
     }),
     updatePassword: jest.fn(),
+    deleteAccount: jest.fn().mockResolvedValue(undefined),
     findUnique: jest.fn().mockImplementation(({ id }) => {
       const user = userMock.filter((user) => {
         if (user.id === id) {

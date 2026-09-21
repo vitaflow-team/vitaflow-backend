@@ -1,5 +1,6 @@
 import { MailModule } from '@/mail/mail.module';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
@@ -33,6 +34,7 @@ import { PrismaService } from '@/database/prisma.service';
     PrismaService,
     UserRepository,
     OAuthIdentityRepository,
+    ProductsRepository,
     PasswordHash,
     UploadService,
     GoogleAuthService,

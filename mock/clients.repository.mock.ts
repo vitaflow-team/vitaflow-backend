@@ -95,6 +95,15 @@ export const ClientsRepositoryMock = {
       });
       return Promise.resolve(client);
     }),
+    countByProfessionalId: jest
+      .fn()
+      .mockImplementation((professionalId: string) => {
+        return Promise.resolve(
+          clientMock.filter(
+            (client) => client.professionalId === professionalId,
+          ).length,
+        );
+      }),
     setAllClientUser: jest.fn().mockImplementation(),
     delete: jest.fn().mockImplementation(),
   },

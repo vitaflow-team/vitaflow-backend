@@ -4,6 +4,7 @@ import { DualBucketThrottlerGuard } from '@/auth/dual-bucket-throttler.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { MailService } from '@/mail/mail.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
@@ -65,6 +66,7 @@ describe('Legacy authentication integration', () => {
         UserRepository,
         UserTokenRepository,
         ClientsRepository,
+        ProductsRepository,
         PasswordHash,
         SignInService,
         SignUpService,

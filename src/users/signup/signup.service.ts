@@ -1,18 +1,23 @@
 import { MailService } from '@/mail/mail.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { differenceInHours } from 'date-fns';
 import { ActiveDTO } from './activate.Dto';
 import { SignUpDTO } from './signup.Dto';
 
 @Injectable()
 export class SignUpService {
+  private readonly logger = new Logger(SignUpService.name);
+
   constructor(
     private user: UserRepository,
+
+    private products: ProductsRepository,
 
     private client: ClientsRepository,
 
@@ -46,6 +51,20 @@ export class SignUpService {
       );
     }
 
+    // Every account starts on Gratuito, so the plan is resolved before the
+    // user row exists: a catalog without it would otherwise leave a
+    // plan-less account, which is no longer a valid state.
+    const freeProduct = await this.products.findFreeProduct();
+    if (!freeProduct) {
+      this.logger.error(
+        'free_product_missing at=signup — no USER product priced at 0 without a Stripe price id',
+      );
+      throw new AppError(
+        'Não foi possível criar a conta: plano Gratuito indisponível.',
+        500,
+      );
+    }
+
     const hasPassword = await this.hash.generateHash(password);
 
     const userCreated = await this.user.create({
@@ -55,6 +74,7 @@ export class SignUpService {
       active: false,
       termsAcceptedAt: termsAccepted ? new Date() : null,
       healthDataConsentAt: healthDataConsent ? new Date() : null,
+      product: { connect: { id: freeProduct.id } },
     });
 
     const userTokenCreated = await this.userToken.create({
