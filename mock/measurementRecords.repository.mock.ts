@@ -31,6 +31,7 @@ export const MeasurementRecordsRepositoryMock = {
   useValue: {
     create: jest.fn(),
     findById: jest.fn(),
+    findLatestByUser: jest.fn(),
     findRecentByUser: jest.fn(),
     findByUserSince: jest.fn(),
     update: jest.fn(),

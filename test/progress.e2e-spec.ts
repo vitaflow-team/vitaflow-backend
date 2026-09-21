@@ -91,9 +91,16 @@ describe('Progress records integration', () => {
     weightKg: number,
     heightCm: number,
     recordedAt: Date,
+    createdAt?: Date,
   ) {
     return await prisma.measurementRecord.create({
-      data: { userId, weightKg, heightCm, recordedAt },
+      data: {
+        userId,
+        weightKg,
+        heightCm,
+        recordedAt,
+        ...(createdAt === undefined ? {} : { createdAt }),
+      },
     });
   }
 
@@ -333,6 +340,218 @@ describe('Progress records integration', () => {
     expect(dashboard.body.latest.id).toBe(second.body.id);
     expect(dashboard.body.weightVariationKg).toBe(-0.5);
     expect(dashboard.body.weightSeries).toHaveLength(2);
+  });
+
+  describe('latest record (prefill-last-weight)', () => {
+    const dayInMs = 86_400_000;
+
+    it('IT-001 returns the most recent record date, through creation and deletion', async () => {
+      const token = await tokenFor(owner);
+      const now = Date.now();
+      const oldest = await seedRecord(
+        owner.id,
+        63.4,
+        168,
+        new Date(now - 14 * dayInMs),
+        new Date(now - 14 * dayInMs),
+      );
+      const newest = await seedRecord(
+        owner.id,
+        62,
+        168,
+        new Date(now - dayInMs),
+        new Date(now - dayInMs),
+      );
+      await seedRecord(
+        owner.id,
+        70,
+        168,
+        new Date(now - 30 * dayInMs),
+        new Date(now),
+      );
+
+      const first = await request(app.getHttpServer())
+        .get('/progress-records/latest')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(first.body.latest).toEqual(
+        expect.objectContaining({
+          id: newest.id,
+          weightKg: 62,
+          heightCm: 168,
+          bmi: 22,
+          bmiClassification: 'PESO_NORMAL',
+        }),
+      );
+      expect(typeof first.body.latest.recordedAt).toBe('string');
+
+      const created = await request(app.getHttpServer())
+        .post('/progress-records')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ weightKg: 61.5, heightCm: 168 })
+        .expect(201);
+      const afterCreate = await request(app.getHttpServer())
+        .get('/progress-records/latest')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(afterCreate.body.latest.id).toBe(created.body.id);
+      expect(afterCreate.body.latest.weightKg).toBe(61.5);
+
+      await request(app.getHttpServer())
+        .delete(`/progress-records/${created.body.id as string}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(204);
+      const afterDelete = await request(app.getHttpServer())
+        .get('/progress-records/latest')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(afterDelete.body.latest.id).toBe(newest.id);
+      expect(afterDelete.body.latest.id).not.toBe(oldest.id);
+    });
+
+    it('IT-002 breaks a record date tie by the most recently created record', async () => {
+      const recordedAt = new Date('2026-09-15T12:00:00.000Z');
+      await seedRecord(
+        owner.id,
+        80,
+        168,
+        recordedAt,
+        new Date('2026-09-15T12:00:00.000Z'),
+      );
+      const createdLater = await seedRecord(
+        owner.id,
+        82.4,
+        168,
+        recordedAt,
+        new Date('2026-09-15T18:00:00.000Z'),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/progress-records/latest')
+        .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+        .expect(200);
+
+      expect(response.body.latest.id).toBe(createdLater.id);
+      expect(response.body.latest.weightKg).toBe(82.4);
+    });
+
+    it('IT-003 returns 200 with a null wrapper when the user has no records', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/progress-records/latest')
+        .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+        .expect(200);
+
+      expect(response.body).toEqual({ latest: null });
+      expect(response.text).toBe('{"latest":null}');
+    });
+
+    it('IT-004 never returns another user record, even a more recent one', async () => {
+      const now = Date.now();
+      const ownerRecord = await seedRecord(
+        owner.id,
+        62,
+        168,
+        new Date(now - 5 * dayInMs),
+        new Date(now - 5 * dayInMs),
+      );
+      const otherRecord = await seedRecord(
+        otherUser.id,
+        90,
+        180,
+        new Date(now),
+        new Date(now),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/progress-records/latest')
+        .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+        .expect(200);
+
+      expect(response.body.latest.id).toBe(ownerRecord.id);
+      expect(response.body.latest.weightKg).toBe(62);
+      expect(JSON.stringify(response.body)).not.toContain(otherRecord.id);
+    });
+
+    it('IT-005 rejects the route without Authorization before service access', async () => {
+      const getLatest = jest.spyOn(service, 'getLatest');
+      await seedRecord(owner.id, 62, 168, new Date());
+
+      const response = await request(app.getHttpServer())
+        .get('/progress-records/latest')
+        .expect(401);
+
+      expect(getLatest).not.toHaveBeenCalled();
+      expect(JSON.stringify(response.body)).not.toContain('weightKg');
+    });
+
+    it('IT-006 ignores a foreign id supplied in the query string', async () => {
+      const now = Date.now();
+      const ownerRecord = await seedRecord(
+        owner.id,
+        62,
+        168,
+        new Date(now - dayInMs),
+        new Date(now - dayInMs),
+      );
+      const otherRecord = await seedRecord(
+        otherUser.id,
+        90,
+        180,
+        new Date(now),
+        new Date(now),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get(
+          `/progress-records/latest?userId=${otherUser.id}&id=${otherRecord.id}`,
+        )
+        .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+        .expect(200);
+
+      expect(response.body.latest.id).toBe(ownerRecord.id);
+      expect(JSON.stringify(response.body)).not.toContain(otherRecord.id);
+    });
+
+    it('IT-007 keeps the dashboard, update and delete routes unchanged', async () => {
+      const token = await tokenFor(owner);
+      const record = await seedRecord(
+        owner.id,
+        62,
+        168,
+        new Date(Date.now() - dayInMs),
+      );
+
+      const dashboard = await request(app.getHttpServer())
+        .get('/progress-records/dashboard')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(dashboard.body.latest).toEqual(
+        expect.objectContaining({ id: record.id, weightKg: 62, bmi: 22 }),
+      );
+      expect(dashboard.body.history).toHaveLength(1);
+      expect(dashboard.body.period.weeks).toBe(8);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/progress-records/${record.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ weightKg: 61.4, heightCm: 168 })
+        .expect(200);
+      expect(updated.body).toEqual(
+        expect.objectContaining({
+          id: record.id,
+          weightKg: 61.4,
+          bmiClassification: 'PESO_NORMAL',
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .delete(`/progress-records/${record.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(204);
+      expect(
+        await prisma.measurementRecord.count({ where: { userId: owner.id } }),
+      ).toBe(0);
+    });
   });
 
   describe('Dashboard period (progress-dashboard-refresh)', () => {

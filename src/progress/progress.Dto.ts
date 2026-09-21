@@ -60,6 +60,10 @@ export interface MeasurementRecordResponseDTO {
   bmiClassification: BmiClassification;
 }
 
+export interface LatestRecordResponseDTO {
+  latest: MeasurementRecordResponseDTO | null;
+}
+
 export interface DashboardResponseDTO {
   latest: MeasurementRecordResponseDTO | null;
   weightVariationKg: number | null;

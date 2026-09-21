@@ -30,6 +30,7 @@ describe('ProgressService', () => {
   const repository = {
     create: jest.fn(),
     findById: jest.fn(),
+    findLatestByUser: jest.fn(),
     findRecentByUser: jest.fn(),
     findByUserSince: jest.fn(),
     update: jest.fn(),
@@ -317,5 +318,35 @@ describe('ProgressService', () => {
     expect(error.message).toBe('Registro não encontrado.');
     expect(error.getStatus()).toBe(404);
     expect(repository.update).not.toHaveBeenCalled();
+  });
+
+  describe('latest record', () => {
+    it('UT-003 returns the latest record wrapped with its derived fields', async () => {
+      const latest = record('record-1', 82.4, '2026-09-15T15:00:00.000Z');
+      repository.findLatestByUser.mockResolvedValue(latest);
+
+      const result = await service.getLatest('u1');
+
+      expect(repository.findLatestByUser).toHaveBeenCalledTimes(1);
+      expect(repository.findLatestByUser).toHaveBeenCalledWith('u1');
+      expect(result).toEqual({
+        latest: {
+          id: 'record-1',
+          weightKg: 82.4,
+          heightCm: 168,
+          waistCm: null,
+          hipCm: null,
+          recordedAt: '2026-09-15T15:00:00.000Z',
+          bmi: 29.2,
+          bmiClassification: 'SOBREPESO',
+        },
+      });
+    });
+
+    it('UT-004 returns the wrapper with null when there is no record', async () => {
+      repository.findLatestByUser.mockResolvedValue(null);
+
+      await expect(service.getLatest('u1')).resolves.toEqual({ latest: null });
+    });
   });
 });
