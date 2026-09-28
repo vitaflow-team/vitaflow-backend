@@ -40,6 +40,10 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-redundant-type-constituents": "off",
       "prettier/prettier": ["error", { endOfLine: "auto" }],
+      'max-lines-per-function': ['warn', 50],
+      'max-params': ['warn', 3],
+      'max-depth': ['warn', 2],
+      'max-nested-callbacks': ['warn', 2],
     },
   },
 );

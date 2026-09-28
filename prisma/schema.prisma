@@ -108,12 +108,24 @@ model Client {
   @@index([email])
 }
 
+enum TokenType {
+  ACTIVATION
+  RECOVERY
+}
+
+// The value sent to the user is never stored: only its hash is, so a
+// database read discloses no usable link. `id` is just the primary key.
 model UsersToken {
-  id        String   @id @default(uuid(7))
-  user      Users    @relation(fields: [userID], references: [id])
+  id        String    @id @default(uuid(7))
+  tokenHash String    @unique
+  type      TokenType
+  expiresAt DateTime
+  user      Users     @relation(fields: [userID], references: [id])
   userID    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userID, type])
 }
 
 model UserAddress {

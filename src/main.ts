@@ -1,30 +1,15 @@
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { validateEnv } from './config/validate-env';
+import { configureApp } from './config/configureApp';
+import { validateEnv } from './config/validateEnv';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Before the app exists: a missing or weak secret must stop the process
+  // before any module is instantiated or a port is opened.
   validateEnv();
-  app.useGlobalPipes(new ValidationPipe({ transform: true }));
-
-  const config = new DocumentBuilder()
-    .setTitle('Home Broker API example')
-    .setDescription('The Home Broker API description')
-    .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-      },
-      'jwt',
-    )
-    .build();
-
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('swagger/api', app, document);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  configureApp(app);
 
   await app.listen(process.env.PORT ?? 3333);
 }
