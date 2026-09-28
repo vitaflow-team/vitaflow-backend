@@ -1,6 +1,7 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { SyncSubscriptionDTO, UpdateSubscriptionDTO } from './subscription.Dto';
+import { SyncSubscriptionDTO } from './syncSubscription.Dto';
+import { UpdateSubscriptionDTO } from './updateSubscription.Dto';
 
 function buildUpdateDto(overrides: Record<string, unknown> = {}) {
   return plainToInstance(UpdateSubscriptionDTO, {

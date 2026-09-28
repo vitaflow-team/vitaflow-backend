@@ -1,6 +1,9 @@
+import { AuthGuard } from '@/auth/auth.guard';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { ProductsRepositoryMock } from 'mock/product.repository.mock';
+import { stripeVerificationMock } from 'mock/stripeVerification.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
 import { SubscriptionController } from './subscription.controller';
 import { SubscriptionService } from './subscription.service';
@@ -15,6 +18,7 @@ describe('SubscriptionController Tests', () => {
         userRepositoryMock,
         ProductsRepositoryMock,
         jwtServiceMock,
+        stripeVerificationMock,
         SubscriptionService,
       ],
     }).compile();
@@ -60,6 +64,20 @@ describe('SubscriptionController Tests', () => {
       expect(result.subscriptionStatus).toEqual('active');
     });
 
+    it('rejects a subscription Stripe does not know', async () => {
+      await expect(
+        controller.patchSubscription(
+          {
+            productId: '1',
+            stripeCustomerId: 'cus_123',
+            stripeSubscriptionId: 'sub_forged',
+            subscriptionStatus: 'active',
+          },
+          { user: { id: userMock[0].id } },
+        ),
+      ).rejects.toThrow('Assinatura inválida.');
+    });
+
     it('rejects an unknown productId', async () => {
       await expect(
         controller.patchSubscription(
@@ -75,42 +93,13 @@ describe('SubscriptionController Tests', () => {
     });
   });
 
-  describe('PATCH /users/subscription/sync (webhook)', () => {
-    it('resolves the Vita Flow product from the Stripe price id', async () => {
-      const result = await controller.syncSubscription({
-        stripeCustomerId: 'cus_unlinked',
-        userId: userMock[0].id,
-        stripePriceId: 'st_456',
-        stripeSubscriptionId: 'sub_456',
-        subscriptionStatus: 'active',
-        subscriptionCancelAt: null,
-      });
+  // standards-enforcement US-006: the class is guarded as a whole.
+  it('applies AuthGuard at the class level', () => {
+    const guards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      SubscriptionController,
+    ) as unknown[];
 
-      expect(result?.productId).toEqual('2');
-    });
-
-    it('restores the free product when the price is explicitly null (subscription ended)', async () => {
-      const result = await controller.syncSubscription({
-        stripeCustomerId: 'cus_unlinked',
-        userId: userMock[0].id,
-        stripePriceId: null,
-        stripeSubscriptionId: null,
-        subscriptionStatus: 'canceled',
-        subscriptionCancelAt: null,
-      });
-
-      expect(result?.productId).toEqual('free-1');
-    });
-
-    it('no-ops when neither the customer id nor the userId hint match a user', async () => {
-      const result = await controller.syncSubscription({
-        stripeCustomerId: 'cus_unknown',
-        stripePriceId: 'st_456',
-        subscriptionStatus: 'active',
-        subscriptionCancelAt: null,
-      });
-
-      expect(result).toBeNull();
-    });
+    expect(guards).toEqual([AuthGuard]);
   });
 });

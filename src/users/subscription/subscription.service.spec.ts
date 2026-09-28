@@ -1,5 +1,7 @@
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { AppError } from '@/utils/app.erro';
+import { StripeVerification } from '@/utils/stripeVerification';
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { SubscriptionService } from './subscription.service';
@@ -29,6 +31,7 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
     findByStripeId: jest.Mock;
     findFreeProduct: jest.Mock;
   };
+  let stripeVerification: { verifySubscriptionWithStripe: jest.Mock };
 
   /** The `data` object the service handed to `updateSubscription`. */
   const updateData = () =>
@@ -41,13 +44,23 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
       updateSubscription: jest.fn().mockResolvedValue(storedUser),
     };
     products = {
-      getProductById: jest
-        .fn()
-        .mockResolvedValue({ id: 'product-1', name: 'Plano Premium' }),
+      getProductById: jest.fn().mockResolvedValue({
+        id: 'product-1',
+        name: 'Plano Premium',
+        stripeId: 'price_premium',
+      }),
       findByStripeId: jest
         .fn()
         .mockResolvedValue({ id: 'product-1', name: 'Plano Premium' }),
       findFreeProduct: jest.fn().mockResolvedValue({ id: 'free-1' }),
+    };
+    stripeVerification = {
+      verifySubscriptionWithStripe: jest.fn().mockResolvedValue({
+        status: 'active',
+        priceId: 'price_premium',
+        customerId: 'cus_123',
+        belongsToUser: true,
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -55,6 +68,7 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
         SubscriptionService,
         { provide: UserRepository, useValue: users },
         { provide: ProductsRepository, useValue: products },
+        { provide: StripeVerification, useValue: stripeVerification },
       ],
     }).compile();
 
@@ -104,6 +118,120 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
       expect(result.subscriptionCurrentPeriodEnd).toEqual(
         storedUser.subscriptionCurrentPeriodEnd,
       );
+    });
+  });
+
+  describe('updateForUser — Stripe verification', () => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    // UT-005
+    it("persists Stripe's status and customer, never the caller's", async () => {
+      stripeVerification.verifySubscriptionWithStripe.mockResolvedValue({
+        status: 'incomplete',
+        priceId: 'price_premium',
+        customerId: 'cus_from_stripe',
+        belongsToUser: true,
+      });
+
+      await service.updateForUser('user-1', {
+        productId: 'product-1',
+        stripeCustomerId: 'cus_forged',
+        stripeSubscriptionId: 'sub_123',
+        subscriptionStatus: 'active',
+      });
+
+      expect(
+        stripeVerification.verifySubscriptionWithStripe,
+      ).toHaveBeenCalledWith('sub_123', 'user-1');
+      expect(updateData()).toMatchObject({
+        productId: 'product-1',
+        stripeSubscriptionId: 'sub_123',
+        stripeCustomerId: 'cus_from_stripe',
+        subscriptionStatus: 'incomplete',
+      });
+    });
+
+    // UT-006
+    it('rejects with 400 and writes nothing when the subscription belongs to another user', async () => {
+      stripeVerification.verifySubscriptionWithStripe.mockResolvedValue({
+        status: 'active',
+        priceId: 'price_premium',
+        customerId: 'cus_other',
+        belongsToUser: false,
+      });
+
+      const attempt = service.updateForUser('user-1', {
+        productId: 'product-1',
+        stripeCustomerId: 'cus_other',
+        stripeSubscriptionId: 'sub_someone_else',
+        subscriptionStatus: 'active',
+      });
+
+      await expect(attempt).rejects.toBeInstanceOf(AppError);
+      await expect(attempt).rejects.toMatchObject({ status: 400 });
+      expect(users.updateSubscription).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        'subscription_claim_rejected user=user-1',
+      );
+    });
+
+    // UT-007
+    it('rejects with 400 and writes nothing when Stripe cannot confirm the subscription', async () => {
+      stripeVerification.verifySubscriptionWithStripe.mockResolvedValue(null);
+
+      await expect(
+        service.updateForUser('user-1', {
+          productId: 'product-1',
+          stripeCustomerId: 'cus_123',
+          stripeSubscriptionId: 'sub_forged',
+          subscriptionStatus: 'active',
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(users.updateSubscription).not.toHaveBeenCalled();
+    });
+
+    it('rejects a real subscription used to claim a different paid plan', async () => {
+      products.getProductById.mockResolvedValue({
+        id: 'product-expensive',
+        name: 'Plano Profissional',
+        stripeId: 'price_expensive',
+      });
+
+      await expect(
+        service.updateForUser('user-1', {
+          productId: 'product-expensive',
+          stripeCustomerId: 'cus_123',
+          stripeSubscriptionId: 'sub_123',
+          subscriptionStatus: 'active',
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(users.updateSubscription).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown product before asking Stripe', async () => {
+      products.getProductById.mockResolvedValue(null);
+
+      await expect(
+        service.updateForUser('user-1', {
+          productId: 'missing',
+          stripeCustomerId: 'cus_123',
+          stripeSubscriptionId: 'sub_123',
+          subscriptionStatus: 'active',
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(
+        stripeVerification.verifySubscriptionWithStripe,
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -333,6 +461,98 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
 
       expect(updateData().productId).toBe(storedUser.productId);
       expect(products.findFreeProduct).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncFromWebhook — relink guard (UT-008, ADR-003)', () => {
+    const newCustomerDto = {
+      stripeCustomerId: 'cus_new',
+      stripePriceId: 'price_123',
+      stripeSubscriptionId: 'sub_new',
+      subscriptionStatus: 'active',
+      userId: 'user-1',
+    };
+
+    beforeEach(() => {
+      // No user owns the incoming customer id yet, so the userId hint is used.
+      users.findByStripeCustomerId.mockResolvedValue(null);
+    });
+
+    it('refuses to relink a user who already has a different customer id', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      users.findUnique.mockResolvedValue({
+        ...storedUser,
+        stripeCustomerId: 'cus_existing',
+      });
+
+      const result = await service.syncFromWebhook(newCustomerDto);
+
+      expect(result).toBeNull();
+      expect(users.findUnique).toHaveBeenCalledWith({ id: 'user-1' });
+      expect(users.updateSubscription).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'subscription_sync_relink_rejected user=user-1',
+        ),
+      );
+      // Ids only: neither customer id is written to the log.
+      expect(String(warn.mock.calls[0][0])).not.toContain('cus_');
+      warn.mockRestore();
+    });
+
+    it('links a brand-new customer id to a user with none yet', async () => {
+      users.findUnique.mockResolvedValue({
+        ...storedUser,
+        stripeCustomerId: null,
+      });
+
+      await service.syncFromWebhook(newCustomerDto);
+
+      expect(users.updateSubscription).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ stripeCustomerId: 'cus_new' }),
+      );
+    });
+
+    it('treats a hint for a user already holding this same customer id as a normal sync', async () => {
+      users.findUnique.mockResolvedValue({
+        ...storedUser,
+        stripeCustomerId: 'cus_new',
+      });
+
+      await service.syncFromWebhook(newCustomerDto);
+
+      expect(users.updateSubscription).toHaveBeenCalledTimes(1);
+    });
+
+    it('is a no-op, not an error, for a retried delivery of an already-linked pair (EC-1)', async () => {
+      users.findByStripeCustomerId.mockResolvedValue(storedUser);
+
+      await expect(
+        service.syncFromWebhook({
+          ...newCustomerDto,
+          stripeCustomerId: 'cus_123',
+        }),
+      ).resolves.not.toBeNull();
+      await service.syncFromWebhook({
+        ...newCustomerDto,
+        stripeCustomerId: 'cus_123',
+      });
+
+      expect(users.findUnique).not.toHaveBeenCalled();
+      expect(users.updateSubscription.mock.calls[0]).toEqual(
+        users.updateSubscription.mock.calls[1],
+      );
+    });
+
+    it('still skips quietly when neither the customer nor the hinted user exists', async () => {
+      users.findUnique.mockResolvedValue(null);
+
+      await expect(service.syncFromWebhook(newCustomerDto)).resolves.toBeNull();
+      await expect(
+        service.syncFromWebhook({ ...newCustomerDto, userId: undefined }),
+      ).resolves.toBeNull();
+      expect(users.updateSubscription).not.toHaveBeenCalled();
     });
   });
 });
