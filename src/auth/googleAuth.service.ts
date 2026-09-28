@@ -1,13 +1,7 @@
 import { AppError } from '@/utils/app.erro';
 import { Injectable, Logger } from '@nestjs/common';
 import { LoginTicket, OAuth2Client } from 'google-auth-library';
-
-export interface GoogleVerifiedIdentity {
-  sub: string;
-  email: string;
-  name?: string;
-  picture?: string;
-}
+import { GoogleVerifiedIdentity } from './types/googleVerifiedIdentity';
 
 const GOOGLE_AUTH_FAILURE = 'Falha ao entrar com Google.';
 const GOOGLE_ISSUERS = new Set([

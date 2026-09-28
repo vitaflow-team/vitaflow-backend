@@ -1,5 +1,6 @@
 import { ProductType } from '@prisma/client';
-import { toProductType } from './product-type';
+import { AppError } from './app.erro';
+import { toProductType } from './productType';
 
 describe('toProductType', () => {
   it.each([
@@ -16,5 +17,18 @@ describe('toProductType', () => {
     ['', '""'],
   ])('UT-034 rejects invalid product type %j', (value, expectedInMessage) => {
     expect(() => toProductType(value)).toThrow(expectedInMessage);
+  });
+
+  // standards-enforcement UT-002
+  it('throws an AppError with status 400, not a raw Error', () => {
+    let caught: unknown;
+    try {
+      toProductType('ADMIN');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).getStatus()).toBe(400);
   });
 });

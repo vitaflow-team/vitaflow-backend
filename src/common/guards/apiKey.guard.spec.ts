@@ -1,7 +1,13 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ApiKeyGuard } from './api-key.guard';
+import { timingSafeEqual } from 'crypto';
+import { ApiKeyGuard, secretsMatch } from './apiKey.guard';
+
+jest.mock('crypto', () => {
+  const actual = jest.requireActual<typeof import('crypto')>('crypto');
+  return { ...actual, timingSafeEqual: jest.fn(actual.timingSafeEqual) };
+});
 
 describe('ApiKeyGuard', () => {
   let guard: ApiKeyGuard;
@@ -79,5 +85,43 @@ describe('ApiKeyGuard', () => {
     expect(() => guard.canActivate(context)).toThrow(
       new ForbiddenException('Server misconfiguration: missing secret'),
     );
+  });
+
+  it('should throw ForbiddenException for a repeated (array) header', () => {
+    mockConfigService.get.mockReturnValue('my-secret');
+    const context = createMockExecutionContext({
+      'x-application-secret': ['my-secret', 'my-secret'],
+    });
+
+    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
+});
+
+describe('secretsMatch (US-005)', () => {
+  const realSecret = 'real-application-secret';
+
+  it('UT-006 matches the real secret and rejects a value one character off', () => {
+    expect(secretsMatch(realSecret, realSecret)).toBe(true);
+    expect(secretsMatch('real-application-secreT', realSecret)).toBe(false);
+  });
+
+  it('UT-006 compares with timingSafeEqual over equal-length buffers, even for a shorter value', () => {
+    const compare = timingSafeEqual as jest.MockedFunction<
+      typeof timingSafeEqual
+    >;
+    compare.mockClear();
+
+    expect(secretsMatch('short', realSecret)).toBe(false);
+
+    expect(compare).toHaveBeenCalledTimes(1);
+    const [provided, expected] = compare.mock.calls[0] as [Buffer, Buffer];
+    expect(provided.length).toBe(expected.length);
+  });
+
+  it('UT-007 rejects a non-string header value without throwing', () => {
+    expect(() => secretsMatch(['a', 'b'], realSecret)).not.toThrow();
+    expect(secretsMatch(['a', 'b'], realSecret)).toBe(false);
+    expect(secretsMatch([realSecret], realSecret)).toBe(false);
+    expect(secretsMatch(undefined, realSecret)).toBe(false);
   });
 });

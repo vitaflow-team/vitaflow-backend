@@ -1,9 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-
-export type AuditEvent = Record<string, string> & {
-  event: string;
-  timestamp: string;
-};
+import { AuditEvent } from './types/auditEvent';
 
 @Injectable()
 export class AuditLogger {

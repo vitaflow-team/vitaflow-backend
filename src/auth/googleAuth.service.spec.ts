@@ -1,6 +1,6 @@
 import { AppError } from '@/utils/app.erro';
 import { OAuth2Client } from 'google-auth-library';
-import { GoogleAuthService } from './google-auth.service';
+import { GoogleAuthService } from './googleAuth.service';
 
 describe('GoogleAuthService.verify', () => {
   const originalClientId = process.env.GOOGLE_CLIENT_ID;

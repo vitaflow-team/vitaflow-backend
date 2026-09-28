@@ -1,4 +1,5 @@
 import { ProductType } from '@prisma/client';
+import { AppError } from './app.erro';
 
 export function toProductType(value: string): ProductType {
   switch (value) {
@@ -9,6 +10,6 @@ export function toProductType(value: string): ProductType {
     case ProductType.PHYSICAL_EDUCATOR:
       return ProductType.PHYSICAL_EDUCATOR;
     default:
-      throw new Error(`Unknown product type: ${JSON.stringify(value)}`);
+      throw new AppError(`Unknown product type: ${JSON.stringify(value)}`, 400);
   }
 }

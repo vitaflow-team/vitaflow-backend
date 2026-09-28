@@ -5,7 +5,7 @@ import {
   ThrottlerStorage,
   ThrottlerStorageRecord,
 } from '@nestjs/throttler';
-import { DualBucketThrottlerGuard } from './dual-bucket-throttler.guard';
+import { DualBucketThrottlerGuard } from './dualBucketThrottler.guard';
 
 class TestGuard extends DualBucketThrottlerGuard {
   tracker(req: Record<string, unknown>) {

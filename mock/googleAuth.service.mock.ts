@@ -1,4 +1,4 @@
-import { GoogleAuthService } from '@/auth/google-auth.service';
+import { GoogleAuthService } from '@/auth/googleAuth.service';
 
 export const googleAuthServiceMock = {
   provide: GoogleAuthService,
