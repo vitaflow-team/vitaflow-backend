@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
+import { avatarFile, JPEG_BYTES, PNG_BYTES } from 'mock/imageFile.mock';
+import { AppError } from './app.erro';
 import { UploadService } from './upload.service';
 
 const mockDateNow = 1700000000000;
@@ -88,19 +90,13 @@ describe('UploadService', () => {
   });
 
   describe('uploadImage', () => {
-    const mockFile: Express.Multer.File = {
-      fieldname: 'avatar',
+    const mockFile = avatarFile({
       originalname: 'test.jpg',
-      encoding: '7bit',
       mimetype: 'image/jpeg',
-      size: 1024,
-      stream: null as any,
-      destination: '',
-      filename: '',
-      path: '',
-      buffer: Buffer.from('test buffer'),
-    };
-    const expectedFilename = `${mockDateNow}-${mockFile.originalname}`;
+      buffer: JPEG_BYTES,
+    });
+    const GENERATED_NAME =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}.jpg$/;
 
     beforeEach(() => {
       mockCreateWriteStream.mockClear();
@@ -109,7 +105,8 @@ describe('UploadService', () => {
     it('should upload the file and return the GCS URL', async () => {
       const url = await service.uploadImage(mockFile);
 
-      expect(mockBucketFile).toHaveBeenCalledWith(expectedFilename);
+      const objectName = mockBucketFile.mock.calls[0][0];
+      expect(objectName).toMatch(GENERATED_NAME);
 
       expect(mockCreateWriteStream).toHaveBeenCalledWith({
         resumable: false,
@@ -119,8 +116,52 @@ describe('UploadService', () => {
       expect(mockWriteStream.end).toHaveBeenCalledWith(mockFile.buffer);
 
       expect(url).toBe(
-        `https://storage.googleapis.com/test-bucket/${expectedFilename}`,
+        `https://storage.googleapis.com/test-bucket/${objectName}`,
       );
+    });
+
+    // UT-007
+    it('never derives the object name from the client file name', async () => {
+      const hostile = avatarFile({
+        originalname: '../../other-bucket/evil name.png',
+        mimetype: 'image/png',
+      });
+
+      const first = await service.uploadImage(hostile);
+      const second = await service.uploadImage(hostile);
+
+      const names = mockBucketFile.mock.calls.map(([name]) => name);
+      for (const name of names) {
+        expect(name).toMatch(/^[0-9a-f-]{36}.png$/);
+        expect(name).not.toContain('..');
+        expect(name).not.toContain('/');
+        expect(name).not.toContain('evil');
+      }
+      expect(names[0]).not.toBe(names[1]);
+      expect(first).not.toBe(second);
+    });
+
+    it('stores the content type detected from the bytes, not the declared one', async () => {
+      await service.uploadImage(
+        avatarFile({ mimetype: 'image/jpeg', buffer: PNG_BYTES }),
+      );
+
+      expect(mockBucketFile.mock.calls[0][0]).toMatch(/.png$/);
+      expect(mockCreateWriteStream).toHaveBeenCalledWith({
+        resumable: false,
+        contentType: 'image/png',
+      });
+    });
+
+    it('refuses content that is not a supported image, before touching storage', async () => {
+      const error: unknown = await service
+        .uploadImage(avatarFile({ buffer: Buffer.from('not an image') }))
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(AppError);
+      expect((error as AppError).getStatus()).toBe(400);
+
+      expect(mockBucketFile).not.toHaveBeenCalled();
     });
 
     it('should reject the promise if stream emits an error', async () => {

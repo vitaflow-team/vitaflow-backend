@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
 import { PasswordHash } from './password.hash';
 
+const actualBcrypt = jest.requireActual<typeof bcrypt>('bcrypt');
+
 jest.mock('bcrypt');
 
 describe('PasswordHash  Tests', () => {
@@ -23,8 +25,19 @@ describe('PasswordHash  Tests', () => {
 
     const result = await passwordHash.generateHash(payload);
 
-    expect(bcrypt.hash).toHaveBeenCalledWith(payload, 8);
+    expect(bcrypt.hash).toHaveBeenCalledWith(payload, 12);
     expect(result).toBe(hashed);
+  });
+
+  it('UT-004 produces a hash whose cost factor, read back from it, is 12', async () => {
+    (bcrypt.hash as jest.Mock).mockImplementation(actualBcrypt.hash);
+
+    const hashed = await passwordHash.generateHash('StrongPass123');
+
+    expect(actualBcrypt.getRounds(hashed)).toBe(12);
+    await expect(actualBcrypt.compare('StrongPass123', hashed)).resolves.toBe(
+      true,
+    );
   });
 
   it('Validates that the hash is correct', async () => {
