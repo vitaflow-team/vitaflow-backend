@@ -1,6 +1,7 @@
-import { DualBucketThrottlerGuard } from '@/auth/dual-bucket-throttler.guard';
+import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AccountResponseDTO } from './accountResponse.Dto';
 import { ActiveDTO } from './activate.Dto';
 import { SignUpDTO } from './signup.Dto';
 import { SignUpService } from './signup.service';
@@ -8,7 +9,7 @@ import { SignUpService } from './signup.service';
 @ApiTags('User')
 @Controller('users')
 export class SignUpController {
-  constructor(private service: SignUpService) {}
+  constructor(private readonly service: SignUpService) {}
 
   @ApiOperation({
     summary: 'Creates a new user account',
@@ -18,23 +19,18 @@ export class SignUpController {
   @ApiResponse({
     status: 201,
     description: 'User created successfully.',
-    example: {
-      id: 'cuid-user-456',
-      name: 'John Doe',
-      email: 'johndoe@example.com',
-      avatar: 'https://example.com/avatar.jpg',
-      active: false,
-      createdAt: '2025-02-25T01:25:13.248Z',
-      updatedAt: '2025-02-25T01:25:13.248Z',
-    },
+    type: AccountResponseDTO,
   })
   @ApiResponse({
     status: 400,
-    description: 'Este e-mail já está sendo usado por outro usuário.',
+    description:
+      'Invalid input, password mismatch, or e-mail already in use by another user.',
   })
+  @ApiResponse({ status: 429, description: 'Too many requests.' })
+  @ApiResponse({ status: 500, description: 'Free plan unavailable.' })
   @Post('signup')
   @UseGuards(DualBucketThrottlerGuard)
-  async postNewUser(@Body() body: SignUpDTO) {
+  async postNewUser(@Body() body: SignUpDTO): Promise<AccountResponseDTO> {
     return await this.service.postNewUser(body);
   }
 
@@ -44,13 +40,19 @@ export class SignUpController {
   @ApiResponse({
     status: 201,
     description: 'User account activated.',
+    type: AccountResponseDTO,
   })
   @ApiResponse({
     status: 400,
     description: 'Invalid or expired token.',
   })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests.',
+  })
   @Post('/activate')
-  async activateNewUser(@Body() body: ActiveDTO) {
+  @UseGuards(DualBucketThrottlerGuard)
+  async activateNewUser(@Body() body: ActiveDTO): Promise<AccountResponseDTO> {
     return await this.service.activateNewUser(body);
   }
 }

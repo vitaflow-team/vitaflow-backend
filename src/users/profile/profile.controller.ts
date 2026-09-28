@@ -1,4 +1,5 @@
 import { AuthGuard } from '@/auth/auth.guard';
+import type { AuthenticatedRequest } from '@/common/types/authenticatedRequest';
 import {
   Body,
   Controller,
@@ -18,15 +19,18 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { AVATAR_UPLOAD_OPTIONS } from './avatarUpload';
 import { ProfileDTO } from './profile.Dto';
+import { ProfileResponseDTO } from './profileResponse.Dto';
 import { ProfileService } from './profile.service';
+import { ProfileUpdateResponseDTO } from './profileUpdateResponse.Dto';
 
 @ApiTags('User')
 @Controller('profile')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard)
 export class ProfileController {
-  constructor(private service: ProfileService) {}
+  constructor(private readonly service: ProfileService) {}
 
   @ApiOperation({
     summary: 'Update User Profile',
@@ -35,6 +39,7 @@ export class ProfileController {
   @ApiResponse({
     status: 201,
     description: 'User profile updated successfully.',
+    type: ProfileUpdateResponseDTO,
   })
   @ApiResponse({
     status: 400,
@@ -44,13 +49,21 @@ export class ProfileController {
     status: 401,
     description: 'Unauthorized access.',
   })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found.',
+  })
+  @ApiResponse({
+    status: 413,
+    description: 'Avatar larger than 2 MB.',
+  })
   @Post()
-  @UseInterceptors(FileInterceptor('avatar'))
+  @UseInterceptors(FileInterceptor('avatar', AVATAR_UPLOAD_OPTIONS))
   async postProfile(
     @UploadedFile() avatar: Express.Multer.File,
     @Body() body: ProfileDTO,
-    @Request() req: { user: { id: string } },
-  ) {
+    @Request() req: AuthenticatedRequest,
+  ): Promise<ProfileUpdateResponseDTO> {
     return await this.service.postProfile(avatar, body, req.user.id);
   }
 
@@ -60,19 +73,21 @@ export class ProfileController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Profile update successfully.',
-    type: ProfileDTO,
+    description: 'Profile successfully retrieved.',
+    type: ProfileResponseDTO,
   })
   @ApiResponse({
     status: 401,
     description: 'Unauthorized user.',
   })
   @ApiResponse({
-    status: 402,
+    status: 404,
     description: 'User not found.',
   })
   @Get()
-  async getProfile(@Request() req: { user: { id: string } }) {
+  async getProfile(
+    @Request() req: AuthenticatedRequest,
+  ): Promise<ProfileResponseDTO> {
     return await this.service.getProfile(req.user.id);
   }
 
@@ -91,9 +106,13 @@ export class ProfileController {
     status: 401,
     description: 'Unauthorized user.',
   })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found.',
+  })
   @Delete()
   @HttpCode(204)
-  async deleteProfile(@Request() req: { user: { id: string } }) {
+  async deleteProfile(@Request() req: AuthenticatedRequest): Promise<void> {
     await this.service.deleteProfile(req.user.id);
   }
 }

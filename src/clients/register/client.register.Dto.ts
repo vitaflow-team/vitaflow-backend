@@ -1,14 +1,25 @@
+import { NormalizeEmail } from '@/utils/normalizeEmail';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDate,
+  IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxDate,
 } from 'class-validator';
 
 export class ClientRegisterDTO {
+  @ApiProperty({
+    description:
+      'Id of an existing client to update. Omit it to create a new client.',
+    example: '01890a5d-ac96-774b-bcce-b302099a8057',
+    required: false,
+  })
+  @IsOptional()
+  @IsUUID()
   id?: string;
 
   @ApiProperty({
@@ -31,7 +42,9 @@ export class ClientRegisterDTO {
     description: 'Client email address.',
     example: 'johndoe@example.com',
   })
+  @NormalizeEmail()
   @IsNotEmpty({ message: 'Email is mandatory.' })
+  @IsEmail({}, { message: 'Email must be a valid email address.' })
   email: string;
 
   @ApiProperty({

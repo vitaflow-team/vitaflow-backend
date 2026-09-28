@@ -1,8 +1,13 @@
+import { NormalizeEmail } from '@/utils/normalizeEmail';
+import { PASSWORD_MAX_BYTES } from '@/utils/password.hash';
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  IsByteLength,
   Equals,
   IsBoolean,
+  IsEmail,
   IsNotEmpty,
+  IsString,
   Matches,
   MinLength,
 } from 'class-validator';
@@ -12,6 +17,7 @@ export class SignUpDTO {
     description: 'Full name of the user',
     example: 'John Doe',
   })
+  @IsString()
   @IsNotEmpty({ message: 'Name is mandatory.' })
   name: string;
 
@@ -19,14 +25,20 @@ export class SignUpDTO {
     description: 'User email address (must be unique and used for login).',
     example: 'johndoe@example.com',
   })
+  @NormalizeEmail()
   @IsNotEmpty({ message: 'Email is mandatory.' })
+  @IsEmail({}, { message: 'Email must be a valid email address.' })
   email: string;
 
   @ApiProperty({
     description: 'User password used for authentication.',
     example: 'StrongPass123',
   })
+  @IsString()
   @IsNotEmpty({ message: 'Password is mandatory.' })
+  @IsByteLength(0, PASSWORD_MAX_BYTES, {
+    message: `The password must be at most ${PASSWORD_MAX_BYTES} bytes long.`,
+  })
   @MinLength(8, { message: 'The password must be at least 8 characters long.' })
   @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, {
     message:
@@ -38,7 +50,11 @@ export class SignUpDTO {
     description: 'Password confirmation (must match the password field).',
     example: 'StrongPass123',
   })
+  @IsString()
   @IsNotEmpty({ message: 'Confirm password is required.' })
+  @IsByteLength(0, PASSWORD_MAX_BYTES, {
+    message: `The confirm password must be at most ${PASSWORD_MAX_BYTES} bytes long.`,
+  })
   @MinLength(8, {
     message: 'The confirm password must be at least 8 characters long.',
   })

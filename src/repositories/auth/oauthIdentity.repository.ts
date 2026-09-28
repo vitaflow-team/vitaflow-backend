@@ -4,7 +4,7 @@ import { OAuthIdentity } from '@prisma/client';
 
 @Injectable()
 export class OAuthIdentityRepository {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async findByProviderAccount(
     provider: string,

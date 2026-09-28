@@ -1,10 +1,20 @@
-import { AuditLogger } from '@/auth/audit-logger.service';
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
 import { JwtService } from '@nestjs/jwt';
+import { getRounds } from 'bcrypt';
 import { SignInService } from './signin.service';
+
+function rejectionOf(promise: Promise<unknown>): Promise<AppError> {
+  return promise.then(
+    () => {
+      throw new Error('Expected the sign-in to be rejected.');
+    },
+    (caught: unknown) => caught as AppError,
+  );
+}
 
 describe('SignInService', () => {
   const activeUser = {
@@ -91,14 +101,47 @@ describe('SignInService', () => {
 
   it('UT-029 rejects an inactive account even with the correct password', async () => {
     users.findByEmail.mockResolvedValue({ ...activeUser, active: false });
+    passwordHash.compareHash.mockResolvedValue(true);
 
-    const error = await service
-      .postSignIn({ email: activeUser.email, password: 'correct-password' })
-      .catch((caught: AppError) => caught);
+    const error = await rejectionOf(
+      service.postSignIn({
+        email: activeUser.email,
+        password: 'correct-password',
+      }),
+    );
 
     expect(error).toBeInstanceOf(AppError);
     expect(error.getStatus()).toBe(401);
-    expect(passwordHash.compareHash).not.toHaveBeenCalled();
+    expect(error.message).toBe('Usuário não autorizado. Conta inativa.');
+  });
+
+  it('US-004 EC-1 answers an inactive account with a wrong password like any bad credential', async () => {
+    users.findByEmail.mockResolvedValue({ ...activeUser, active: false });
+    passwordHash.compareHash.mockResolvedValue(false);
+
+    const error = await rejectionOf(
+      service.postSignIn({ email: activeUser.email, password: 'wrong' }),
+    );
+
+    expect(error.getStatus()).toBe(401);
+    expect(error.message).toBe('Usuário não autorizado.');
+  });
+
+  it('US-004 AC-2 runs a cost-12 bcrypt comparison when the account does not exist', async () => {
+    users.findByEmail.mockResolvedValue(null);
+    passwordHash.compareHash.mockResolvedValue(false);
+
+    await expect(
+      service.postSignIn({ email: 'unknown@example.com', password: 'guess' }),
+    ).rejects.toBeInstanceOf(AppError);
+
+    expect(passwordHash.compareHash).toHaveBeenCalledTimes(1);
+    const [payload, dummyHash] = passwordHash.compareHash.mock.calls[0] as [
+      string,
+      string,
+    ];
+    expect(payload).toBe('guess');
+    expect(getRounds(dummyHash)).toBe(12);
   });
 
   it('UT-044 logs a structured password failure without the password', async () => {

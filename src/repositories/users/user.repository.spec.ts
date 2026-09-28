@@ -46,6 +46,7 @@ describe('UserRepository Tests', () => {
                   },
                 ),
               update: jest.fn(),
+              findFirst: jest.fn(),
               findUnique: jest.fn().mockImplementation(({ where }) => {
                 const user = userMock.filter((user) => {
                   if (user.id === where.id) {
@@ -152,13 +153,26 @@ describe('UserRepository Tests', () => {
       updatedAt: new Date(),
     };
 
-    (prismaService.users.findUnique as jest.Mock).mockResolvedValue(userData);
+    (prismaService.users.findFirst as jest.Mock).mockResolvedValue(userData);
 
-    const user = await userRepository.findByEmail({
-      email: 'jonhdoe@jonhdoe.com',
-    });
+    const user = await userRepository.findByEmail('jonhdoe@jonhdoe.com');
 
     expect(user?.id).toEqual(userData.id);
+  });
+
+  it('looks up the email case-insensitively with LIKE wildcards escaped', async () => {
+    (prismaService.users.findFirst as jest.Mock).mockResolvedValue(null);
+
+    await userRepository.findByEmail('a_b%c@example.com');
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(prismaService.users.findFirst).toHaveBeenCalledWith({
+      where: {
+        email: { equals: 'a\\_b\\%c@example.com', mode: 'insensitive' },
+      },
+      include: { product: true },
+      orderBy: { createdAt: 'asc' },
+    });
   });
 
   it('should return user by ID', async () => {
@@ -174,11 +188,9 @@ describe('UserRepository Tests', () => {
   });
 
   it('should return null when user is not found', async () => {
-    (prismaService.users.findUnique as jest.Mock).mockResolvedValue(null);
+    (prismaService.users.findFirst as jest.Mock).mockResolvedValue(null);
 
-    const user = await userRepository.findByEmail({
-      email: 'notexists@jonhdoe.com',
-    });
+    const user = await userRepository.findByEmail('notexists@jonhdoe.com');
 
     expect(user).toBeNull();
   });

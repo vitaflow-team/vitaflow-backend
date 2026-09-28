@@ -1,4 +1,4 @@
-import { AuditLogger } from '@/auth/audit-logger.service';
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { PrismaService } from '@/database/prisma.service';
 import { AppError } from '@/utils/app.erro';
 import { Test, TestingModule } from '@nestjs/testing';

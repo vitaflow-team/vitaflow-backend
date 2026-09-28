@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDate,
+  IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -18,6 +19,19 @@ export class ProfileDTO {
   @IsString()
   @IsNotEmpty({ message: 'name is mandatory.' })
   name: string;
+
+  // The profile form resends the account email with every save. It is
+  // declared so whitelisting accepts it, but the email is not editable here:
+  // ProfileService never writes it.
+  @ApiProperty({
+    description:
+      'Account email, echoed by the profile form. Ignored on update.',
+    example: 'johndoe@example.com',
+    required: false,
+  })
+  @IsOptional()
+  @IsEmail({}, { message: 'Email must be a valid email address.' })
+  email?: string;
 
   @ApiProperty({
     description: 'Phone number including area code.',

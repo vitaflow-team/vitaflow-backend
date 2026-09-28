@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
+import { avatarFile } from 'mock/imageFile.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
@@ -133,21 +134,20 @@ describe('ProfileController Tests', () => {
     };
 
     // Mocking getUserProfile for this specific test to return a user with an existing avatar
-    const userWithAvatar = { ...userMock[0], avatar: 'old-avatar.jpg' };
+    const oldAvatar =
+      'https://storage.googleapis.com/test-bucket/old-avatar.jpg';
+    const userWithAvatar = { ...userMock[0], avatar: oldAvatar };
     jest
       .spyOn(userRepositoryMock.useValue, 'getUserProfile')
       .mockResolvedValueOnce(userWithAvatar as any);
 
-    const mockAvatarFile = {
-      fieldname: 'avatar',
-      originalname: 'new-avatar.jpg',
-    } as any;
+    const mockAvatarFile = avatarFile({ originalname: 'new-avatar.png' });
 
     await profileController.postProfile(mockAvatarFile, body, req);
 
     expect(uploadServiceMock.useValue.uploadImage).toHaveBeenCalled();
     expect(uploadServiceMock.useValue.deleteImage).toHaveBeenCalledWith(
-      'old-avatar.jpg',
+      oldAvatar,
     );
   });
 

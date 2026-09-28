@@ -1,4 +1,5 @@
 import { AuthGuard } from '@/auth/auth.guard';
+import type { AuthenticatedRequest } from '@/common/types/authenticatedRequest';
 import {
   Body,
   Controller,
@@ -25,7 +26,7 @@ import { ClientRegisterService } from './client.register.service';
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard)
 export class ClientRegisterController {
-  constructor(private service: ClientRegisterService) {}
+  constructor(private readonly service: ClientRegisterService) {}
 
   @ApiOperation({
     summary: 'Get Clients',
@@ -41,18 +42,21 @@ export class ClientRegisterController {
     description: 'Unauthorized access.',
   })
   @Get()
-  async getClients(@Request() req: { user: { id: string } }) {
+  async getClients(
+    @Request() req: AuthenticatedRequest,
+  ): Promise<ClientEntity[]> {
     return await this.service.getClients(req.user.id);
   }
 
   @ApiOperation({
     summary: 'Get Client by ID',
-    description: 'Get client by ID.',
+    description:
+      'Get client by ID. The body is empty when no client has that id.',
   })
   @ApiResponse({
     status: 200,
     description: 'Client successfully retrieved.',
-    type: ClientEntity || null,
+    type: ClientEntity,
   })
   @ApiResponse({
     status: 401,
@@ -61,8 +65,8 @@ export class ClientRegisterController {
   @Get(':id')
   async getClientById(
     @Param('id') id: string,
-    @Request() req: { user: { id: string } },
-  ) {
+    @Request() req: AuthenticatedRequest,
+  ): Promise<ClientEntity | null> {
     return await this.service.getClientById(id, req.user.id);
   }
 
@@ -72,7 +76,7 @@ export class ClientRegisterController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Client successfully deleted.',
+    description: 'Client successfully deleted. No response body.',
   })
   @ApiResponse({
     status: 401,
@@ -81,36 +85,45 @@ export class ClientRegisterController {
   @Delete(':id')
   async deleteClientById(
     @Param('id') id: string,
-    @Request() req: { user: { id: string } },
-  ) {
+    @Request() req: AuthenticatedRequest,
+  ): Promise<void> {
     return await this.service.deleteClientById(id, req.user.id);
   }
 
   @ApiOperation({
-    summary: 'Create new client by User',
-    description: 'Create new client by User.',
+    summary: 'Create or update a client',
+    description:
+      'Creates a new client for the professional, or updates an owned client when an id is sent.',
   })
   @ApiBody({
     type: ClientRegisterDTO,
   })
   @ApiResponse({
     status: 201,
-    description: 'User profile updated successfully.',
+    description: 'Client saved successfully.',
     type: ClientEntity,
   })
   @ApiResponse({
     status: 400,
-    description: 'Error updating user profile.',
+    description: 'Invalid client data.',
   })
   @ApiResponse({
     status: 401,
     description: 'Unauthorized access.',
   })
+  @ApiResponse({
+    status: 404,
+    description: 'Client not found for this professional.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Client already registered for this professional.',
+  })
   @Post()
   async postRegister(
     @Body() body: ClientRegisterDTO,
-    @Request() req: { user: { id: string } },
-  ) {
+    @Request() req: AuthenticatedRequest,
+  ): Promise<ClientEntity> {
     return await this.service.postRegister(body, req.user.id);
   }
 }
