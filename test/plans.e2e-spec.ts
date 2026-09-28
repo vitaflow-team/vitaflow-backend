@@ -1,9 +1,10 @@
-import { ApiKeyGuard } from '@/common/guards/api-key.guard';
+import { createValidationPipe } from '@/config/validationPipe';
+import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { PlansController } from '@/product/plans.controller';
 import { ProductsService } from '@/product/product.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -59,7 +60,7 @@ describe('plan categories — GET /plans (integration)', () => {
     }).compile();
 
     app = module.createNestApplication<App>();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.init();
     prisma = module.get(PrismaService);
   });
@@ -161,7 +162,7 @@ describe('plan categories — GET /plans with an empty category', () => {
     }).compile();
 
     app = module.createNestApplication<App>();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.init();
   });
 

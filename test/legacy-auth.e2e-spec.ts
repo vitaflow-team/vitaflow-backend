@@ -1,6 +1,7 @@
-import { AuditLogger } from '@/auth/audit-logger.service';
+import { createValidationPipe } from '@/config/validationPipe';
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { AuthGuard } from '@/auth/auth.guard';
-import { DualBucketThrottlerGuard } from '@/auth/dual-bucket-throttler.guard';
+import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { MailService } from '@/mail/mail.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
@@ -13,13 +14,8 @@ import { SignInController } from '@/users/signin/signin.controller';
 import { SignInService } from '@/users/signin/signin.service';
 import { SignUpController } from '@/users/signup/signup.controller';
 import { SignUpService } from '@/users/signup/signup.service';
-import {
-  Controller,
-  Get,
-  INestApplication,
-  UseGuards,
-  ValidationPipe,
-} from '@nestjs/common';
+import { UserTokenService } from '@/users/token/userToken.service';
+import { Controller, Get, INestApplication, UseGuards } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -70,6 +66,7 @@ describe('Legacy authentication integration', () => {
         PasswordHash,
         SignInService,
         SignUpService,
+        UserTokenService,
         AuthGuard,
         DualBucketThrottlerGuard,
         {
@@ -90,7 +87,7 @@ describe('Legacy authentication integration', () => {
     }).compile();
 
     app = module.createNestApplication<App>();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     app.getHttpAdapter().getInstance().set('trust proxy', true);
     await app.init();
     prisma = module.get(PrismaService);
@@ -133,15 +130,21 @@ describe('Legacy authentication integration', () => {
       .send(body);
   }
 
+  // Whitelisting now rejects the undeclared `socialLogin` field outright
+  // (400) before the controller runs, which is stricter than the 401 these
+  // cases asserted before input whitelisting.
   it('IT-010 rejects the legacy socialLogin bypass for an active user', async () => {
     const user = await createUser('it-010@task02.test', 'correct-password');
 
     const response = await signin(
       { email: user.email, password: 'wrong', socialLogin: true },
       '10.2.10.1',
-    ).expect(401);
+    ).expect(400);
 
-    expect(response.body.message).toBe('Usuário não autorizado.');
+    expect(response.body.message).toContain(
+      'property socialLogin should not exist',
+    );
+    expect(response.body.accessToken).toBeUndefined();
   });
 
   it('IT-011 rejects an unknown legacy request with the same generic message', async () => {
@@ -149,7 +152,7 @@ describe('Legacy authentication integration', () => {
     const known = await signin(
       { email: user.email, password: 'wrong', socialLogin: true },
       '10.2.11.1',
-    ).expect(401);
+    ).expect(400);
     const unknown = await signin(
       {
         email: 'unknown-it-011@task02.test',
@@ -157,9 +160,9 @@ describe('Legacy authentication integration', () => {
         socialLogin: true,
       },
       '10.2.11.2',
-    ).expect(401);
+    ).expect(400);
 
-    expect(unknown.body.message).toBe(known.body.message);
+    expect(unknown.body).toEqual(known.body);
   });
 
   it('IT-012 signs in an active user with the correct password', async () => {
@@ -255,14 +258,27 @@ describe('Legacy authentication integration', () => {
 
 describe('Backend boot validation integration', () => {
   it('IT-023 fails startup and names a missing Google client secret', () => {
+    // Every other required variable is set explicitly, and the secret is
+    // blanked rather than deleted: dotenv never overrides an existing key,
+    // so a developer's `.env` can't fill the gap this test depends on.
     const env = {
       ...process.env,
-      JWT_SECRET: 'integration-jwt-secret',
+      JWT_SECRET: 'integration-jwt-secret-0123456789abcdef',
       DATABASE_URL: 'postgresql://unused:unused@localhost:5432/unused',
       APPLICATION_SECRET: 'integration-application-secret',
+      STRIPE_API_KEY: 'sk_test_integration',
+      APP_URL: 'http://localhost:3000',
+      GCP_PROJECT_ID: 'test-project',
+      GCP_CLIENT_EMAIL: 'storage@test-project.iam.gserviceaccount.com',
+      GCP_PRIVATE_KEY: 'test-private-key',
+      GCP_BUCKET: 'test-bucket',
+      MAIL_HOST: 'smtp.integration.test',
+      MAIL_PORT: '465',
+      MAIL_USER: 'mailer@integration.test',
+      MAIL_PASS: 'mail-password',
       GOOGLE_CLIENT_ID: 'configured-client-id',
+      GOOGLE_CLIENT_SECRET: '',
     };
-    delete env.GOOGLE_CLIENT_SECRET;
 
     const result = spawnSync(
       process.execPath,

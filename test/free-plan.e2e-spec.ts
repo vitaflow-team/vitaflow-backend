@@ -1,10 +1,11 @@
-import { AuditLogger } from '@/auth/audit-logger.service';
+import { createValidationPipe } from '@/config/validationPipe';
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { AuthController } from '@/auth/auth.controller';
 import { AuthGuard } from '@/auth/auth.guard';
 import { AuthService } from '@/auth/auth.service';
-import { DualBucketThrottlerGuard } from '@/auth/dual-bucket-throttler.guard';
-import { GoogleAuthService } from '@/auth/google-auth.service';
-import { ApiKeyGuard } from '@/common/guards/api-key.guard';
+import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
+import { GoogleAuthService } from '@/auth/googleAuth.service';
+import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { MailService } from '@/mail/mail.service';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
@@ -16,12 +17,15 @@ import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
 import { SignUpController } from '@/users/signup/signup.controller';
 import { SignUpService } from '@/users/signup/signup.service';
+import { UserTokenService } from '@/users/token/userToken.service';
 import { SubscriptionController } from '@/users/subscription/subscription.controller';
+import { SubscriptionSyncController } from '@/users/subscription/subscriptionSync.controller';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
+import { StripeVerification } from '@/utils/stripeVerification';
 import { UploadService } from '@/utils/upload.service';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -81,6 +85,7 @@ describe('Gratuito as a stored plan (free plan)', () => {
         SignUpController,
         AuthController,
         SubscriptionController,
+        SubscriptionSyncController,
         ProfileController,
       ],
       providers: [
@@ -92,8 +97,10 @@ describe('Gratuito as a stored plan (free plan)', () => {
         OAuthIdentityRepository,
         PasswordHash,
         SignUpService,
+        UserTokenService,
         ProfileService,
         SubscriptionService,
+        StripeVerification,
         AuthService,
         AuthGuard,
         DualBucketThrottlerGuard,
@@ -123,7 +130,7 @@ describe('Gratuito as a stored plan (free plan)', () => {
     }).compile();
 
     app = module.createNestApplication<App>();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     app.getHttpAdapter().getInstance().set('trust proxy', true);
     await app.init();
     prisma = module.get(PrismaService);
