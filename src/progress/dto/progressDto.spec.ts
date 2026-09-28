@@ -1,10 +1,8 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import {
-  CreateMeasurementRecordDTO,
-  DashboardQueryDTO,
-  UpdateMeasurementRecordDTO,
-} from './progress.Dto';
+import { CreateMeasurementRecordDTO } from './createMeasurementRecord.Dto';
+import { DashboardQueryDTO } from './dashboardQuery.Dto';
+import { UpdateMeasurementRecordDTO } from './updateMeasurementRecord.Dto';
 
 describe('DashboardQueryDTO validation', () => {
   it.each([

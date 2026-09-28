@@ -3,21 +3,20 @@ import { AppError } from '@/utils/app.erro';
 import { Injectable } from '@nestjs/common';
 import { MeasurementRecord } from '@prisma/client';
 import { calculateBmi, classifyBmi } from './bmi.util';
-import {
-  CreateMeasurementRecordDTO,
-  DashboardWeeks,
-  DashboardResponseDTO,
-  DEFAULT_DASHBOARD_WEEKS,
-  LatestRecordResponseDTO,
-  MeasurementRecordResponseDTO,
-  UpdateMeasurementRecordDTO,
-} from './progress.Dto';
+import { DashboardWeeks, DEFAULT_DASHBOARD_WEEKS } from './dashboardWeeks';
+import { CreateMeasurementRecordDTO } from './dto/createMeasurementRecord.Dto';
+import { DashboardResponseDTO } from './dto/dashboardResponse.Dto';
+import { LatestRecordResponseDTO } from './dto/latestRecordResponse.Dto';
+import { MeasurementRecordResponseDTO } from './dto/measurementRecordResponse.Dto';
+import { UpdateMeasurementRecordDTO } from './dto/updateMeasurementRecord.Dto';
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class ProgressService {
-  constructor(private measurementRecords: MeasurementRecordsRepository) {}
+  constructor(
+    private readonly measurementRecords: MeasurementRecordsRepository,
+  ) {}
 
   async getDashboard(
     userId: string,
