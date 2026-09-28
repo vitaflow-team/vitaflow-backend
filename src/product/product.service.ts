@@ -8,7 +8,7 @@ import { PlanCategory, typeOfCategory } from './planCategory';
 
 @Injectable()
 export class ProductsService {
-  constructor(private products: ProductsRepository) {}
+  constructor(private readonly products: ProductsRepository) {}
 
   async getProducts(): Promise<ProductGroupWithDetails[]> {
     return await this.products.getAllProducts();
