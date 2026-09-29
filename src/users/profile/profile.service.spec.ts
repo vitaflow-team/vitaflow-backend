@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AppError } from '@/utils/app.erro';
 import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
+import { avatarFile } from 'mock/imageFile.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
 import { ProfileService } from './profile.service';
@@ -49,6 +51,67 @@ describe('ProfileService Tests', () => {
     stripeCustomerId: null,
     userAddresses: null,
     ...overrides,
+  });
+
+  describe('postProfile avatar replacement (platform-hardening US-003)', () => {
+    const NEW_AVATAR = 'https://storage.googleapis.com/test-bucket/new.png';
+
+    beforeEach(() => {
+      upload.uploadImage.mockResolvedValue(NEW_AVATAR);
+      users.updateUserProfile.mockImplementation(
+        (_id: string, data: Record<string, unknown>) =>
+          Promise.resolve({ ...profileWith({}), ...data, address: null }),
+      );
+    });
+
+    const replaceAvatar = (
+      currentAvatar: string | null,
+      file = avatarFile(),
+    ) => {
+      users.getUserProfile.mockResolvedValueOnce(
+        profileWith({ avatar: currentAvatar }),
+      );
+      return profileService.postProfile(
+        file,
+        { name: 'Jonh Doe' } as never,
+        '1',
+      );
+    };
+
+    it('uploads the new avatar and removes the previous app-hosted one', async () => {
+      const result = await replaceAvatar(BUCKET_AVATAR);
+
+      expect(upload.uploadImage).toHaveBeenCalledTimes(1);
+      expect(upload.isBucketUrl).toHaveBeenCalledWith(BUCKET_AVATAR);
+      expect(upload.deleteImage).toHaveBeenCalledWith(BUCKET_AVATAR);
+      expect(result.avatar).toBe(NEW_AVATAR);
+    });
+
+    it('never passes a Google avatar URL to the bucket delete (EC-1)', async () => {
+      await replaceAvatar(GOOGLE_AVATAR);
+
+      expect(upload.uploadImage).toHaveBeenCalledTimes(1);
+      expect(upload.deleteImage).not.toHaveBeenCalled();
+    });
+
+    it('deletes nothing when there was no previous avatar', async () => {
+      await replaceAvatar(null);
+
+      expect(upload.deleteImage).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-image before storage or the database is touched', async () => {
+      const error: unknown = await replaceAvatar(
+        BUCKET_AVATAR,
+        avatarFile({ buffer: Buffer.from('%PDF-1.7 not an image') }),
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(AppError);
+      expect((error as AppError).getStatus()).toBe(400);
+      expect(upload.uploadImage).not.toHaveBeenCalled();
+      expect(upload.deleteImage).not.toHaveBeenCalled();
+      expect(users.updateUserProfile).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteProfile', () => {
@@ -268,6 +331,112 @@ describe('ProfileService Tests', () => {
 
       expect(profile.expiresAt).toBeNull();
       expect(profile.autoRenew).toBe(false);
+    });
+  });
+
+  // UT-003 — the repository hands back the full row, password hash included
+  describe('response never carries the password', () => {
+    const address = {
+      addressLine1: 'Rua A, 1',
+      addressLine2: 'Apto 2',
+      district: 'Centro',
+      city: 'São Paulo',
+      region: 'SP',
+      postalCode: '01000-000',
+    };
+    const withSecrets = profileWith({
+      password: '$2b$08$storedHash',
+      stripeCustomerId: 'cus_secret',
+      stripeSubscriptionId: 'sub_secret',
+    });
+
+    it('getProfile, with and without an address or avatar', async () => {
+      users.getUserProfile.mockResolvedValueOnce(withSecrets);
+      const bare = await profileService.getProfile('1');
+
+      users.getUserProfile.mockResolvedValueOnce({
+        ...withSecrets,
+        avatar: BUCKET_AVATAR,
+        userAddresses: { id: 'address-1', userId: '1', ...address },
+      });
+      const full = await profileService.getProfile('1');
+
+      for (const profile of [bare, full]) {
+        expect(Object.keys(profile)).not.toContain('password');
+        expect(JSON.stringify(profile)).not.toContain('storedHash');
+      }
+      expect(bare.address).toBeNull();
+      expect(full.address).toEqual(address);
+    });
+
+    it('postProfile, with and without an address', async () => {
+      users.getUserProfile
+        .mockResolvedValueOnce(withSecrets)
+        .mockResolvedValueOnce(withSecrets);
+      users.updateUserProfile.mockResolvedValueOnce({
+        ...withSecrets,
+        address: null,
+      });
+      const bare = await profileService.postProfile(
+        undefined as unknown as Express.Multer.File,
+        { name: 'Jonh Doe' } as never,
+        '1',
+      );
+
+      users.updateUserProfile.mockResolvedValueOnce({
+        ...withSecrets,
+        address,
+      });
+      const full = await profileService.postProfile(
+        undefined as unknown as Express.Multer.File,
+        { name: 'Jonh Doe', ...address } as never,
+        '1',
+      );
+
+      for (const profile of [bare, full]) {
+        expect(Object.keys(profile)).not.toContain('password');
+        expect(Object.keys(profile)).not.toContain('stripeCustomerId');
+        expect(Object.keys(profile)).not.toContain('stripeSubscriptionId');
+        expect(profile).toMatchObject({
+          id: '1',
+          name: userMock[0].name,
+          email: userMock[0].email,
+        });
+      }
+      expect(bare.address).toBeNull();
+      expect(full.address).toEqual(address);
+    });
+  });
+
+  // standards-enforcement UT-001
+  describe('nonexistent user', () => {
+    it('getProfile rejects with AppError 404', async () => {
+      users.getUserProfile.mockResolvedValueOnce(null);
+
+      const attempt = profileService.getProfile('missing');
+
+      await expect(attempt).rejects.toBeInstanceOf(AppError);
+      await expect(attempt).rejects.toMatchObject({
+        status: 404,
+        message: 'Usuário não encontrado.',
+      });
+    });
+
+    it('postProfile rejects with AppError 404 and uploads nothing', async () => {
+      users.getUserProfile.mockResolvedValueOnce(null);
+
+      const attempt = profileService.postProfile(
+        avatarFile(),
+        {} as never,
+        'missing',
+      );
+
+      await expect(attempt).rejects.toBeInstanceOf(AppError);
+      await expect(attempt).rejects.toMatchObject({
+        status: 404,
+        message: 'Usuário não encontrado.',
+      });
+      expect(upload.uploadImage).not.toHaveBeenCalled();
     });
   });
 });

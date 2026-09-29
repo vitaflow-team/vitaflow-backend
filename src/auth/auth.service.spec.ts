@@ -1,8 +1,10 @@
-import { AuditLogger } from '@/auth/audit-logger.service';
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { MailService } from '@/mail/mail.service';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
+import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
@@ -10,7 +12,7 @@ import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { OAuthIdentity } from '@prisma/client';
 import { AuthService } from './auth.service';
-import { GoogleAuthService } from './google-auth.service';
+import { GoogleAuthService } from './googleAuth.service';
 
 describe('AuthService.signInWithGoogle', () => {
   const verified = {
@@ -64,6 +66,7 @@ describe('AuthService.signInWithGoogle', () => {
     findByIdWithProduct: jest.Mock;
     create: jest.Mock;
     activateUser: jest.Mock;
+    updatePassword: jest.Mock;
   };
   let passwordHash: { generateHash: jest.Mock };
   let jwtService: { signAsync: jest.Mock };
@@ -71,6 +74,8 @@ describe('AuthService.signInWithGoogle', () => {
   let mailService: { sendEmailPassword: jest.Mock };
   let auditLogger: { log: jest.Mock; warn: jest.Mock };
   let products: { findFreeProduct: jest.Mock };
+  let userTokens: { deleteAll: jest.Mock };
+  let clients: { setAllClientUser: jest.Mock };
   let service: AuthService;
 
   beforeEach(() => {
@@ -85,6 +90,7 @@ describe('AuthService.signInWithGoogle', () => {
       findByIdWithProduct: jest.fn().mockResolvedValue(activeUser),
       create: jest.fn().mockResolvedValue(activeUser),
       activateUser: jest.fn().mockResolvedValue(activeUser),
+      updatePassword: jest.fn().mockResolvedValue(activeUser),
     };
     passwordHash = { generateHash: jest.fn().mockResolvedValue('random-hash') };
     jwtService = { signAsync: jest.fn().mockResolvedValue('issued-jwt') };
@@ -96,6 +102,8 @@ describe('AuthService.signInWithGoogle', () => {
     products = {
       findFreeProduct: jest.fn().mockResolvedValue(freeProduct),
     };
+    userTokens = { deleteAll: jest.fn().mockResolvedValue(null) };
+    clients = { setAllClientUser: jest.fn().mockResolvedValue(undefined) };
     service = new AuthService(
       googleAuth as unknown as GoogleAuthService,
       identities as unknown as OAuthIdentityRepository,
@@ -106,6 +114,8 @@ describe('AuthService.signInWithGoogle', () => {
       mailService as unknown as MailService,
       auditLogger as unknown as AuditLogger,
       products as unknown as ProductsRepository,
+      userTokens as unknown as UserTokenRepository,
+      clients as unknown as ClientsRepository,
     );
   });
 
@@ -150,6 +160,109 @@ describe('AuthService.signInWithGoogle', () => {
     expect(identities.create).toHaveBeenCalledTimes(1);
     expect(mailService.sendEmailPassword).not.toHaveBeenCalled();
     expect(result.accessToken).toBe('issued-jwt');
+  });
+
+  describe('Google activation of a pre-registered account', () => {
+    const originalPlaintext = 'set-by-whoever-registered-first';
+
+    // UT-008
+    it('replaces the existing password with an unknown one and clears pending tokens', async () => {
+      const bcrypt = new PasswordHash();
+      const originalHash = await bcrypt.generateHash(originalPlaintext);
+      passwordHash.generateHash.mockImplementation((payload: string) =>
+        bcrypt.generateHash(payload),
+      );
+      users.findByEmailInsensitive.mockResolvedValue({
+        ...activeUser,
+        active: false,
+        password: originalHash,
+      });
+
+      await service.signInWithGoogle('raw-id-token');
+
+      expect(userTokens.deleteAll).toHaveBeenCalledWith({
+        userID: activeUser.id,
+      });
+      expect(users.updatePassword).toHaveBeenCalledTimes(1);
+      const [userId, storedHash] = users.updatePassword.mock.calls[0] as [
+        string,
+        string,
+      ];
+      expect(userId).toBe(activeUser.id);
+      expect(storedHash).not.toBe(originalHash);
+      expect(storedHash).toMatch(/^\$2[aby]\$/);
+      await expect(
+        bcrypt.compareHash(originalPlaintext, storedHash),
+      ).resolves.toBe(false);
+      expect(auditLogger.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'password_invalidated',
+          userId: activeUser.id,
+        }),
+      );
+    });
+
+    it('revokes the old credentials before the account becomes active', async () => {
+      users.findByEmailInsensitive.mockResolvedValue({
+        ...activeUser,
+        active: false,
+      });
+
+      await service.signInWithGoogle('raw-id-token');
+
+      const revokedAt = users.updatePassword.mock.invocationCallOrder[0];
+      const activatedAt = users.activateUser.mock.invocationCallOrder[0];
+      expect(revokedAt).toBeLessThan(activatedAt);
+    });
+
+    it('links client records registered under the email once activated', async () => {
+      users.findByEmailInsensitive.mockResolvedValue({
+        ...activeUser,
+        active: false,
+      });
+
+      await service.signInWithGoogle('raw-id-token');
+
+      expect(clients.setAllClientUser).toHaveBeenCalledWith(
+        activeUser.id,
+        activeUser.email,
+      );
+    });
+
+    // UT-009
+    it('writes no password for an account created through Google, first or later sign-in', async () => {
+      await service.signInWithGoogle('raw-id-token');
+      identities.findByProviderAccount.mockResolvedValue(identity);
+      await service.signInWithGoogle('raw-id-token');
+
+      expect(users.updatePassword).not.toHaveBeenCalled();
+      expect(userTokens.deleteAll).not.toHaveBeenCalled();
+    });
+
+    it('skips the password write for an inactive account without a password', async () => {
+      users.findByEmailInsensitive.mockResolvedValue({
+        ...activeUser,
+        active: false,
+        password: '',
+      });
+
+      await expect(
+        service.signInWithGoogle('raw-id-token'),
+      ).resolves.toBeDefined();
+
+      expect(userTokens.deleteAll).toHaveBeenCalledTimes(1);
+      expect(users.updatePassword).not.toHaveBeenCalled();
+    });
+
+    it('never touches the password of an already active account', async () => {
+      users.findByEmailInsensitive.mockResolvedValue(activeUser);
+
+      await service.signInWithGoogle('raw-id-token');
+
+      expect(users.updatePassword).not.toHaveBeenCalled();
+      expect(userTokens.deleteAll).not.toHaveBeenCalled();
+      expect(clients.setAllClientUser).not.toHaveBeenCalled();
+    });
   });
 
   it('UT-013 links an active user, notifies exactly once, and signs in', async () => {
@@ -342,6 +455,77 @@ describe('AuthService.signInWithGoogle', () => {
       expect(identities.create).not.toHaveBeenCalled();
       expect(logged).toHaveBeenCalled();
       logged.mockRestore();
+    });
+  });
+
+  // UT-013: branches that sat 3 levels deep (catch > if > if) before
+  // createGoogleUser and createIdentity were flattened.
+  const uniqueViolation = () =>
+    Object.assign(new Error('unique'), { code: 'P2002' });
+
+  describe('user creation conflict recovery after flattening', () => {
+    const winnerUser = { ...activeUser, id: 'winner-1' };
+
+    it('signs in as the provider identity winner when user creation collides', async () => {
+      identities.findByProviderAccount
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({ ...identity, userId: winnerUser.id });
+      users.create.mockRejectedValue(uniqueViolation());
+      users.findByIdWithProduct.mockResolvedValue(winnerUser);
+
+      const response = await service.signInWithGoogle('raw-id-token');
+
+      expect(response.id).toBe(winnerUser.id);
+      expect(users.findByIdWithProduct).toHaveBeenCalledWith(winnerUser.id);
+      expect(users.findByEmailInsensitive).toHaveBeenCalledTimes(1);
+      expect(identities.create).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the email-matched user when the winner has no user row', async () => {
+      identities.findByProviderAccount
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({ ...identity, userId: 'ghost-user' });
+      identities.findByUserId.mockResolvedValue(identity);
+      users.create.mockRejectedValue(uniqueViolation());
+      users.findByIdWithProduct.mockResolvedValue(null);
+      users.findByEmailInsensitive
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(activeUser);
+
+      const response = await service.signInWithGoogle('raw-id-token');
+
+      expect(response.id).toBe(activeUser.id);
+      expect(users.findByEmailInsensitive).toHaveBeenCalledTimes(2);
+      expect(identities.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('identity creation conflict recovery after flattening', () => {
+    it('rejects with identity_conflict when the collided identity links another user', async () => {
+      identities.findByProviderAccount
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({ ...identity, userId: 'other-user' });
+      identities.create.mockRejectedValue(uniqueViolation());
+
+      await expect(
+        service.signInWithGoogle('raw-id-token'),
+      ).rejects.toMatchObject({ reason: 'identity_conflict' });
+      expect(mailService.sendEmailPassword).not.toHaveBeenCalled();
+    });
+
+    it('signs in without relinking when the collided identity already links this user', async () => {
+      identities.findByProviderAccount
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(identity);
+      identities.create.mockRejectedValue(uniqueViolation());
+
+      const response = await service.signInWithGoogle('raw-id-token');
+
+      expect(response.id).toBe(activeUser.id);
+      expect(auditLogger.log).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: 'success', reason: 'signed_in' }),
+      );
+      expect(mailService.sendEmailPassword).not.toHaveBeenCalled();
     });
   });
 });

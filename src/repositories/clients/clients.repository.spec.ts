@@ -32,26 +32,18 @@ describe('UserRepository Tests', () => {
                   },
                 ),
               findUnique: jest.fn().mockImplementation(({ where }) => {
-                if (where.id) {
-                  return Promise.resolve(
-                    clientMock.find((client) => client.id === where.id),
-                  );
-                }
-
-                const client = clientMock.filter((client) => {
-                  if (
-                    client.email === where.email_professionalId.email &&
-                    client.professionalId ===
-                      where.email_professionalId.professionalId
-                  ) {
-                    return client;
-                  }
-                });
-                if (client[0]) {
-                  return Promise.resolve(client[0]);
-                } else {
-                  return Promise.resolve(null);
-                }
+                return Promise.resolve(
+                  clientMock.find((client) => client.id === where.id),
+                );
+              }),
+              findFirst: jest.fn().mockImplementation(({ where }) => {
+                const client = clientMock.find(
+                  (client) =>
+                    client.email.toLowerCase() ===
+                      where.email.equals.toLowerCase() &&
+                    client.professionalId === where.professionalId,
+                );
+                return Promise.resolve(client ?? null);
               }),
               findMany: jest.fn().mockImplementation(({ where }) => {
                 const client = clientMock.filter((client) => {
@@ -215,11 +207,29 @@ describe('UserRepository Tests', () => {
       (clientsRepository as any).prisma.client.updateMany,
     ).toHaveBeenCalledWith({
       where: {
-        email,
+        email: { equals: email, mode: 'insensitive' },
       },
       data: {
         userId,
       },
+    });
+  });
+
+  it('matches client emails case-insensitively with LIKE wildcards escaped', async () => {
+    const client = await clientsRepository.findByEmailAndProfessionalId(
+      'JonhDoe@ID1.com',
+      'User1',
+    );
+    expect(client?.id).toEqual('1');
+
+    await clientsRepository.setAllClientUser('newUserId', 'a_b%c@example.com');
+    expect(
+      (clientsRepository as any).prisma.client.updateMany,
+    ).toHaveBeenLastCalledWith({
+      where: {
+        email: { equals: 'a\\_b\\%c@example.com', mode: 'insensitive' },
+      },
+      data: { userId: 'newUserId' },
     });
   });
 

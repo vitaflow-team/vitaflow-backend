@@ -3,12 +3,13 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PLAN_CATEGORIES } from './planCategory';
 import { PlansQueryDTO } from './plans.Dto';
+import { ProductResponseDTO } from './productResponse.Dto';
 import { ProductsService } from './product.service';
 
 @ApiTags('Plans')
 @Controller('plans')
 export class PlansController {
-  constructor(private service: ProductsService) {}
+  constructor(private readonly service: ProductsService) {}
 
   @ApiOperation({
     summary: 'List plans',
@@ -23,8 +24,13 @@ export class PlansController {
     enum: PLAN_CATEGORIES,
     description: 'Exact category name; anything else is a validation error.',
   })
-  @ApiResponse({ status: 200, description: 'Plans successfully retrieved.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Plans successfully retrieved.',
+    type: [ProductResponseDTO],
+  })
   @ApiResponse({ status: 400, description: 'Invalid category.' })
+  @ApiResponse({ status: 403, description: 'Missing or wrong secret.' })
   @Get()
   async getPlans(@Query() query: PlansQueryDTO): Promise<ProductWithInfos[]> {
     return await this.service.listPlans(query.category);

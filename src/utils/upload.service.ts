@@ -1,5 +1,8 @@
 import { Storage } from '@google-cloud/storage';
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { AppError } from './app.erro';
+import { detectImage } from './imageSignature';
 
 @Injectable()
 export class UploadService {
@@ -13,13 +16,20 @@ export class UploadService {
 
   private bucket = this.storage.bucket(process.env.GCP_BUCKET!);
 
+  // The object name and content type come from the server and the file's
+  // own bytes only — never from the client's `originalname` or mime type.
   async uploadImage(file: Express.Multer.File): Promise<string> {
-    const filename = `${Date.now()}-${file.originalname}`;
+    const image = detectImage(file.buffer);
+    if (!image) {
+      throw new AppError('Formato de imagem inválido.', 400);
+    }
+
+    const filename = `${randomUUID()}.${image.extension}`;
     const blob = this.bucket.file(filename);
 
     const stream = blob.createWriteStream({
       resumable: false,
-      contentType: file.mimetype,
+      contentType: image.mimeType,
     });
 
     return new Promise<string>((resolve, reject) => {

@@ -9,7 +9,7 @@ export type MeasurementRecordInput = Pick<
 
 @Injectable()
 export class MeasurementRecordsRepository {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(
     userId: string,

@@ -1,10 +1,11 @@
 import { PrismaService } from '@/database/prisma.service';
+import { escapeLikePattern } from '@/utils/escapeLikePattern';
 import { Injectable } from '@nestjs/common';
 import { Client, Prisma } from '@prisma/client';
 
 @Injectable()
 export class ClientsRepository {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(data: Prisma.ClientCreateInput): Promise<Client> {
     return await this.prisma.client.create({
@@ -33,12 +34,10 @@ export class ClientsRepository {
     email: string,
     professionalId: string,
   ): Promise<Client | null> {
-    return await this.prisma.client.findUnique({
+    return await this.prisma.client.findFirst({
       where: {
-        email_professionalId: {
-          email,
-          professionalId,
-        },
+        email: { equals: escapeLikePattern(email), mode: 'insensitive' },
+        professionalId,
       },
     });
   }
@@ -73,7 +72,7 @@ export class ClientsRepository {
   async setAllClientUser(userId: string, email: string): Promise<void> {
     await this.prisma.client.updateMany({
       where: {
-        email,
+        email: { equals: escapeLikePattern(email), mode: 'insensitive' },
       },
       data: {
         userId,

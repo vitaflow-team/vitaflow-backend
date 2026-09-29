@@ -6,6 +6,7 @@ import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
+import { StripeVerification } from '@/utils/stripeVerification';
 import { UploadService } from '@/utils/upload.service';
 import { Module } from '@nestjs/common';
 import { ProfileController } from './profile/profile.controller';
@@ -18,6 +19,8 @@ import { SignUpController } from './signup/signup.controller';
 import { SignUpService } from './signup/signup.service';
 import { SubscriptionController } from './subscription/subscription.controller';
 import { SubscriptionService } from './subscription/subscription.service';
+import { SubscriptionSyncController } from './subscription/subscriptionSync.controller';
+import { UserTokenService } from './token/userToken.service';
 
 @Module({
   imports: [AuthModule, MailModule],
@@ -27,15 +30,18 @@ import { SubscriptionService } from './subscription/subscription.service';
     RecoverpassController,
     ProfileController,
     SubscriptionController,
+    SubscriptionSyncController,
   ],
   providers: [
     PasswordHash,
     PrismaService,
     UserRepository,
     UserTokenRepository,
+    UserTokenService,
     UploadService,
     ClientsRepository,
     ProductsRepository,
+    StripeVerification,
     SignUpService,
     SignInService,
     RecoverpassService,

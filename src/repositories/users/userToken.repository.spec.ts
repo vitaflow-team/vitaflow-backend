@@ -1,40 +1,45 @@
 import { PrismaService } from '@/database/prisma.service';
 import { Test, TestingModule } from '@nestjs/testing';
+import { TokenType } from '@prisma/client';
 import { UserTokenRepository } from './userToken.repository';
 
-describe('UserRepository Tests', () => {
+describe('UserTokenRepository Tests', () => {
   let userTokenRepository: UserTokenRepository;
-  let prismaService: PrismaService;
 
-  const userMock = {
-    id: '1',
-    name: 'Jonh Doe',
-    email: 'jonhdoe@jonhdoe.com',
-    password: '12345',
-    avatar: null,
-    active: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+  const newToken = {
+    userID: '1',
+    type: TokenType.RECOVERY,
+    tokenHash: 'hashed-token',
+    expiresAt: new Date(),
   };
 
   const mockPrismaService = {
+    $transaction: jest.fn((operations: Promise<unknown>[]) =>
+      Promise.all(operations),
+    ),
     usersToken: {
-      create: jest.fn().mockImplementation(({ data: { user } }) => {
-        return Promise.resolve({
+      create: jest.fn().mockImplementation(({ data }) =>
+        Promise.resolve({
           id: 'userTokenID',
-          userID: user.connect.id,
+          ...data,
           createdAt: new Date(),
           updatedAt: new Date(),
-        });
-      }),
-      deleteMany: jest.fn(),
-      findUnique: jest.fn().mockImplementation(({ where: { id } }) => {
-        return Promise.resolve(id === 'userTokenID');
-      }),
+        }),
+      ),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUnique: jest
+        .fn()
+        .mockImplementation(({ where: { tokenHash } }) =>
+          Promise.resolve(
+            tokenHash === 'hashed-token' ? { id: 'userTokenID' } : null,
+          ),
+        ),
     },
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UserTokenRepository,
@@ -46,31 +51,41 @@ describe('UserRepository Tests', () => {
     }).compile();
 
     userTokenRepository = module.get<UserTokenRepository>(UserTokenRepository);
-    prismaService = module.get<PrismaService>(PrismaService);
   });
 
-  it('Should create a user token', async () => {
-    const userToken = await userTokenRepository.create({
-      user: { connect: userMock },
+  it('replaces the same-type tokens of the user in one transaction', async () => {
+    const userToken = await userTokenRepository.replace(newToken);
+
+    expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrismaService.usersToken.deleteMany).toHaveBeenCalledWith({
+      where: { userID: '1', type: TokenType.RECOVERY },
     });
-
-    expect(userToken.id).not.toBeNull();
-    expect(userToken.userID).toEqual(userMock.id);
+    expect(mockPrismaService.usersToken.create).toHaveBeenCalledWith({
+      data: newToken,
+    });
+    expect(userToken).toMatchObject({ id: 'userTokenID', ...newToken });
   });
 
-  it('Should delete all tokens matching the criteria', async () => {
-    const spy = jest.spyOn(prismaService.usersToken, 'deleteMany');
+  it('finds a token by its hash', async () => {
+    await expect(
+      userTokenRepository.findByHash('hashed-token'),
+    ).resolves.toEqual({ id: 'userTokenID' });
+    await expect(userTokenRepository.findByHash('other')).resolves.toBeNull();
+  });
 
-    await userTokenRepository.deleteAll({ id: 'userID' });
+  it('deletes a token by id', async () => {
+    await userTokenRepository.deleteById('userTokenID');
 
-    expect(spy).toHaveBeenCalledWith({
-      where: { id: 'userID' },
+    expect(mockPrismaService.usersToken.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'userTokenID' },
     });
   });
 
-  it('Should return a user token by ID', async () => {
-    const result = await userTokenRepository.findById({ id: 'userTokenID' });
+  it('deletes all tokens matching the criteria', async () => {
+    await userTokenRepository.deleteAll({ userID: '1' });
 
-    expect(result).toEqual(true);
+    expect(mockPrismaService.usersToken.deleteMany).toHaveBeenCalledWith({
+      where: { userID: '1' },
+    });
   });
 });

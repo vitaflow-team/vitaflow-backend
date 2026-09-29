@@ -1,5 +1,6 @@
+import { createValidationPipe } from '@/config/validationPipe';
 import { AuthGuard } from '@/auth/auth.guard';
-import { ApiKeyGuard } from '@/common/guards/api-key.guard';
+import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
@@ -7,9 +8,11 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
 import { SubscriptionController } from '@/users/subscription/subscription.controller';
+import { SubscriptionSyncController } from '@/users/subscription/subscriptionSync.controller';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
+import { StripeVerification } from '@/utils/stripeVerification';
 import { UploadService } from '@/utils/upload.service';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -48,7 +51,11 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
 
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: jwtSecret })],
-      controllers: [ProfileController, SubscriptionController],
+      controllers: [
+        ProfileController,
+        SubscriptionController,
+        SubscriptionSyncController,
+      ],
       providers: [
         PrismaService,
         UserRepository,
@@ -57,6 +64,31 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
         ProfileService,
         SubscriptionService,
         AuthGuard,
+        // Stripe reports exactly what the seeded user holds: a live
+        // subscription on the stored plan, created for that user.
+        {
+          provide: StripeVerification,
+          useValue: {
+            verifySubscriptionWithStripe: async (
+              stripeSubscriptionId: string,
+              userId: string,
+            ) => {
+              const owner = await prisma.users.findUnique({
+                where: { stripeSubscriptionId },
+                include: { product: true },
+              });
+              if (!owner?.stripeCustomerId) {
+                return null;
+              }
+              return {
+                status: 'active',
+                priceId: owner.product?.stripeId ?? null,
+                customerId: owner.stripeCustomerId,
+                belongsToUser: owner.id === userId,
+              };
+            },
+          },
+        },
         {
           provide: UploadService,
           useValue: { getSignedUrl: jest.fn().mockResolvedValue(null) },
@@ -73,7 +105,7 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
     }).compile();
 
     app = module.createNestApplication<App>();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.init();
     prisma = module.get(PrismaService);
     jwtService = module.get(JwtService);

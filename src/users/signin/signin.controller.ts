@@ -1,4 +1,5 @@
-import { DualBucketThrottlerGuard } from '@/auth/dual-bucket-throttler.guard';
+import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
+import { SignInResponseDTO } from '@/auth/signInResponse.Dto';
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SignInDTO } from './signin.Dto';
@@ -7,7 +8,7 @@ import { SignInService } from './signin.service';
 @ApiTags('User')
 @Controller('users')
 export class SignInController {
-  constructor(private service: SignInService) {}
+  constructor(private readonly service: SignInService) {}
 
   @ApiOperation({
     summary: 'User Sign-In',
@@ -17,29 +18,23 @@ export class SignInController {
   @ApiResponse({
     status: 201,
     description: 'User authenticated successfully.',
-    schema: {
-      example: {
-        id: 'cuid-user-456',
-        name: 'John Doe',
-        email: 'johndoe@example.com',
-        accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        picture: 'https://example.com/profile.jpg',
-      },
-    },
+    type: SignInResponseDTO,
   })
+  @ApiResponse({ status: 400, description: 'Invalid email or password.' })
   @ApiResponse({
     status: 401,
     description: 'Unauthorized user or inactive account.',
     schema: {
       example: {
         statusCode: 401,
-        message: 'Unauthorized user.',
+        message: 'Usuário não autorizado.',
       },
     },
   })
+  @ApiResponse({ status: 429, description: 'Too many requests.' })
   @Post('signin')
   @UseGuards(DualBucketThrottlerGuard)
-  async postSignIn(@Body() body: SignInDTO) {
+  async postSignIn(@Body() body: SignInDTO): Promise<SignInResponseDTO> {
     return await this.service.postSignIn(body);
   }
 }

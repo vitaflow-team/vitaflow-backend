@@ -1,11 +1,18 @@
 import { PrismaService } from '@/database/prisma.service';
 import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
+import { escapeLikePattern } from '@/utils/escapeLikePattern';
 import { Injectable } from '@nestjs/common';
-import { Prisma, Product, UserAddress, Users } from '@prisma/client';
+import {
+  Prisma,
+  Product,
+  UserAddress,
+  Users,
+  UsersToken,
+} from '@prisma/client';
 
 @Injectable()
 export class UserRepository {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(data: Prisma.UsersCreateInput): Promise<Users> {
     return await this.prisma.users.create({
@@ -19,14 +26,19 @@ export class UserRepository {
     });
   }
 
+  // Exact but case-insensitive: accounts stored before emails were
+  // normalized (mixed case) still resolve from the lowercased input.
   async findByEmail(
-    where: Prisma.UsersWhereUniqueInput,
+    email: string,
   ): Promise<(Users & { product: Product | null }) | null> {
-    return await this.prisma.users.findUnique({
-      where,
+    return await this.prisma.users.findFirst({
+      where: {
+        email: { equals: escapeLikePattern(email), mode: 'insensitive' },
+      },
       include: {
         product: true,
       },
+      orderBy: { createdAt: 'asc' },
     });
   }
 
@@ -97,6 +109,49 @@ export class UserRepository {
       where: { id },
       data: { password },
     });
+  }
+
+  // Consuming the token and applying its effect share one transaction, so a
+  // token works exactly once: a concurrent or repeated use finds nothing
+  // left to delete, changes nothing and gets null.
+  async activateUserWithToken(token: UsersToken): Promise<Users | null> {
+    return await this.prisma.$transaction(async (tx) => {
+      if (!(await this.consumeToken(tx, token.id))) {
+        return null;
+      }
+
+      return await tx.users.update({
+        where: { id: token.userID },
+        data: { active: true },
+      });
+    });
+  }
+
+  async updatePasswordWithToken(
+    token: UsersToken,
+    password: string,
+  ): Promise<Users | null> {
+    return await this.prisma.$transaction(async (tx) => {
+      if (!(await this.consumeToken(tx, token.id))) {
+        return null;
+      }
+
+      return await tx.users.update({
+        where: { id: token.userID },
+        data: { password },
+      });
+    });
+  }
+
+  private async consumeToken(
+    tx: Prisma.TransactionClient,
+    tokenId: string,
+  ): Promise<boolean> {
+    const { count } = await tx.usersToken.deleteMany({
+      where: { id: tokenId, expiresAt: { gt: new Date() } },
+    });
+
+    return count === 1;
   }
 
   async getUserProfile(

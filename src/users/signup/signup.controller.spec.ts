@@ -6,7 +6,11 @@ import { mailServiceMock } from 'mock/mail.service.mok';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { ProductsRepositoryMock } from 'mock/product.repository.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
-import { userTokenRepositoryMock } from 'mock/userToken.repository.mock';
+import {
+  userTokenRaw,
+  userTokenRepositoryMock,
+} from 'mock/userToken.repository.mock';
+import { UserTokenService } from '../token/userToken.service';
 import { SignUpController } from './signup.controller';
 import { SignUpService } from './signup.service';
 
@@ -23,6 +27,7 @@ describe('SignUpController Tests', () => {
         jwtServiceMock,
         mailServiceMock,
         userTokenRepositoryMock,
+        UserTokenService,
         ClientsRepositoryMock,
         ProductsRepositoryMock,
         SignUpService,
@@ -82,7 +87,7 @@ describe('SignUpController Tests', () => {
       expect(result.id).toEqual('idNewUser');
       expect(result.email).toEqual(newUser.email);
       expect(result.active).toEqual(false);
-      expect(result.password).toBeUndefined();
+      expect(Object.keys(result)).not.toContain('password');
       expect(result.termsAcceptedAt).toBeInstanceOf(Date);
       expect(result.healthDataConsentAt).toBeInstanceOf(Date);
     });
@@ -92,24 +97,34 @@ describe('SignUpController Tests', () => {
         token: 'tokenNotFound',
       };
 
-      const result = await signUpController.activateNewUser(token);
-
-      expect(result).toBeNull();
+      await expect(signUpController.activateNewUser(token)).rejects.toThrow(
+        'Token inválido ou expirado.',
+      );
     });
 
     it('Active New User - Token expired', async () => {
       const token = {
-        token: 'userTokenMockID1',
+        token: userTokenRaw.expiredActivation,
       };
 
       await expect(signUpController.activateNewUser(token)).rejects.toThrow(
-        'Token expirado.',
+        'Token inválido ou expirado.',
+      );
+    });
+
+    it('Active New User - Recovery token is rejected', async () => {
+      const token = {
+        token: userTokenRaw.recovery,
+      };
+
+      await expect(signUpController.activateNewUser(token)).rejects.toThrow(
+        'Token inválido ou expirado.',
       );
     });
 
     it('Active New User - Success', async () => {
       const token = {
-        token: 'userTokenMockID2',
+        token: userTokenRaw.activation,
       };
 
       const result = await signUpController.activateNewUser(token);

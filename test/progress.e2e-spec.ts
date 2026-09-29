@@ -1,10 +1,11 @@
+import { createValidationPipe } from '@/config/validationPipe';
 import { AuthGuard } from '@/auth/auth.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { ProgressController } from '@/progress/progress.controller';
 import { ProgressService } from '@/progress/progress.service';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Users } from '@prisma/client';
@@ -39,7 +40,7 @@ describe('Progress records integration', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication<App>();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.init();
     prisma = moduleFixture.get(PrismaService);
     jwtService = moduleFixture.get(JwtService);
@@ -157,7 +158,7 @@ describe('Progress records integration', () => {
     const response = await request(app.getHttpServer())
       .post('/progress-records')
       .set('Authorization', `Bearer ${await tokenFor(owner)}`)
-      .send({ weightKg: 61.4, heightCm: 168, userId: otherUser.id })
+      .send({ weightKg: 61.4, heightCm: 168 })
       .expect(201);
 
     expect(response.body).toEqual(
@@ -174,6 +175,19 @@ describe('Progress records integration', () => {
       where: { id: response.body.id as string },
     });
     expect(stored?.userId).toBe(owner.id);
+  });
+
+  it('IT-003 rejects a body that tries to name another user id', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/progress-records')
+      .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+      .send({ weightKg: 61.4, heightCm: 168, userId: otherUser.id })
+      .expect(400);
+
+    expect(response.body.message).toContain('property userId should not exist');
+    await expect(
+      prisma.measurementRecord.count({ where: { userId: otherUser.id } }),
+    ).resolves.toBe(0);
   });
 
   it('IT-004 rejects invalid create and update without changing storage', async () => {

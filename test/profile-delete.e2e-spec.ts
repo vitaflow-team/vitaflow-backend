@@ -1,5 +1,6 @@
+import { createValidationPipe } from '@/config/validationPipe';
 import { AuthGuard } from '@/auth/auth.guard';
-import { ApiKeyGuard } from '@/common/guards/api-key.guard';
+import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
@@ -7,14 +8,16 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
 import { SubscriptionController } from '@/users/subscription/subscription.controller';
+import { SubscriptionSyncController } from '@/users/subscription/subscriptionSync.controller';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
+import { StripeVerification } from '@/utils/stripeVerification';
 import { UploadService } from '@/utils/upload.service';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Users } from '@prisma/client';
+import { TokenType, Users } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -62,7 +65,11 @@ describe('Account deletion integration', () => {
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: jwtSecret })],
-      controllers: [ProfileController, SubscriptionController],
+      controllers: [
+        ProfileController,
+        SubscriptionController,
+        SubscriptionSyncController,
+      ],
       providers: [
         PrismaService,
         UserRepository,
@@ -71,6 +78,7 @@ describe('Account deletion integration', () => {
         UploadService,
         ProfileService,
         SubscriptionService,
+        StripeVerification,
         AuthGuard,
         {
           provide: ConfigService,
@@ -87,7 +95,7 @@ describe('Account deletion integration', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication<App>();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     await app.init();
     prisma = moduleFixture.get(PrismaService);
     jwtService = moduleFixture.get(JwtService);
@@ -161,7 +169,14 @@ describe('Account deletion integration', () => {
         userId: user.id,
       },
     });
-    await prisma.usersToken.create({ data: { userID: user.id } });
+    await prisma.usersToken.create({
+      data: {
+        userID: user.id,
+        type: TokenType.RECOVERY,
+        tokenHash: `profile-delete-${user.id}`,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
     await prisma.measurementRecord.createMany({
       data: [
         { userId: user.id, weightKg: 70, heightCm: 175 },

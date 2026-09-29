@@ -1,4 +1,5 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { NewPasswordDto } from './newPassword.Dto';
 import { RecoverpassDTO } from './recoverpass.Dto';
@@ -7,7 +8,7 @@ import { RecoverpassService } from './recoverpass.service';
 @ApiTags('User')
 @Controller('users')
 export class RecoverpassController {
-  constructor(private recoverpassService: RecoverpassService) {}
+  constructor(private readonly recoverpassService: RecoverpassService) {}
 
   @ApiOperation({
     summary: 'Send password recovery email',
@@ -16,32 +17,49 @@ export class RecoverpassController {
   })
   @ApiResponse({
     status: 201,
-    description: 'Password recovery email sent successfully.',
+    description:
+      'Recovery requested. The same response is returned whether or not the email has an account.',
+    type: Boolean,
   })
   @ApiResponse({
     status: 400,
-    description: 'Email not found.',
+    description: 'Invalid email.',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests.',
   })
   @Post('recoverpass')
-  async postRecoverpass(@Body() body: RecoverpassDTO) {
+  @UseGuards(DualBucketThrottlerGuard)
+  async postRecoverpass(@Body() body: RecoverpassDTO): Promise<true> {
     return await this.recoverpassService.postRecoverpass(body);
   }
 
   @ApiOperation({
-    summary: 'Verify password recovery token',
+    summary: 'Set a new password with a recovery token',
     description:
-      'Validates whether a provided password recovery token is valid, expired, or invalid.',
+      'Consumes a valid password recovery token and replaces the password.',
   })
   @ApiResponse({
-    status: 200,
-    description: 'Token is valid.',
+    status: 201,
+    description: 'Password changed.',
+    type: Boolean,
   })
   @ApiResponse({
     status: 400,
     description: 'Invalid or expired token.',
   })
+  @ApiResponse({
+    status: 401,
+    description: 'Password confirmation does not match.',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests.',
+  })
   @Post('newpassword')
-  async postChangePassword(@Body() body: NewPasswordDto) {
+  @UseGuards(DualBucketThrottlerGuard)
+  async postChangePassword(@Body() body: NewPasswordDto): Promise<true> {
     return await this.recoverpassService.postChangePassword(body);
   }
 }

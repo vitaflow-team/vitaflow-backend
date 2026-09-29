@@ -3,81 +3,107 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { UploadService } from '@/utils/upload.service';
 import { Injectable, Logger } from '@nestjs/common';
+import { UserAddress } from '@prisma/client';
 import { deriveExpiry } from '../subscription/subscriptionExpiry';
+import { assertValidAvatar } from './avatarUpload';
+import { ProfileAddressDTO } from './profileAddress.Dto';
 import { ProfileDTO } from './profile.Dto';
+import { ProfileResponseDTO } from './profileResponse.Dto';
+import { ProfileUpdateResponseDTO } from './profileUpdateResponse.Dto';
 
 @Injectable()
 export class ProfileService {
   private readonly logger = new Logger(ProfileService.name);
 
   constructor(
-    private user: UserRepository,
-
-    private uploadService: UploadService,
-
-    private clients: ClientsRepository,
+    private readonly user: UserRepository,
+    private readonly uploadService: UploadService,
+    private readonly clients: ClientsRepository,
   ) {}
 
   async postProfile(
     avatar: Express.Multer.File,
     body: ProfileDTO,
     userId: string,
-  ) {
+  ): Promise<ProfileUpdateResponseDTO> {
     const existingUser = await this.user.getUserProfile(userId);
     if (!existingUser) {
-      throw new AppError('Usuário não encontrado.', 402);
+      throw new AppError('Usuário não encontrado.', 404);
     }
 
-    const {
-      addressLine1,
-      addressLine2,
-      city,
-      district,
-      postalCode,
-      region,
-      birthDate,
-      name,
-      phone,
-    } = body;
+    const avatarUrl = await this.replaceAvatar(avatar, existingUser.avatar);
 
-    const address = {
-      addressLine1,
-      addressLine2,
-      city,
-      district,
-      postalCode,
-      region,
-    };
-
-    let avatarUrl = existingUser.avatar;
-    if (avatar) {
-      avatarUrl = await this.uploadService.uploadImage(avatar);
-      if (existingUser.avatar) {
-        await this.uploadService.deleteImage(existingUser.avatar);
-      }
-    }
-
-    const userBirthDate = birthDate ? new Date(birthDate) : null;
-
-    const result = await this.user.updateUserProfile(
+    const { birthDate, name, phone } = body;
+    const updated = await this.user.updateUserProfile(
       userId,
       {
-        birthDate: userBirthDate,
+        birthDate: birthDate ? new Date(birthDate) : null,
         name,
         phone,
         avatar: avatarUrl,
       },
-      address,
+      this.toAddressInput(body),
     );
 
-    return result;
+    return this.toProfileUpdateResponse(updated);
   }
 
-  async getProfile(userId: string) {
+  private toAddressInput({
+    addressLine1,
+    addressLine2,
+    city,
+    district,
+    postalCode,
+    region,
+  }: ProfileDTO): ProfileAddressDTO {
+    return { addressLine1, addressLine2, city, district, postalCode, region };
+  }
+
+  // Returns the avatar URL to store: the current one when no file was sent,
+  // otherwise the newly uploaded one.
+  private async replaceAvatar(
+    avatar: Express.Multer.File,
+    currentAvatar: string | null,
+  ): Promise<string | null> {
+    if (!avatar) {
+      return currentAvatar;
+    }
+
+    assertValidAvatar(avatar);
+    const avatarUrl = await this.uploadService.uploadImage(avatar);
+    // Only a file this app hosts is ours to delete — a Google avatar URL
+    // could otherwise resolve to a same-named object in our bucket.
+    if (this.uploadService.isBucketUrl(currentAvatar)) {
+      await this.uploadService.deleteImage(currentAvatar!);
+    }
+    return avatarUrl;
+  }
+
+  // Named fields only: spreading the row would also serialize the password
+  // hash and the Stripe identifiers.
+  private toProfileUpdateResponse(
+    updated: Awaited<ReturnType<UserRepository['updateUserProfile']>>,
+  ): ProfileUpdateResponseDTO {
+    return {
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      birthDate: updated.birthDate,
+      avatar: updated.avatar,
+      phone: updated.phone,
+      active: updated.active,
+      productId: updated.productId,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+      address: updated.address,
+    };
+  }
+
+  async getProfile(userId: string): Promise<ProfileResponseDTO> {
     const user = await this.user.getUserProfile(userId);
 
     if (!user) {
-      throw new AppError('Usuário não encontrado.', 402);
+      throw new AppError('Usuário não encontrado.', 404);
     }
 
     const signedAvatarUrl = user.avatar
@@ -88,6 +114,14 @@ export class ProfileService {
     // them — no branch on the user's product type needed.
     const clientsCount = await this.clients.countByProfessionalId(userId);
 
+    return this.toProfileResponse(user, signedAvatarUrl, clientsCount);
+  }
+
+  private toProfileResponse(
+    user: NonNullable<Awaited<ReturnType<UserRepository['getUserProfile']>>>,
+    signedAvatarUrl: string | null,
+    clientsCount: number,
+  ): ProfileResponseDTO {
     // The product is loaded here, so Gratuito (price 0) is recognised and
     // never reports an expiry, however stale its subscription columns are.
     const expiry = deriveExpiry({
@@ -121,16 +155,23 @@ export class ProfileService {
       // components, so the raw Stripe identifiers never leave the server.
       hasStripeCustomer: Boolean(user.stripeCustomerId),
       clientsCount,
-      address: user.userAddresses
-        ? {
-            addressLine1: user.userAddresses.addressLine1,
-            addressLine2: user.userAddresses.addressLine2,
-            district: user.userAddresses.district,
-            city: user.userAddresses.city,
-            region: user.userAddresses.region,
-            postalCode: user.userAddresses.postalCode,
-          }
-        : null,
+      address: this.toAddressResponse(user.userAddresses),
+    };
+  }
+
+  private toAddressResponse(
+    address: UserAddress | null,
+  ): ProfileResponseDTO['address'] {
+    if (!address) {
+      return null;
+    }
+    return {
+      addressLine1: address.addressLine1,
+      addressLine2: address.addressLine2,
+      district: address.district,
+      city: address.city,
+      region: address.region,
+      postalCode: address.postalCode,
     };
   }
 

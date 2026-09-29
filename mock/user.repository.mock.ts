@@ -1,6 +1,6 @@
 import { UserRepository } from '@/repositories/users/user.repository';
 import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
-import { Prisma, Users } from '@prisma/client';
+import { Prisma, Users, UsersToken } from '@prisma/client';
 
 export const userMock = [
   {
@@ -66,26 +66,38 @@ export const userRepositoryMock = {
         productId: null,
       } satisfies Users);
     }),
-    findByEmail: jest.fn().mockImplementation(({ email }) => {
-      const user = userMock.filter((user) => {
-        if (user.email === email) {
-          return user;
-        }
-      });
-      if (user[0]) {
-        return Promise.resolve(user[0]);
-      } else {
-        return Promise.resolve(null);
-      }
+    // Case-insensitive, like the real repository.
+    findByEmail: jest.fn().mockImplementation((email: string) => {
+      const user = userMock.find(
+        (user) => user.email.toLowerCase() === email.toLowerCase(),
+      );
+      return Promise.resolve(user ?? null);
     }),
-    activateUser: jest.fn().mockImplementation((user: Users) => {
+    activateUser: jest.fn().mockImplementation((id: string) => {
+      const user = userMock.find((user) => user.id === id);
       return Promise.resolve({
         ...user,
         active: true,
         updatedAt: new Date(),
       } as Users);
     }),
+    activateUserWithToken: jest
+      .fn()
+      .mockImplementation(({ userID }: UsersToken) => {
+        const user = userMock.find((user) => user.id === userID);
+        return Promise.resolve({
+          ...user,
+          active: true,
+          updatedAt: new Date(),
+        } as Users);
+      }),
     updatePassword: jest.fn(),
+    updatePasswordWithToken: jest
+      .fn()
+      .mockImplementation(({ userID }: UsersToken, password: string) => {
+        const user = userMock.find((user) => user.id === userID);
+        return Promise.resolve({ ...user, password } as Users);
+      }),
     deleteAccount: jest.fn().mockResolvedValue(undefined),
     findUnique: jest.fn().mockImplementation(({ id }) => {
       const user = userMock.filter((user) => {

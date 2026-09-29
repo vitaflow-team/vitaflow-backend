@@ -1,17 +1,20 @@
+import { createValidationPipe } from '@/config/validationPipe';
 import { AuthController } from '@/auth/auth.controller';
 import { AuthService } from '@/auth/auth.service';
-import { AuditLogger } from '@/auth/audit-logger.service';
-import { DualBucketThrottlerGuard } from '@/auth/dual-bucket-throttler.guard';
-import { GoogleAuthService } from '@/auth/google-auth.service';
+import { AuditLogger } from '@/auth/auditLogger.service';
+import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
+import { GoogleAuthService } from '@/auth/googleAuth.service';
 import { PrismaService } from '@/database/prisma.service';
 import { MailService } from '@/mail/mail.service';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
+import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -55,6 +58,8 @@ describe('POST /auth/google integration', () => {
         UserRepository,
         OAuthIdentityRepository,
         ProductsRepository,
+        UserTokenRepository,
+        ClientsRepository,
         AuthService,
         DualBucketThrottlerGuard,
         { provide: GoogleAuthService, useValue: googleAuth },
@@ -87,7 +92,7 @@ describe('POST /auth/google integration', () => {
     }).compile();
 
     app = module.createNestApplication<App>();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(createValidationPipe());
     app.getHttpAdapter().getInstance().set('trust proxy', true);
     await app.init();
     prisma = module.get(PrismaService);
