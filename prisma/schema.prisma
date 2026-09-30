@@ -66,6 +66,8 @@ model Users {
   reviewedExercises  Exercise[]          @relation("ExerciseReviewedBy")
   fitnessProfile     FitnessProfile?
   workouts           Workout[]
+  meals              Meal[]
+  waterLogs          WaterLog[]
 
   @@unique([email])
 }
@@ -299,4 +301,37 @@ model WorkoutExercise {
   order        Int
 
   @@index([workoutDayId])
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+model Meal {
+  id          String   @id @default(uuid(7))
+  userId      String
+  user        Users    @relation(fields: [userId], references: [id])
+  mealType    MealType
+  description String
+  calories    Int
+  loggedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, loggedAt])
+}
+
+model WaterLog {
+  id        String   @id @default(uuid(7))
+  userId    String
+  user      Users    @relation(fields: [userId], references: [id])
+  date      DateTime @db.Date
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
 }
