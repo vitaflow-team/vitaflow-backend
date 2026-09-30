@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AppError } from '@/utils/app.erro';
 import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
 import { avatarFile } from 'mock/imageFile.mock';
+import { progressPhotosRepositoryMock } from 'mock/progressPhotos.repository.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
 import { ProfileService } from './profile.service';
@@ -14,6 +15,7 @@ const GOOGLE_AVATAR = 'https://lh3.googleusercontent.com/a/abc=s96-c';
 const users = userRepositoryMock.useValue;
 const upload = uploadServiceMock.useValue;
 const clients = ClientsRepositoryMock.useValue;
+const progressPhotos = progressPhotosRepositoryMock.useValue;
 
 describe('ProfileService Tests', () => {
   let profileService: ProfileService;
@@ -24,6 +26,7 @@ describe('ProfileService Tests', () => {
         userRepositoryMock,
         uploadServiceMock,
         ClientsRepositoryMock,
+        progressPhotosRepositoryMock,
         ProfileService,
       ],
     }).compile();
@@ -42,6 +45,7 @@ describe('ProfileService Tests', () => {
     );
     upload.getSignedUrl.mockResolvedValue('https://signed.example/avatar.png');
     clients.countByProfessionalId.mockResolvedValue(0);
+    progressPhotos.findAllByUser.mockResolvedValue([]);
   });
 
   const profileWith = (overrides: Record<string, unknown>) => ({
@@ -192,6 +196,55 @@ describe('ProfileService Tests', () => {
 
       await expect(profileService.deleteProfile('1')).rejects.toThrow(failure);
       expect(upload.deleteImage).not.toHaveBeenCalled();
+    });
+
+    // UT-014 (progress-photos)
+    it('deletes every ProgressPhoto storage object the account ever uploaded', async () => {
+      users.getUserProfile.mockResolvedValueOnce(profileWith({ avatar: null }));
+      progressPhotos.findAllByUser.mockResolvedValueOnce([
+        { id: 'photo-1', storageFilename: 'photo-1.png' },
+        { id: 'photo-2', storageFilename: 'photo-2.png' },
+      ]);
+
+      await profileService.deleteProfile('1');
+
+      expect(progressPhotos.findAllByUser).toHaveBeenCalledWith('1');
+      expect(upload.deleteImage).toHaveBeenCalledWith('photo-1.png');
+      expect(upload.deleteImage).toHaveBeenCalledWith('photo-2.png');
+      expect(upload.deleteImage).toHaveBeenCalledTimes(2);
+    });
+
+    it('a single failed progress-photo removal does not block the rest or fail the operation', async () => {
+      users.getUserProfile.mockResolvedValueOnce(profileWith({ avatar: null }));
+      progressPhotos.findAllByUser.mockResolvedValueOnce([
+        { id: 'photo-1', storageFilename: 'photo-1.png' },
+        { id: 'photo-2', storageFilename: 'photo-2.png' },
+      ]);
+      upload.deleteImage
+        .mockRejectedValueOnce(new Error('storage down'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(profileService.deleteProfile('1')).resolves.toBeUndefined();
+
+      expect(upload.deleteImage).toHaveBeenCalledWith('photo-1.png');
+      expect(upload.deleteImage).toHaveBeenCalledWith('photo-2.png');
+    });
+
+    it('fetches the photo list before the account transaction runs', async () => {
+      const order: string[] = [];
+      users.getUserProfile.mockResolvedValueOnce(profileWith({ avatar: null }));
+      progressPhotos.findAllByUser.mockImplementationOnce(() => {
+        order.push('findAllByUser');
+        return Promise.resolve([]);
+      });
+      users.deleteAccount.mockImplementationOnce(() => {
+        order.push('deleteAccount');
+        return Promise.resolve();
+      });
+
+      await profileService.deleteProfile('1');
+
+      expect(order).toEqual(['findAllByUser', 'deleteAccount']);
     });
   });
 

@@ -68,6 +68,8 @@ model Users {
   workouts           Workout[]
   meals              Meal[]
   waterLogs          WaterLog[]
+  featureConsents    FeatureConsent[]
+  progressPhotos     ProgressPhoto[]
 
   @@unique([email])
 }
@@ -334,4 +336,44 @@ model WaterLog {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, date])
+}
+
+enum ConsentFeature {
+  PROGRESS_PHOTOS
+}
+
+// Generic, reusable LGPD consent gate (ADR-006): the first feature in the
+// product to actually enforce a consent flag rather than only record one
+// (see `Users.healthDataConsentAt`, never checked anywhere today). A future
+// feature needing the same pattern adds an enum value, not new schema.
+model FeatureConsent {
+  id          String         @id @default(uuid(7))
+  userId      String
+  user        Users          @relation(fields: [userId], references: [id])
+  feature     ConsentFeature
+  consentedAt DateTime       @default(now())
+
+  @@unique([userId, feature])
+}
+
+enum PhotoAngle {
+  FRONT
+  SIDE
+  BACK
+}
+
+// `storageFilename` is the GCS object key only — never a public bucket URL
+// (ADR-001). Every read regenerates a fresh signed URL via
+// `UploadService.getSignedUrl()`; nothing here is ever directly servable.
+model ProgressPhoto {
+  id              String     @id @default(uuid(7))
+  userId          String
+  user            Users      @relation(fields: [userId], references: [id])
+  angle           PhotoAngle
+  storageFilename String
+  takenAt         DateTime   @default(now())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId, angle, takenAt])
 }

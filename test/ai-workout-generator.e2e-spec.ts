@@ -10,6 +10,7 @@
  * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
  */
 import { AuthGuard } from '@/auth/auth.guard';
+import { PremiumGuard } from '@/common/guards/premium.guard';
 import { createValidationPipe } from '@/config/validationPipe';
 import { PrismaService } from '@/database/prisma.service';
 import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
@@ -74,6 +75,7 @@ describe('AI Workout Generator integration', () => {
         RuleEngineService,
         LlmExplanationService,
         ConversationStore,
+        PremiumGuard,
         WorkoutsService,
         AuthGuard,
         {

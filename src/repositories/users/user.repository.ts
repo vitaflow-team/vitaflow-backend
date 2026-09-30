@@ -176,6 +176,7 @@ export class UserRepository {
   async deleteAccount(userId: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await tx.measurementRecord.deleteMany({ where: { userId } });
+      await tx.progressPhoto.deleteMany({ where: { userId } });
       await tx.usersToken.deleteMany({ where: { userID: userId } });
       await tx.userAddress.deleteMany({ where: { userId } });
       await tx.oAuthIdentity.deleteMany({ where: { userId } });

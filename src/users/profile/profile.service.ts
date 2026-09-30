@@ -1,4 +1,5 @@
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { ProgressPhotosRepository } from '@/repositories/progress-photos/progressPhotos.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { UploadService } from '@/utils/upload.service';
@@ -19,6 +20,7 @@ export class ProfileService {
     private readonly user: UserRepository,
     private readonly uploadService: UploadService,
     private readonly clients: ClientsRepository,
+    private readonly progressPhotos: ProgressPhotosRepository,
   ) {}
 
   async postProfile(
@@ -183,6 +185,10 @@ export class ProfileService {
     }
 
     const avatar = user.avatar;
+    // Captured before the transaction removes the rows, same as `avatar`
+    // above — every progress photo this account ever uploaded (ADR-001/
+    // PRD Business Rules), deleted from storage the same way the avatar is.
+    const progressPhotos = await this.progressPhotos.findAllByUser(userId);
 
     await this.user.deleteAccount(userId);
 
@@ -201,6 +207,19 @@ export class ProfileService {
       } catch {
         this.logger.error(
           `account_deleted_avatar_removal_failed user=${userId}`,
+        );
+      }
+    }
+
+    // Every object deleted independently: one failure must not stop the
+    // rest from being attempted, and storageFilename is always this app's
+    // own object key (never an external URL), so no isBucketUrl gate here.
+    for (const photo of progressPhotos) {
+      try {
+        await this.uploadService.deleteImage(photo.storageFilename);
+      } catch {
+        this.logger.error(
+          `account_deleted_progress_photo_removal_failed user=${userId} photoId=${photo.id}`,
         );
       }
     }

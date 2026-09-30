@@ -325,6 +325,7 @@ describe('UserRepository Tests', () => {
     let calls: string[];
     let tx: {
       measurementRecord: { deleteMany: jest.Mock };
+      progressPhoto: { deleteMany: jest.Mock };
       usersToken: { deleteMany: jest.Mock };
       userAddress: { deleteMany: jest.Mock };
       oAuthIdentity: { deleteMany: jest.Mock };
@@ -344,6 +345,7 @@ describe('UserRepository Tests', () => {
         measurementRecord: {
           deleteMany: record('measurementRecord.deleteMany'),
         },
+        progressPhoto: { deleteMany: record('progressPhoto.deleteMany') },
         usersToken: { deleteMany: record('usersToken.deleteMany') },
         userAddress: { deleteMany: record('userAddress.deleteMany') },
         oAuthIdentity: { deleteMany: record('oAuthIdentity.deleteMany') },
@@ -381,6 +383,9 @@ describe('UserRepository Tests', () => {
       expect(tx.measurementRecord.deleteMany).toHaveBeenCalledWith({
         where: { userId: 'u1' },
       });
+      expect(tx.progressPhoto.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
       expect(tx.usersToken.deleteMany).toHaveBeenCalledWith({
         where: { userID: 'u1' },
       });
@@ -397,6 +402,7 @@ describe('UserRepository Tests', () => {
 
       expect(calls).toEqual([
         'measurementRecord.deleteMany',
+        'progressPhoto.deleteMany',
         'usersToken.deleteMany',
         'userAddress.deleteMany',
         'oAuthIdentity.deleteMany',

@@ -3,6 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
 import { avatarFile } from 'mock/imageFile.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
+import { progressPhotosRepositoryMock } from 'mock/progressPhotos.repository.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
 import { ProfileDTO } from './profile.Dto';
@@ -20,6 +21,7 @@ describe('ProfileController Tests', () => {
         jwtServiceMock,
         uploadServiceMock,
         ClientsRepositoryMock,
+        progressPhotosRepositoryMock,
         ProfileService,
       ],
     }).compile();
@@ -259,6 +261,7 @@ describe('ProfileController Tests', () => {
         'deleteAccount',
       );
       deleteAccount.mockClear();
+      progressPhotosRepositoryMock.useValue.findAllByUser.mockResolvedValue([]);
 
       // Bound to a const so the extra keys survive: the point of the case
       // is that an id smuggled in via params or body changes nothing.

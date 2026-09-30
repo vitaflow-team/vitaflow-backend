@@ -1,4 +1,5 @@
 import { AuthModule } from '@/auth/auth.module';
+import { PremiumGuard } from '@/common/guards/premium.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
 import { FitnessProfileRepository } from '@/repositories/fitness-profile/fitnessProfile.repository';
@@ -25,6 +26,7 @@ import { WorkoutsService } from './workouts.service';
     LlmExplanationService,
     ConversationStore,
     openAiClientProvider,
+    PremiumGuard,
     WorkoutsService,
   ],
 })
