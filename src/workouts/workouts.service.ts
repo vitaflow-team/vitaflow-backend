@@ -13,7 +13,7 @@ import { ConversationStore, OrchestrationState } from './conversationStore';
 import { isPlanUsable, toWorkoutInput } from './generatedPlan.util';
 import { ConversationAnswers, ConversationField } from './llmExplanation.types';
 import { LlmExplanationService } from './llmExplanation.service';
-import { isPremiumUser } from './premiumAccess';
+import { PremiumGuard } from '@/common/guards/premium.guard';
 import { RuleEngineService } from './ruleEngine.service';
 import { ConversationTurnResult } from './workouts.types';
 
@@ -49,6 +49,7 @@ export class WorkoutsService {
     private readonly llm: LlmExplanationService,
     private readonly workouts: WorkoutsRepository,
     private readonly conversations: ConversationStore,
+    private readonly premiumGuard: PremiumGuard,
   ) {}
 
   // No plan-tier check here (US-001 AC-1): every user, Free or Premium,
@@ -150,14 +151,8 @@ export class WorkoutsService {
       throw new AppError('Perfil de treino incompleto.', 400);
     }
 
-    if (hasExisting) {
-      const premium = isPremiumUser({
-        subscriptionStatus: user.subscriptionStatus,
-        productPrice: user.product?.price ?? null,
-      });
-      if (!premium) {
-        throw new AppError(PREMIUM_REQUIRED, 402, 'premium_required');
-      }
+    if (hasExisting && !this.premiumGuard.isPremium(user)) {
+      throw new AppError(PREMIUM_REQUIRED, 402, 'premium_required');
     }
 
     return await this.generateAndPersist(userId, {

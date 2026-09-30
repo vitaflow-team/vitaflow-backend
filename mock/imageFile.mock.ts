@@ -34,3 +34,22 @@ export function avatarFile(
     buffer,
   };
 }
+
+export function progressPhotoFile(
+  overrides: Partial<Express.Multer.File> = {},
+): Express.Multer.File {
+  const buffer = overrides.buffer ?? PNG_BYTES;
+  return {
+    fieldname: 'file',
+    originalname: 'photo.png',
+    encoding: '7bit',
+    mimetype: 'image/png',
+    size: buffer.length,
+    stream: null as unknown as Express.Multer.File['stream'],
+    destination: '',
+    filename: '',
+    path: '',
+    ...overrides,
+    buffer,
+  };
+}

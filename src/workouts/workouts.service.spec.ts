@@ -1,3 +1,4 @@
+import { PremiumGuard } from '@/common/guards/premium.guard';
 import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
 import { FitnessProfileRepository } from '@/repositories/fitness-profile/fitnessProfile.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -125,6 +126,7 @@ describe('WorkoutsService', () => {
       providers: [
         WorkoutsService,
         ConversationStore,
+        PremiumGuard,
         {
           provide: FitnessProfileRepository,
           useValue: {

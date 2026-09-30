@@ -11,6 +11,7 @@ import { MailModule } from './mail/mail.module';
 
 import { ProductsModule } from './product/product.module';
 import { ProgressModule } from './progress/progress.module';
+import { ProgressPhotosModule } from './progress-photos/progressPhotos.module';
 import { UsersModule } from './users/users.module';
 import { WorkoutsModule } from './workouts/workouts.module';
 
@@ -28,6 +29,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ExerciseLibraryModule,
     WorkoutsModule,
     FoodDiaryModule,
+    ProgressPhotosModule,
   ],
   controllers: [],
   providers: [
