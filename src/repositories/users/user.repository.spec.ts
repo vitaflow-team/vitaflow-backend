@@ -40,6 +40,7 @@ describe('UserRepository Tests', () => {
                       subscriptionCancelAt: null,
                       subscriptionCurrentPeriodEnd: null,
                       productId: null,
+                      isBackoffice: false,
                       createdAt: new Date(),
                       updatedAt: new Date(),
                     } satisfies Users);
@@ -149,6 +150,7 @@ describe('UserRepository Tests', () => {
       subscriptionStatus: null,
       subscriptionCancelAt: null,
       subscriptionCurrentPeriodEnd: null,
+      isBackoffice: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

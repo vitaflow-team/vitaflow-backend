@@ -51,6 +51,10 @@ model Users {
   // it in yet.
   subscriptionCurrentPeriodEnd DateTime?
 
+  // Marks Vita Flow internal staff, checked by BackofficeGuard. Set
+  // explicitly, never inferred from email domain or product type.
+  isBackoffice Boolean @default(false)
+
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   usersTokens        UsersToken[]
@@ -58,6 +62,8 @@ model Users {
   clients            Client[]
   oAuthIdentity      OAuthIdentity?
   measurementRecords MeasurementRecord[]
+  submittedExercises Exercise[]          @relation("ExerciseSubmittedBy")
+  reviewedExercises  Exercise[]          @relation("ExerciseReviewedBy")
 
   @@unique([email])
 }
@@ -170,4 +176,55 @@ model ProductInfo {
   productId   String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+enum ExerciseEquipment {
+  GYM
+  HOME_BASIC
+  BODYWEIGHT
+}
+
+enum ExerciseContraindication {
+  SHOULDER
+  KNEE
+  SPINE
+  WRIST
+  HIP
+  ANKLE
+  CARDIAC
+}
+
+enum ExerciseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Exercise {
+  id                String                     @id @default(uuid(7))
+  name              String
+  description       String
+  muscleGroup       String
+  primaryMuscles    String[]
+  secondaryMuscles  String[]
+  equipment         ExerciseEquipment
+  contraindications ExerciseContraindication[]
+  difficulty        String?
+  imageUrl          String?
+  videoUrl          String?
+  status            ExerciseStatus             @default(APPROVED)
+  // Per-record source/license metadata for imported rows (ADR-001); null
+  // for exercises authored in-house.
+  sourceAttribution String?
+  sourceLicense     String?
+  submittedById     String?
+  submittedBy       Users?                     @relation("ExerciseSubmittedBy", fields: [submittedById], references: [id])
+  reviewedById      String?
+  reviewedBy        Users?                     @relation("ExerciseReviewedBy", fields: [reviewedById], references: [id])
+  rejectionReason   String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@index([status])
+  @@index([equipment])
 }
