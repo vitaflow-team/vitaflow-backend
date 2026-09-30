@@ -6,6 +6,7 @@ import { ClientsModule } from './clients/clients.module';
 import { ApiKeyGuard } from './common/guards/apiKey.guard';
 import { PrismaService } from './database/prisma.service';
 import { ExerciseLibraryModule } from './exercise-library/exerciseLibrary.module';
+import { FoodDiaryModule } from './food-diary/foodDiary.module';
 import { MailModule } from './mail/mail.module';
 
 import { ProductsModule } from './product/product.module';
@@ -26,6 +27,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ProgressModule,
     ExerciseLibraryModule,
     WorkoutsModule,
+    FoodDiaryModule,
   ],
   controllers: [],
   providers: [
