@@ -64,6 +64,7 @@ export const userRepositoryMock = {
         createdAt: new Date(),
         updatedAt: new Date(),
         productId: null,
+        isBackoffice: false,
       } satisfies Users);
     }),
     // Case-insensitive, like the real repository.
