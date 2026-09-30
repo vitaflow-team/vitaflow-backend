@@ -5,6 +5,7 @@ const requiredEnv = {
   DATABASE_URL: 'postgresql://localhost/test',
   APPLICATION_SECRET: 'application-secret',
   STRIPE_API_KEY: 'sk_test_key',
+  OPENAI_API_KEY: 'sk-test-key',
   APP_URL: 'http://localhost:3000',
   GCP_PROJECT_ID: 'test-project',
   GCP_CLIENT_EMAIL: 'storage@test-project.iam.gserviceaccount.com',
@@ -46,6 +47,12 @@ describe('validateEnv', () => {
   it('names a missing Stripe secret key', () => {
     expect(() => validateEnv({ ...requiredEnv, STRIPE_API_KEY: '  ' })).toThrow(
       'STRIPE_API_KEY',
+    );
+  });
+
+  it('names a missing OpenAI secret key', () => {
+    expect(() => validateEnv({ ...requiredEnv, OPENAI_API_KEY: '  ' })).toThrow(
+      'OPENAI_API_KEY',
     );
   });
 

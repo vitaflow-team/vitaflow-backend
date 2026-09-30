@@ -4,7 +4,7 @@
 // expiry from the raw Stripe mirror columns.
 
 // The statuses the app already treats as an active subscription.
-const PAID_STATUSES = ['active', 'trialing', 'past_due'];
+export const PAID_STATUSES = ['active', 'trialing', 'past_due'];
 
 export interface Expiry {
   expiresAt: Date | null;

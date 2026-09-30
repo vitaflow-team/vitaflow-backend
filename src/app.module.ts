@@ -11,6 +11,7 @@ import { MailModule } from './mail/mail.module';
 import { ProductsModule } from './product/product.module';
 import { ProgressModule } from './progress/progress.module';
 import { UsersModule } from './users/users.module';
+import { WorkoutsModule } from './workouts/workouts.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module';
     ProductsModule,
     ProgressModule,
     ExerciseLibraryModule,
+    WorkoutsModule,
   ],
   controllers: [],
   providers: [

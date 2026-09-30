@@ -64,6 +64,8 @@ model Users {
   measurementRecords MeasurementRecord[]
   submittedExercises Exercise[]          @relation("ExerciseSubmittedBy")
   reviewedExercises  Exercise[]          @relation("ExerciseReviewedBy")
+  fitnessProfile     FitnessProfile?
+  workouts           Workout[]
 
   @@unique([email])
 }
@@ -224,7 +226,77 @@ model Exercise {
   rejectionReason   String?
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
+  workoutExercises  WorkoutExercise[]
 
   @@index([status])
   @@index([equipment])
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+enum FitnessGoal {
+  WEIGHT_LOSS
+  MUSCLE_GAIN
+  CONDITIONING
+  MAINTENANCE
+}
+
+// Shared with the Food Diary feature (ADR-006 of ai-workout-generator):
+// both features read/write the same row per user. All fields are
+// nullable since a user may have answered only some profile questions.
+model FitnessProfile {
+  id           String                     @id @default(uuid(7))
+  userId       String                     @unique
+  user         Users                      @relation(fields: [userId], references: [id])
+  sex          Sex?
+  restrictions ExerciseContraindication[]
+  equipment    ExerciseEquipment?
+  goal         FitnessGoal?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+}
+
+model Workout {
+  id          String       @id @default(uuid(7))
+  userId      String
+  user        Users        @relation(fields: [userId], references: [id])
+  goal        FitnessGoal
+  daysPerWeek Int
+  explanation String
+  days        WorkoutDay[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([userId])
+}
+
+model WorkoutDay {
+  id        String            @id @default(uuid(7))
+  workoutId String
+  workout   Workout           @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  dayOfWeek Int // 1 (Mon) .. 7 (Sun)
+  exercises WorkoutExercise[]
+
+  @@unique([workoutId, dayOfWeek])
+}
+
+model WorkoutExercise {
+  id           String     @id @default(uuid(7))
+  workoutDayId String
+  workoutDay   WorkoutDay @relation(fields: [workoutDayId], references: [id], onDelete: Cascade)
+  // Nullable + SetNull (not the usual required+RESTRICT): the Exercise
+  // Library backoffice can delete an exercise at any time with no
+  // awareness of this feature, and a WorkoutExercise must survive that as
+  // an "unavailable" row rather than blocking the delete or vanishing
+  // (UT-019).
+  exerciseId   String?
+  exercise     Exercise?  @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
+  sets         Int
+  reps         Int
+  order        Int
+
+  @@index([workoutDayId])
 }
