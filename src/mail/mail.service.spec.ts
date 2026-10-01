@@ -69,4 +69,59 @@ describe('MailService Tests', () => {
       ).rejects.toThrow('SMTP Error');
     });
   });
+
+  describe('sendNotificationEmail', () => {
+    it('Should call sendMail with the notification template and message context', async () => {
+      await service.sendNotificationEmail(
+        'João Silva',
+        'joao@example.com',
+        'Nova notificação',
+        'Seu pagamento falhou.',
+        'https://app.vitaflow.com/restrict/settings?tab=plano',
+      );
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mailerService.sendMail).toHaveBeenCalledWith({
+        to: 'joao@example.com',
+        subject: 'Nova notificação',
+        template: './notification',
+        context: {
+          name: 'João Silva',
+          message: 'Seu pagamento falhou.',
+          link: 'https://app.vitaflow.com/restrict/settings?tab=plano',
+        },
+      });
+    });
+
+    it('Should pass an undefined link when none is given', async () => {
+      await service.sendNotificationEmail(
+        'João Silva',
+        'joao@example.com',
+        'Nova notificação',
+        'Mensagem sem link.',
+      );
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mailerService.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({ link: undefined }),
+        }),
+      );
+    });
+
+    it('Should throw an error if mailerService fails', async () => {
+      jest
+        .spyOn(mailerService, 'sendMail')
+        .mockRejectedValueOnce(new Error('SMTP Error'));
+
+      await expect(
+        service.sendNotificationEmail(
+          'Nome',
+          'email@test.com',
+          'Subject',
+          'msg',
+        ),
+      ).rejects.toThrow('SMTP Error');
+    });
+  });
 });

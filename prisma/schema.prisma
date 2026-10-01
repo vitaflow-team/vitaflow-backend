@@ -55,21 +55,23 @@ model Users {
   // explicitly, never inferred from email domain or product type.
   isBackoffice Boolean @default(false)
 
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  usersTokens        UsersToken[]
-  userAddresses      UserAddress?
-  clients            Client[]
-  oAuthIdentity      OAuthIdentity?
-  measurementRecords MeasurementRecord[]
-  submittedExercises Exercise[]          @relation("ExerciseSubmittedBy")
-  reviewedExercises  Exercise[]          @relation("ExerciseReviewedBy")
-  fitnessProfile     FitnessProfile?
-  workouts           Workout[]
-  meals              Meal[]
-  waterLogs          WaterLog[]
-  featureConsents    FeatureConsent[]
-  progressPhotos     ProgressPhoto[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  usersTokens             UsersToken[]
+  userAddresses           UserAddress?
+  clients                 Client[]
+  oAuthIdentity           OAuthIdentity?
+  measurementRecords      MeasurementRecord[]
+  submittedExercises      Exercise[]               @relation("ExerciseSubmittedBy")
+  reviewedExercises       Exercise[]               @relation("ExerciseReviewedBy")
+  fitnessProfile          FitnessProfile?
+  workouts                Workout[]
+  meals                   Meal[]
+  waterLogs               WaterLog[]
+  featureConsents         FeatureConsent[]
+  progressPhotos          ProgressPhoto[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@unique([email])
 }
@@ -376,4 +378,39 @@ model ProgressPhoto {
   updatedAt       DateTime   @updatedAt
 
   @@index([userId, angle, takenAt])
+}
+
+enum NotificationCategory {
+  WORKOUT_REMINDER
+  CONSULTATION_REMINDER
+  MESSAGES
+  BILLING
+  PRODUCT_NEWS
+}
+
+// A missing `NotificationPreference` row for a (userId, category) pair is
+// never backfilled — it is treated as that category's documented default
+// (everything `true` except PRODUCT_NEWS) by the service layer, so a new
+// category never needs a migration to seed existing users (ADR-003).
+model Notification {
+  id        String               @id @default(uuid(7))
+  userId    String
+  user      Users                @relation(fields: [userId], references: [id])
+  category  NotificationCategory
+  message   String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  id       String               @id @default(uuid(7))
+  userId   String
+  user     Users                @relation(fields: [userId], references: [id])
+  category NotificationCategory
+  enabled  Boolean
+
+  @@unique([userId, category])
 }

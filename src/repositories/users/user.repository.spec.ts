@@ -326,6 +326,8 @@ describe('UserRepository Tests', () => {
     let tx: {
       measurementRecord: { deleteMany: jest.Mock };
       progressPhoto: { deleteMany: jest.Mock };
+      notification: { deleteMany: jest.Mock };
+      notificationPreference: { deleteMany: jest.Mock };
       usersToken: { deleteMany: jest.Mock };
       userAddress: { deleteMany: jest.Mock };
       oAuthIdentity: { deleteMany: jest.Mock };
@@ -346,6 +348,10 @@ describe('UserRepository Tests', () => {
           deleteMany: record('measurementRecord.deleteMany'),
         },
         progressPhoto: { deleteMany: record('progressPhoto.deleteMany') },
+        notification: { deleteMany: record('notification.deleteMany') },
+        notificationPreference: {
+          deleteMany: record('notificationPreference.deleteMany'),
+        },
         usersToken: { deleteMany: record('usersToken.deleteMany') },
         userAddress: { deleteMany: record('userAddress.deleteMany') },
         oAuthIdentity: { deleteMany: record('oAuthIdentity.deleteMany') },
@@ -386,6 +392,12 @@ describe('UserRepository Tests', () => {
       expect(tx.progressPhoto.deleteMany).toHaveBeenCalledWith({
         where: { userId: 'u1' },
       });
+      expect(tx.notification.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
+      expect(tx.notificationPreference.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
       expect(tx.usersToken.deleteMany).toHaveBeenCalledWith({
         where: { userID: 'u1' },
       });
@@ -403,6 +415,8 @@ describe('UserRepository Tests', () => {
       expect(calls).toEqual([
         'measurementRecord.deleteMany',
         'progressPhoto.deleteMany',
+        'notification.deleteMany',
+        'notificationPreference.deleteMany',
         'usersToken.deleteMany',
         'userAddress.deleteMany',
         'oAuthIdentity.deleteMany',

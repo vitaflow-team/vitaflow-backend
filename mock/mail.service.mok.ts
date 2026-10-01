@@ -4,5 +4,6 @@ export const mailServiceMock = {
   provide: MailService,
   useValue: {
     sendEmailPassword: jest.fn(),
+    sendNotificationEmail: jest.fn(),
   },
 };
