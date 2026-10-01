@@ -247,3 +247,38 @@ describe('UserRepository Tests', () => {
     );
   });
 });
+
+describe('ClientsRepository.findByUserAndProfessionalType', () => {
+  const findFirst = jest.fn();
+  const prisma = { client: { findFirst } } as unknown as PrismaService;
+  const repository = new ClientsRepository(prisma);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('scopes by userId and the professional’s product type, newest first', async () => {
+    findFirst.mockResolvedValue(null);
+
+    await repository.findByUserAndProfessionalType('user-1', 'NUTRITIONIST');
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        professional: { product: { type: 'NUTRITIONIST' } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('returns null when no linked professional of that type exists', async () => {
+    findFirst.mockResolvedValue(null);
+
+    const result = await repository.findByUserAndProfessionalType(
+      'user-1',
+      'PHYSICAL_EDUCATOR',
+    );
+
+    expect(result).toBeNull();
+  });
+});

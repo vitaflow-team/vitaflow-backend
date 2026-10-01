@@ -12,6 +12,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 
 import { ProductsModule } from './product/product.module';
 import { ProfessionalDiscoveryModule } from './professional-discovery/professionalDiscovery.module';
+import { ProfessionalMirrorModule } from './professional-mirror/professionalMirror.module';
 import { ProgressModule } from './progress/progress.module';
 import { ProgressPhotosModule } from './progress-photos/progressPhotos.module';
 import { UsersModule } from './users/users.module';
@@ -34,6 +35,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ProgressPhotosModule,
     NotificationsModule,
     ProfessionalDiscoveryModule,
+    ProfessionalMirrorModule,
   ],
   controllers: [],
   providers: [
