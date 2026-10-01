@@ -8,6 +8,7 @@ import { PrismaService } from './database/prisma.service';
 import { ExerciseLibraryModule } from './exercise-library/exerciseLibrary.module';
 import { FoodDiaryModule } from './food-diary/foodDiary.module';
 import { MailModule } from './mail/mail.module';
+import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 
 import { ProductsModule } from './product/product.module';
@@ -36,6 +37,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     NotificationsModule,
     ProfessionalDiscoveryModule,
     ProfessionalMirrorModule,
+    MessagesModule,
   ],
   controllers: [],
   providers: [

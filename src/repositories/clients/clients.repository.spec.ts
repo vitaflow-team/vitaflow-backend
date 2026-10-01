@@ -282,3 +282,34 @@ describe('ClientsRepository.findByUserAndProfessionalType', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('ClientsRepository.findByUserAndProfessional', () => {
+  const findFirst = jest.fn();
+  const prisma = { client: { findFirst } } as unknown as PrismaService;
+  const repository = new ClientsRepository(prisma);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('scopes by the exact (userId, professionalId) pair', async () => {
+    findFirst.mockResolvedValue(null);
+
+    await repository.findByUserAndProfessional('user-1', 'professional-1');
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { userId: 'user-1', professionalId: 'professional-1' },
+    });
+  });
+
+  it('returns null when no such relationship exists', async () => {
+    findFirst.mockResolvedValue(null);
+
+    const result = await repository.findByUserAndProfessional(
+      'user-1',
+      'professional-1',
+    );
+
+    expect(result).toBeNull();
+  });
+});
