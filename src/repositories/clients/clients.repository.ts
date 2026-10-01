@@ -1,7 +1,7 @@
 import { PrismaService } from '@/database/prisma.service';
 import { escapeLikePattern } from '@/utils/escapeLikePattern';
 import { Injectable } from '@nestjs/common';
-import { Client, Prisma } from '@prisma/client';
+import { Client, Prisma, ProductType } from '@prisma/client';
 
 @Injectable()
 export class ClientsRepository {
@@ -66,6 +66,22 @@ export class ClientsRepository {
       where: {
         professionalId,
       },
+    });
+  }
+
+  // The user's linked professional of a given type — the "accepted
+  // relationship" the Professional Mirror reads (an existing Client row,
+  // whichever flow created it). Most recent wins if more than one exists.
+  async findByUserAndProfessionalType(
+    userId: string,
+    type: ProductType,
+  ): Promise<Client | null> {
+    return await this.prisma.client.findFirst({
+      where: {
+        userId,
+        professional: { product: { type } },
+      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

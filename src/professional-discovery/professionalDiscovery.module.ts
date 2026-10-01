@@ -25,5 +25,9 @@ import { ProfessionalSearchController } from './professionalSearch.controller';
     ProfessionalGuard,
     ProfessionalDiscoveryService,
   ],
+  // Exported so Professional Mirror can read ProfessionalProfile identity
+  // data (name, specialty) via getProfile() rather than duplicating that
+  // read against the repository directly.
+  exports: [ProfessionalDiscoveryService],
 })
 export class ProfessionalDiscoveryModule {}
