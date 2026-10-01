@@ -1,3 +1,4 @@
+import { NotificationsService } from '@/notifications/notifications.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
@@ -11,6 +12,16 @@ import { SubscriptionStateResponseDTO } from './dto/subscriptionStateResponse.Dt
 import { UpdateSubscriptionDTO } from './dto/updateSubscription.Dto';
 import { deriveExpiry } from './subscriptionExpiry';
 
+// Distinct message per real, detectable billing-event transition (task
+// requirement) — see `notifyBillingEvent`'s own comment for why only these
+// two are implemented.
+const BILLING_EVENT_MESSAGES: Record<string, string> = {
+  past_due:
+    'Não conseguimos processar o pagamento da sua assinatura. Vamos tentar novamente automaticamente nos próximos dias — atualize seus dados de pagamento para evitar interrupções.',
+  unpaid:
+    'Sua assinatura está com pagamento pendente após múltiplas tentativas. Atualize seus dados de pagamento para manter seu acesso Premium.',
+};
+
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
@@ -19,6 +30,7 @@ export class SubscriptionService {
     private readonly users: UserRepository,
     private readonly products: ProductsRepository,
     private readonly stripeVerification: StripeVerification,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async getForUser(userId: string): Promise<SubscriptionStateResponseDTO> {
@@ -134,13 +146,14 @@ export class SubscriptionService {
     }
 
     const productId = await this.resolveSyncProductId(dto, user);
+    const newStatus =
+      dto.stripePriceId === null ? 'canceled' : dto.subscriptionStatus;
 
     const updated = await this.users.updateSubscription(user.id, {
       productId,
       stripeCustomerId: dto.stripeCustomerId,
       stripeSubscriptionId: dto.stripeSubscriptionId,
-      subscriptionStatus:
-        dto.stripePriceId === null ? 'canceled' : dto.subscriptionStatus,
+      subscriptionStatus: newStatus,
       subscriptionCancelAt: dto.subscriptionCancelAt
         ? new Date(dto.subscriptionCancelAt)
         : null,
@@ -155,7 +168,46 @@ export class SubscriptionService {
       }),
     });
 
+    // Fire-and-record, after the sync itself has already succeeded: a
+    // notification failure must never fail or retry the webhook (Stripe
+    // retries on a non-2xx response). `NotificationsService.create` already
+    // catches its own email-send errors; nothing here can throw past the
+    // sync's own result.
+    await this.notifyBillingEvent(user.id, user.subscriptionStatus, newStatus);
+
     return this.toResponse(updated);
+  }
+
+  // Neither `invoice.payment_failed` nor `customer.subscription.updated`
+  // carries a distinct "this was a failure" flag by the time it reaches
+  // this DTO — both funnel into the same `subscriptionStatus` field (see
+  // the frontend's Stripe webhook handler). The only real, detectable
+  // billing-event signal available here is the status transition itself:
+  // newly entering `past_due` (a charge just failed, Stripe is retrying)
+  // or `unpaid` (retries exhausted). An "upcoming invoice" event (per the
+  // PRD's own example) is never forwarded to this backend at all — no
+  // `invoice.upcoming` webhook reaches this flow — so it has no real
+  // signal to trigger on and is not implemented; see task tracking notes.
+  private async notifyBillingEvent(
+    userId: string,
+    oldStatus: string | null,
+    newStatus: string,
+  ): Promise<void> {
+    if (oldStatus === newStatus) {
+      return;
+    }
+
+    const message = BILLING_EVENT_MESSAGES[newStatus];
+    if (!message) {
+      return;
+    }
+
+    await this.notifications.create(
+      userId,
+      'BILLING',
+      message,
+      `${process.env.APP_URL}/restrict/settings?tab=plano`,
+    );
   }
 
   private async resolveSyncProductId(

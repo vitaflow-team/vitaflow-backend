@@ -1,6 +1,7 @@
 import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
 import { MailModule } from '@/mail/mail.module';
+import { NotificationsModule } from '@/notifications/notifications.module';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { ProgressPhotosRepository } from '@/repositories/progress-photos/progressPhotos.repository';
@@ -24,7 +25,7 @@ import { SubscriptionSyncController } from './subscription/subscriptionSync.cont
 import { UserTokenService } from './token/userToken.service';
 
 @Module({
-  imports: [AuthModule, MailModule],
+  imports: [AuthModule, MailModule, NotificationsModule],
   controllers: [
     SignUpController,
     SignInController,

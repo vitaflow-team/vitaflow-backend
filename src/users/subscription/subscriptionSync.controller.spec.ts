@@ -1,5 +1,6 @@
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
+import { notificationsServiceMock } from 'mock/notifications.service.mock';
 import { ProductsRepositoryMock } from 'mock/product.repository.mock';
 import { stripeVerificationMock } from 'mock/stripeVerification.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
@@ -16,6 +17,7 @@ describe('SubscriptionSyncController Tests', () => {
         userRepositoryMock,
         ProductsRepositoryMock,
         stripeVerificationMock,
+        notificationsServiceMock,
         SubscriptionService,
       ],
     }).compile();

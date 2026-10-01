@@ -1,3 +1,4 @@
+import { NotificationsService } from '@/notifications/notifications.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
@@ -32,6 +33,7 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
     findFreeProduct: jest.Mock;
   };
   let stripeVerification: { verifySubscriptionWithStripe: jest.Mock };
+  let notifications: { create: jest.Mock };
 
   /** The `data` object the service handed to `updateSubscription`. */
   const updateData = () =>
@@ -62,6 +64,7 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
         belongsToUser: true,
       }),
     };
+    notifications = { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -69,6 +72,7 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
         { provide: UserRepository, useValue: users },
         { provide: ProductsRepository, useValue: products },
         { provide: StripeVerification, useValue: stripeVerification },
+        { provide: NotificationsService, useValue: notifications },
       ],
     }).compile();
 
@@ -382,6 +386,110 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
       await service.syncFromWebhook({ ...baseDto });
 
       expect(updateData()).toHaveProperty('subscriptionCancelAt', null);
+    });
+  });
+
+  describe('syncFromWebhook — billing notification trigger (task_02)', () => {
+    const baseDto = {
+      stripeCustomerId: 'cus_123',
+      stripePriceId: 'price_123',
+      stripeSubscriptionId: 'sub_123',
+    };
+
+    // UT-005 analog: a payment failure (active → past_due) creates a
+    // BILLING notification with a message distinct from the unpaid case.
+    it('creates a BILLING notification when the status transitions to past_due', async () => {
+      await service.syncFromWebhook({
+        ...baseDto,
+        subscriptionStatus: 'past_due',
+      });
+
+      expect(notifications.create).toHaveBeenCalledWith(
+        'user-1',
+        'BILLING',
+        expect.stringContaining('pagamento'),
+        expect.any(String),
+      );
+    });
+
+    it('creates a distinctly-worded BILLING notification for unpaid vs. past_due', async () => {
+      await service.syncFromWebhook({
+        ...baseDto,
+        subscriptionStatus: 'unpaid',
+      });
+
+      const unpaidMessage = notifications.create.mock.calls[0][2] as string;
+
+      users.findByStripeCustomerId.mockResolvedValue({
+        ...storedUser,
+        subscriptionStatus: 'active',
+      });
+      await service.syncFromWebhook({
+        ...baseDto,
+        subscriptionStatus: 'past_due',
+      });
+      const pastDueMessage = notifications.create.mock.calls[1][2] as string;
+
+      expect(unpaidMessage).not.toBe(pastDueMessage);
+    });
+
+    // UT-007: two distinct billing events (e.g. a failure then a retry
+    // that fails again) each produce their own notification — never
+    // merged or deduplicated.
+    it('UT-007 creates a separate notification for each of two billing events', async () => {
+      users.findByStripeCustomerId.mockResolvedValueOnce(storedUser);
+      await service.syncFromWebhook({
+        ...baseDto,
+        subscriptionStatus: 'past_due',
+      });
+
+      users.findByStripeCustomerId.mockResolvedValueOnce({
+        ...storedUser,
+        subscriptionStatus: 'past_due',
+      });
+      await service.syncFromWebhook({
+        ...baseDto,
+        subscriptionStatus: 'unpaid',
+      });
+
+      expect(notifications.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not notify when the status does not actually change', async () => {
+      users.findByStripeCustomerId.mockResolvedValue({
+        ...storedUser,
+        subscriptionStatus: 'past_due',
+      });
+
+      await service.syncFromWebhook({
+        ...baseDto,
+        subscriptionStatus: 'past_due',
+      });
+
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('does not notify for a transition that is not a billing-failure status', async () => {
+      await service.syncFromWebhook({
+        ...baseDto,
+        subscriptionStatus: 'trialing',
+      });
+
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    // The task's own requirement: the Notification row is created
+    // regardless of the user's BILLING preference — NotificationsService
+    // itself (task 1) is responsible for the preference check; this
+    // service only needs to call create() unconditionally on a real
+    // billing-failure transition, never pre-checking a preference itself.
+    it('calls create() unconditionally on a billing-failure transition, never checking a preference first', async () => {
+      await service.syncFromWebhook({
+        ...baseDto,
+        subscriptionStatus: 'past_due',
+      });
+
+      expect(notifications.create).toHaveBeenCalledTimes(1);
     });
   });
 
