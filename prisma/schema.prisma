@@ -75,6 +75,9 @@ model Users {
   professionalProfile     ProfessionalProfile?
   connectionRequestsSent     ConnectionRequest[] @relation("ConnectionRequestFromUser")
   connectionRequestsReceived ConnectionRequest[] @relation("ConnectionRequestToProfessional")
+  conversationsAsUser         Conversation[] @relation("ConversationAsUser")
+  conversationsAsProfessional Conversation[] @relation("ConversationAsProfessional")
+  sentMessages                Message[]      @relation("MessageSender")
 
   @@unique([email])
 }
@@ -460,4 +463,33 @@ model ConnectionRequest {
   decidedAt      DateTime?
 
   @@index([userId, professionalId, status])
+}
+
+// Identified by the (user, professional) pair, created implicitly on first
+// send — no separate "start conversation" action (TechSpec Key Decisions).
+// `reportedAt` is a single lightweight flag for backoffice review (ADR-003
+// of this feature: never a structured moderation pipeline).
+model Conversation {
+  id             String    @id @default(uuid(7))
+  userId         String
+  user           Users     @relation("ConversationAsUser", fields: [userId], references: [id])
+  professionalId String
+  professional   Users     @relation("ConversationAsProfessional", fields: [professionalId], references: [id])
+  messages       Message[]
+  reportedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([userId, professionalId])
+}
+
+model Message {
+  id             String       @id @default(uuid(7))
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  senderId       String
+  sender         Users        @relation("MessageSender", fields: [senderId], references: [id])
+  content        String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
 }

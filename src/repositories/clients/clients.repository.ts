@@ -85,6 +85,21 @@ export class ClientsRepository {
     });
   }
 
+  // Whether a real, linked (user, professional) relationship exists — the
+  // eligibility check Messages reuses rather than reimplementing (US-004).
+  // An accepted ConnectionRequest from Professional Discovery always
+  // produces exactly this kind of row via ClientRegisterService, so
+  // checking it alone also correctly covers that case without a second
+  // read against ConnectionRequest.
+  async findByUserAndProfessional(
+    userId: string,
+    professionalId: string,
+  ): Promise<Client | null> {
+    return await this.prisma.client.findFirst({
+      where: { userId, professionalId },
+    });
+  }
+
   async setAllClientUser(userId: string, email: string): Promise<void> {
     await this.prisma.client.updateMany({
       where: {
