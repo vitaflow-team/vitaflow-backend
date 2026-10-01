@@ -179,6 +179,10 @@ export class UserRepository {
       await tx.progressPhoto.deleteMany({ where: { userId } });
       await tx.notification.deleteMany({ where: { userId } });
       await tx.notificationPreference.deleteMany({ where: { userId } });
+      await tx.professionalProfile.deleteMany({ where: { userId } });
+      await tx.connectionRequest.deleteMany({
+        where: { OR: [{ userId }, { professionalId: userId }] },
+      });
       await tx.usersToken.deleteMany({ where: { userID: userId } });
       await tx.userAddress.deleteMany({ where: { userId } });
       await tx.oAuthIdentity.deleteMany({ where: { userId } });

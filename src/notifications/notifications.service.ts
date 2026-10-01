@@ -20,6 +20,7 @@ const DEFAULT_PREFERENCES: Record<NotificationCategory, boolean> = {
   MESSAGES: true,
   BILLING: true,
   PRODUCT_NEWS: false,
+  CONNECTION_REQUEST: true,
 };
 
 @Injectable()

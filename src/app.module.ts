@@ -11,6 +11,7 @@ import { MailModule } from './mail/mail.module';
 import { NotificationsModule } from './notifications/notifications.module';
 
 import { ProductsModule } from './product/product.module';
+import { ProfessionalDiscoveryModule } from './professional-discovery/professionalDiscovery.module';
 import { ProgressModule } from './progress/progress.module';
 import { ProgressPhotosModule } from './progress-photos/progressPhotos.module';
 import { UsersModule } from './users/users.module';
@@ -32,6 +33,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     FoodDiaryModule,
     ProgressPhotosModule,
     NotificationsModule,
+    ProfessionalDiscoveryModule,
   ],
   controllers: [],
   providers: [

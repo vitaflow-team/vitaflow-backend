@@ -72,6 +72,9 @@ model Users {
   progressPhotos          ProgressPhoto[]
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
+  professionalProfile     ProfessionalProfile?
+  connectionRequestsSent     ConnectionRequest[] @relation("ConnectionRequestFromUser")
+  connectionRequestsReceived ConnectionRequest[] @relation("ConnectionRequestToProfessional")
 
   @@unique([email])
 }
@@ -386,6 +389,7 @@ enum NotificationCategory {
   MESSAGES
   BILLING
   PRODUCT_NEWS
+  CONNECTION_REQUEST
 }
 
 // A missing `NotificationPreference` row for a (userId, category) pair is
@@ -413,4 +417,47 @@ model NotificationPreference {
   enabled  Boolean
 
   @@unique([userId, category])
+}
+
+// Public profile content for a NUTRITIONIST/PHYSICAL_EDUCATOR account
+// (ADR-004 of professional-discovery). Created lazily on first edit, not
+// eagerly for every professional account — a professional who never edited
+// their profile still has no row here and still appears in search with
+// null fields (US-001.EC-2, UT-003/UT-006).
+model ProfessionalProfile {
+  id            String   @id @default(uuid(7))
+  userId        String   @unique
+  user          Users    @relation(fields: [userId], references: [id])
+  bio           String?
+  specialty     String?
+  priceFrom     Decimal?
+  attendsOnline Boolean  @default(false)
+  updatedAt     DateTime @updatedAt
+}
+
+enum ConnectionRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+// No DB-level uniqueness on (userId, professionalId, status): a plain
+// composite unique would reject a second DECLINED row for the same pair,
+// breaking "a past decline never blocks a future request" (US-004.EC-3,
+// UT-010), since a user can be declined more than once across repeated
+// request cycles. The "only one PENDING per pair" rule is enforced at the
+// service layer instead (`requestConnection`'s existence check), per the
+// TechSpec's own Known Risks — ADR-004's `@@unique` snippet is illustrative
+// only, as its own inline comment notes ("see Implementation Design").
+model ConnectionRequest {
+  id             String                  @id @default(uuid(7))
+  userId         String
+  user           Users                   @relation("ConnectionRequestFromUser", fields: [userId], references: [id])
+  professionalId String
+  professional   Users                   @relation("ConnectionRequestToProfessional", fields: [professionalId], references: [id])
+  status         ConnectionRequestStatus @default(PENDING)
+  createdAt      DateTime                @default(now())
+  decidedAt      DateTime?
+
+  @@index([userId, professionalId, status])
 }
