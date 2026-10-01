@@ -225,6 +225,7 @@ describe('NotificationsService', () => {
         MESSAGES: true,
         BILLING: true,
         PRODUCT_NEWS: false,
+        CONNECTION_REQUEST: true,
       });
     });
 

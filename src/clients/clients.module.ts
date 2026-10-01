@@ -15,5 +15,9 @@ import { ClientRegisterService } from './register/client.register.service';
     ClientsRepository,
     ClientRegisterService,
   ],
+  // Exported so professional-discovery's accept() can call postRegister()
+  // directly instead of reimplementing client creation (PRD Business Rules:
+  // an accepted request must produce the exact same kind of relationship).
+  exports: [ClientRegisterService],
 })
 export class ClientsModule {}

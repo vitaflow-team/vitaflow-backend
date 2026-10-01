@@ -328,6 +328,8 @@ describe('UserRepository Tests', () => {
       progressPhoto: { deleteMany: jest.Mock };
       notification: { deleteMany: jest.Mock };
       notificationPreference: { deleteMany: jest.Mock };
+      professionalProfile: { deleteMany: jest.Mock };
+      connectionRequest: { deleteMany: jest.Mock };
       usersToken: { deleteMany: jest.Mock };
       userAddress: { deleteMany: jest.Mock };
       oAuthIdentity: { deleteMany: jest.Mock };
@@ -351,6 +353,12 @@ describe('UserRepository Tests', () => {
         notification: { deleteMany: record('notification.deleteMany') },
         notificationPreference: {
           deleteMany: record('notificationPreference.deleteMany'),
+        },
+        professionalProfile: {
+          deleteMany: record('professionalProfile.deleteMany'),
+        },
+        connectionRequest: {
+          deleteMany: record('connectionRequest.deleteMany'),
         },
         usersToken: { deleteMany: record('usersToken.deleteMany') },
         userAddress: { deleteMany: record('userAddress.deleteMany') },
@@ -398,6 +406,12 @@ describe('UserRepository Tests', () => {
       expect(tx.notificationPreference.deleteMany).toHaveBeenCalledWith({
         where: { userId: 'u1' },
       });
+      expect(tx.professionalProfile.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+      });
+      expect(tx.connectionRequest.deleteMany).toHaveBeenCalledWith({
+        where: { OR: [{ userId: 'u1' }, { professionalId: 'u1' }] },
+      });
       expect(tx.usersToken.deleteMany).toHaveBeenCalledWith({
         where: { userID: 'u1' },
       });
@@ -417,6 +431,8 @@ describe('UserRepository Tests', () => {
         'progressPhoto.deleteMany',
         'notification.deleteMany',
         'notificationPreference.deleteMany',
+        'professionalProfile.deleteMany',
+        'connectionRequest.deleteMany',
         'usersToken.deleteMany',
         'userAddress.deleteMany',
         'oAuthIdentity.deleteMany',
