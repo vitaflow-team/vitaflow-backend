@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { ApiKeyGuard } from './common/guards/apiKey.guard';
@@ -16,6 +17,7 @@ import { ProfessionalDiscoveryModule } from './professional-discovery/profession
 import { ProfessionalMirrorModule } from './professional-mirror/professionalMirror.module';
 import { ProgressModule } from './progress/progress.module';
 import { ProgressPhotosModule } from './progress-photos/progressPhotos.module';
+import { SchedulingModule } from './scheduling/scheduling.module';
 import { UsersModule } from './users/users.module';
 import { WorkoutsModule } from './workouts/workouts.module';
 
@@ -25,6 +27,9 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    // First use of this pattern in the project (scheduling TechSpec
+    // Technical Dependencies) — powers ReminderCronService's polling.
+    ScheduleModule.forRoot(),
     AuthModule,
     UsersModule,
     ClientsModule,
@@ -38,6 +43,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ProfessionalDiscoveryModule,
     ProfessionalMirrorModule,
     MessagesModule,
+    SchedulingModule,
   ],
   controllers: [],
   providers: [
