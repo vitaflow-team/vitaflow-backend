@@ -78,6 +78,9 @@ model Users {
   conversationsAsUser         Conversation[] @relation("ConversationAsUser")
   conversationsAsProfessional Conversation[] @relation("ConversationAsProfessional")
   sentMessages                Message[]      @relation("MessageSender")
+  availabilityWindows         AvailabilityWindow[]
+  slotsAsProfessional         Slot[]         @relation("SlotProfessional")
+  slotsAsUser                 Slot[]         @relation("SlotUser")
 
   @@unique([email])
 }
@@ -492,4 +495,55 @@ model Message {
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])
+}
+
+enum SessionType {
+  PRESENCIAL
+  ONLINE
+}
+
+enum SlotStatus {
+  OPEN
+  BOOKED
+  CANCELED
+}
+
+// A professional's recurring weekly availability (US-001). Expanded into
+// individual Slot rows by the generation routine — this model is never
+// queried directly for booking, only Slot is.
+model AvailabilityWindow {
+  id                     String   @id @default(uuid(7))
+  professionalId         String
+  professional           Users    @relation(fields: [professionalId], references: [id])
+  dayOfWeek              Int // 1 (Mon) .. 7 (Sun), ISO 8601
+  startMinute            Int // minutes from midnight, BRT (UTC-3, fixed offset — TechSpec Key Decisions)
+  endMinute              Int
+  sessionDurationMinutes Int
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// An individual bookable instance generated from an AvailabilityWindow.
+// `@@unique([professionalId, startAt])` is the structural double-booking
+// guard (ADR-002): generation never creates two rows at the same
+// professional+time, and booking only ever updates an existing OPEN row —
+// it never inserts a second row that could collide.
+model Slot {
+  id                   String       @id @default(uuid(7))
+  professionalId       String
+  professional         Users        @relation("SlotProfessional", fields: [professionalId], references: [id])
+  availabilityWindowId String?
+  startAt              DateTime // UTC
+  endAt                DateTime
+  status               SlotStatus   @default(OPEN)
+  type                 SessionType?
+  onlineLink           String?
+  userId               String?
+  user                 Users?       @relation("SlotUser", fields: [userId], references: [id])
+  reminderSentAt       DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@unique([professionalId, startAt])
+  @@index([status, startAt])
 }
