@@ -49,4 +49,7 @@ export class NotificationPreferencesEntity {
 
   @ApiProperty()
   WORKOUT_PLAN: boolean;
+
+  @ApiProperty()
+  SCHEDULE_CHANGE: boolean;
 }

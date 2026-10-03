@@ -39,6 +39,12 @@ import { Prisma, ProductType, Users } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
+import { FixedTimesRepository } from '@/repositories/fixed-times/fixedTimes.repository';
+import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
+import { Clock } from '@/scheduling/clock.service';
+import { NotificationsService } from '@/notifications/notifications.service';
+import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
+import { MailService } from '@/mail/mail.service';
 jest.setTimeout(60_000);
 
 const RUN_TAG = `edu-assess-${Date.now()}`;
@@ -86,6 +92,16 @@ describe('Educator assessments integration', () => {
         ProfessionalMirrorController,
       ],
       providers: [
+        {
+          provide: MailService,
+          useValue: { sendNotificationEmail: jest.fn() },
+        },
+        FixedTimesRepository,
+        FixedSessionsService,
+        Clock,
+        EducatorWorkoutsRepository,
+        NotificationsService,
+        NotificationsRepository,
         PrismaService,
         UserRepository,
         ClientsRepository,

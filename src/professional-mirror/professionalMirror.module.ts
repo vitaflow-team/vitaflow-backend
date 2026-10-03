@@ -6,11 +6,13 @@ import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/edu
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Module } from '@nestjs/common';
+import { FixedTimesModule } from '@/scheduling/fixed-times/fixedTimes.module';
+import { Clock } from '@/scheduling/clock.service';
 import { ProfessionalMirrorController } from './professionalMirror.controller';
 import { ProfessionalMirrorService } from './professionalMirror.service';
 
 @Module({
-  imports: [AuthModule, ProfessionalDiscoveryModule],
+  imports: [AuthModule, ProfessionalDiscoveryModule, FixedTimesModule],
   controllers: [ProfessionalMirrorController],
   providers: [
     PrismaService,
@@ -18,6 +20,7 @@ import { ProfessionalMirrorService } from './professionalMirror.service';
     ClientsRepository,
     PhysicalAssessmentsRepository,
     EducatorWorkoutsRepository,
+    Clock,
     ProfessionalMirrorService,
   ],
 })

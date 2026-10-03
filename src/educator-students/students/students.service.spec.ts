@@ -97,6 +97,11 @@ describe('StudentsService', () => {
       users as unknown as UserRepository,
       assessments as unknown as PhysicalAssessmentsRepository,
       workouts as unknown as EducatorWorkoutsRepository,
+      {
+        nextForRecords: jest.fn().mockResolvedValue(new Map()),
+        todaySessionId: jest.fn().mockResolvedValue(null),
+      } as any,
+      { now: () => new Date('2026-10-01T12:00:00Z') } as any,
     );
   });
 
@@ -116,6 +121,7 @@ describe('StudentsService', () => {
           email: 'ana@x.com',
           hasAccount: true,
           lastAssessedOn: '2026-09-15',
+          nextSession: null,
         },
         {
           id: 'id-Zeca',
@@ -123,6 +129,7 @@ describe('StudentsService', () => {
           email: 'zeca@x.com',
           hasAccount: false,
           lastAssessedOn: null,
+          nextSession: null,
         },
       ]);
     });
@@ -215,6 +222,7 @@ describe('StudentsService', () => {
       expect(clients.create.mock.calls[0][0].userId).toBeUndefined();
       expect(result.hasAccount).toBe(false);
       expect(result.overview).toEqual({
+        nextSession: null,
         latest: null,
         variation: null,
         currentWorkout: null,
@@ -424,6 +432,7 @@ describe('StudentsService', () => {
 
       expect(result.birthDate).toBeNull();
       expect(result.overview).toEqual({
+        nextSession: null,
         latest: null,
         variation: null,
         currentWorkout: null,

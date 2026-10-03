@@ -43,6 +43,9 @@ import { Prisma, ProductType, Users } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
+import { FixedTimesRepository } from '@/repositories/fixed-times/fixedTimes.repository';
+import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
+import { Clock } from '@/scheduling/clock.service';
 jest.setTimeout(120_000);
 
 const RUN_TAG = `edu-workouts-${Date.now()}`;
@@ -88,6 +91,12 @@ describe('Educator workouts integration', () => {
         ProfessionalMirrorController,
       ],
       providers: [
+        FixedTimesRepository,
+        FixedSessionsService,
+        Clock,
+        EducatorWorkoutsRepository,
+        NotificationsService,
+        NotificationsRepository,
         PrismaService,
         UserRepository,
         ClientsRepository,

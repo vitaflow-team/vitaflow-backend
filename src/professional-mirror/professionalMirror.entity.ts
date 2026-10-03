@@ -81,6 +81,25 @@ export class MirrorWorkoutEntity {
   todaySessionId: string | null;
 }
 
+// The student's next time with the educator: a fixed session or a booking.
+export class NextScheduleEntity {
+  @ApiProperty() startAt: Date;
+
+  @ApiProperty() endAt: Date;
+
+  @ApiProperty({ enum: ['PRESENCIAL', 'ONLINE'] })
+  type: 'PRESENCIAL' | 'ONLINE';
+
+  @ApiProperty({ nullable: true, type: String })
+  onlineLink: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  workoutLetter: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  workoutSessionName: string | null;
+}
+
 export class EducatorMirrorEntity {
   @ApiProperty({ type: MirrorProfessionalEntity })
   professional: MirrorProfessionalEntity;
@@ -94,10 +113,12 @@ export class EducatorMirrorEntity {
   todayWorkout: MirrorWorkoutEntity | null;
 
   @ApiProperty({
+    type: NextScheduleEntity,
     nullable: true,
-    description: 'Populated by the Scheduling PRD.',
+    description:
+      'The next fixed session or booking with this educator; null when none.',
   })
-  nextSchedule: null;
+  nextSchedule: NextScheduleEntity | null;
 
   @ApiProperty({
     type: [MirrorAssessmentEntity],

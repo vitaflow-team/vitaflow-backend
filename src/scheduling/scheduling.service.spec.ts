@@ -55,6 +55,7 @@ describe('SchedulingService', () => {
       users,
       notifications,
       clock,
+      { listUpcomingForActor: jest.fn().mockResolvedValue([]) } as any,
     );
   });
 

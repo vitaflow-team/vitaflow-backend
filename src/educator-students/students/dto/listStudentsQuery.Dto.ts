@@ -1,6 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, TransformFnParams } from 'class-transformer';
-import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class ListStudentsQueryDTO {
   @ApiProperty({
@@ -25,4 +32,14 @@ export class ListStudentsQueryDTO {
   @IsInt()
   @Min(1)
   page?: number;
+
+  @ApiProperty({
+    required: false,
+    enum: ['next', 'name'],
+    default: 'next',
+    description: 'next: soonest next session first; name: alphabetical.',
+  })
+  @IsOptional()
+  @IsIn(['next', 'name'])
+  order?: 'next' | 'name';
 }

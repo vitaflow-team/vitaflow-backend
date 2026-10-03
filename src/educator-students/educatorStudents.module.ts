@@ -18,6 +18,9 @@ import { DeclarationController } from './assessments/declaration.controller';
 import { AccountLookupThrottlerGuard } from './students/accountLookupThrottler.guard';
 import { StudentsController } from './students/students.controller';
 import { StudentsService } from './students/students.service';
+import { FixedTimesController } from './schedule/fixedTimes.controller';
+import { FixedTimesModule } from '@/scheduling/fixed-times/fixedTimes.module';
+import { Clock } from '@/scheduling/clock.service';
 import { StudentWorkoutsController } from './workouts/studentWorkouts.controller';
 import { StudentWorkoutsService } from './workouts/studentWorkouts.service';
 import { WorkoutNotificationsService } from './workouts/workoutNotifications.service';
@@ -28,6 +31,7 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
   imports: [
     AuthModule,
     NotificationsModule,
+    FixedTimesModule,
     // Own throttler storage: the account lookup limit is independent of the
     // auth routes' throttlers and keyed by the authenticated educator.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
@@ -38,6 +42,7 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     DeclarationController,
     WorkoutsController,
     StudentWorkoutsController,
+    FixedTimesController,
   ],
   providers: [
     PrismaService,
@@ -56,6 +61,7 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     WorkoutNotificationsService,
     EducatorWorkoutsService,
     StudentWorkoutsService,
+    Clock,
   ],
 })
 export class EducatorStudentsModule {}

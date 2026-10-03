@@ -74,9 +74,13 @@ describe('StudentWorkoutsService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks();
-    service = new StudentWorkoutsService({
-      findActiveByLinkedUser,
-    } as unknown as EducatorWorkoutsRepository);
+    service = new StudentWorkoutsService(
+      {
+        findActiveByLinkedUser,
+      } as unknown as EducatorWorkoutsRepository,
+      { todaySessionId: jest.fn().mockResolvedValue(null) } as any,
+      { now: () => new Date('2026-10-01T12:00:00Z') } as any,
+    );
   });
 
   it('UT-062 returns the educator, the effective video and nothing educator-only', async () => {

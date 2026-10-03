@@ -1,3 +1,5 @@
+import { Clock } from '@/scheduling/clock.service';
+import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import {
   ActiveWorkoutWithEducator,
   EducatorWorkoutsRepository,
@@ -38,10 +40,25 @@ function toStudentWorkout(row: ActiveWorkoutWithEducator) {
 // to the caller. No drafts, no archive, no status, no conflict data.
 @Injectable()
 export class StudentWorkoutsService {
-  constructor(private readonly workouts: EducatorWorkoutsRepository) {}
+  constructor(
+    private readonly workouts: EducatorWorkoutsRepository,
+    private readonly fixedSessions: FixedSessionsService,
+    private readonly clock: Clock,
+  ) {}
 
   async getActiveForUser(userId: string): Promise<StudentWorkoutsResponseDTO> {
     const rows = await this.workouts.findActiveByLinkedUser(userId);
-    return { workouts: rows.map(toStudentWorkout) };
+    const now = this.clock.now();
+    return {
+      workouts: await Promise.all(
+        rows.map(async (row) => ({
+          ...toStudentWorkout(row),
+          todaySessionId: await this.fixedSessions.todaySessionId(
+            row.clientId,
+            now,
+          ),
+        })),
+      ),
+    };
   }
 }
