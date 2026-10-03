@@ -27,6 +27,13 @@ export class ExercisesRepository {
     return await this.prisma.exercise.findUnique({ where: { id } });
   }
 
+  // Only approved exercises: a pending, rejected or unknown id is simply absent.
+  async findApprovedByIds(ids: string[]): Promise<Exercise[]> {
+    return await this.prisma.exercise.findMany({
+      where: { id: { in: ids }, status: ExerciseStatus.APPROVED },
+    });
+  }
+
   async findBySubmitter(submittedById: string): Promise<Exercise[]> {
     return await this.prisma.exercise.findMany({
       where: { submittedById },

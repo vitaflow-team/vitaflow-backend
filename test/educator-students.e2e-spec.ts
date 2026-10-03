@@ -15,6 +15,7 @@ import { AccountLookupThrottlerGuard } from '@/educator-students/students/accoun
 import { StudentsController } from '@/educator-students/students/students.controller';
 import { StudentsService } from '@/educator-students/students/students.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { INestApplication } from '@nestjs/common';
@@ -64,6 +65,7 @@ describe('Educator students integration', () => {
         UserRepository,
         ClientsRepository,
         PhysicalAssessmentsRepository,
+        EducatorWorkoutsRepository,
         StudentsService,
         AuthGuard,
         PhysicalEducatorGuard,

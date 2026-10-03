@@ -3,7 +3,11 @@ import { ConsentRepository } from '@/common/consent/consent.repository';
 import { ConsentService } from '@/common/consent/consent.service';
 import { PhysicalEducatorGuard } from '@/common/guards/physicalEducator.guard';
 import { PrismaService } from '@/database/prisma.service';
+import { NotificationsModule } from '@/notifications/notifications.module';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
+import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
+import { FitnessProfileRepository } from '@/repositories/fitness-profile/fitnessProfile.repository';
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Module } from '@nestjs/common';
@@ -14,10 +18,16 @@ import { DeclarationController } from './assessments/declaration.controller';
 import { AccountLookupThrottlerGuard } from './students/accountLookupThrottler.guard';
 import { StudentsController } from './students/students.controller';
 import { StudentsService } from './students/students.service';
+import { StudentWorkoutsController } from './workouts/studentWorkouts.controller';
+import { StudentWorkoutsService } from './workouts/studentWorkouts.service';
+import { WorkoutNotificationsService } from './workouts/workoutNotifications.service';
+import { WorkoutsController } from './workouts/workouts.controller';
+import { EducatorWorkoutsService } from './workouts/workouts.service';
 
 @Module({
   imports: [
     AuthModule,
+    NotificationsModule,
     // Own throttler storage: the account lookup limit is independent of the
     // auth routes' throttlers and keyed by the authenticated educator.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
@@ -26,18 +36,26 @@ import { StudentsService } from './students/students.service';
     StudentsController,
     AssessmentsController,
     DeclarationController,
+    WorkoutsController,
+    StudentWorkoutsController,
   ],
   providers: [
     PrismaService,
     UserRepository,
     ClientsRepository,
     PhysicalAssessmentsRepository,
+    EducatorWorkoutsRepository,
+    ExercisesRepository,
+    FitnessProfileRepository,
     ConsentRepository,
     ConsentService,
     PhysicalEducatorGuard,
     AccountLookupThrottlerGuard,
     StudentsService,
     AssessmentsService,
+    WorkoutNotificationsService,
+    EducatorWorkoutsService,
+    StudentWorkoutsService,
   ],
 })
 export class EducatorStudentsModule {}

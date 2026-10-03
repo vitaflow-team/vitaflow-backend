@@ -1,6 +1,8 @@
 import { toIsoDay } from '@/educator-students/assessments/assessmentFormat.util';
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
+import { sessionLabel } from '@/educator-students/workouts/workoutTree.util';
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { Injectable } from '@nestjs/common';
 import { Client, ProductType } from '@prisma/client';
@@ -8,6 +10,7 @@ import {
   EducatorMirrorEntity,
   MirrorAssessmentEntity,
   MirrorProfessionalEntity,
+  MirrorWorkoutEntity,
   NoProfessionalEntity,
   NutritionistMirrorEntity,
 } from './professionalMirror.entity';
@@ -20,6 +23,7 @@ export class ProfessionalMirrorService {
     private readonly clients: ClientsRepository,
     private readonly professionalDiscovery: ProfessionalDiscoveryService,
     private readonly assessments: PhysicalAssessmentsRepository,
+    private readonly workouts: EducatorWorkoutsRepository,
   ) {}
 
   async getNutritionistMirror(
@@ -44,10 +48,32 @@ export class ProfessionalMirrorService {
 
     return {
       professional: link.professional,
-      todayWorkout: null,
+      todayWorkout: await this.currentWorkout(link.client.id),
       nextSchedule: null,
       physicalAssessment: await this.latestAssessments(link.client.id),
       billingStatus: null,
+    };
+  }
+
+  // A summary of the educator's active workout for this record, or null. No
+  // session is marked as today's: that exists only through the schedule.
+  private async currentWorkout(
+    clientId: string,
+  ): Promise<MirrorWorkoutEntity | null> {
+    const active = await this.workouts.findActiveByClient(clientId);
+    if (!active) return null;
+
+    return {
+      id: active.id,
+      title: active.title,
+      weeklyFrequency: active.weeklyFrequency,
+      sessions: active.sessions.map((session, position) => ({
+        id: session.id,
+        label: sessionLabel(position),
+        name: session.name,
+        exerciseCount: session._count.exercises,
+      })),
+      todaySessionId: null,
     };
   }
 

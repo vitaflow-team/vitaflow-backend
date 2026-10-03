@@ -1,5 +1,6 @@
 import { CodedError } from '@/common/errors/codedError';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Prisma } from '@prisma/client';
@@ -74,6 +75,7 @@ describe('StudentsService', () => {
     findLatestByClient: jest.fn(),
     findAllForVariation: jest.fn(),
   };
+  const workouts = { findActiveByClient: jest.fn() };
   let service: StudentsService;
 
   beforeEach(() => {
@@ -89,10 +91,12 @@ describe('StudentsService', () => {
     users.findByEmailInsensitive.mockResolvedValue(null);
     assessments.findLatestByClient.mockResolvedValue([]);
     assessments.findAllForVariation.mockResolvedValue([]);
+    workouts.findActiveByClient.mockResolvedValue(null);
     service = new StudentsService(
       clients as unknown as ClientsRepository,
       users as unknown as UserRepository,
       assessments as unknown as PhysicalAssessmentsRepository,
+      workouts as unknown as EducatorWorkoutsRepository,
     );
   });
 
@@ -210,7 +214,11 @@ describe('StudentsService', () => {
       );
       expect(clients.create.mock.calls[0][0].userId).toBeUndefined();
       expect(result.hasAccount).toBe(false);
-      expect(result.overview).toEqual({ latest: null, variation: null });
+      expect(result.overview).toEqual({
+        latest: null,
+        variation: null,
+        currentWorkout: null,
+      });
     });
 
     it('UT-041 links a confirmed account and fills missing data from it', async () => {
@@ -332,6 +340,31 @@ describe('StudentsService', () => {
   });
 
   describe('get', () => {
+    it('UT-071 returns the current workout of the overview, or null', async () => {
+      clients.findOwnedById.mockResolvedValue(client({ userId: 'u1' }));
+      workouts.findActiveByClient.mockResolvedValue({
+        id: 'w1',
+        title: 'Hipertrofia',
+        weeklyFrequency: null,
+        sessions: [
+          { id: 's1', name: 'Peito', _count: { exercises: 2 } },
+          { id: 's2', name: 'Costas', _count: { exercises: 1 } },
+        ],
+      });
+
+      const withWorkout = await service.get(EDUCATOR, STUDENT_ID);
+      workouts.findActiveByClient.mockResolvedValue(null);
+      const without = await service.get(EDUCATOR, STUDENT_ID);
+
+      expect(withWorkout.overview.currentWorkout).toEqual({
+        id: 'w1',
+        title: 'Hipertrofia',
+        weeklyFrequency: null,
+        sessionNames: ['Peito', 'Costas'],
+      });
+      expect(without.overview.currentWorkout).toBeNull();
+    });
+
     it('UT-064 returns the header and the overview', async () => {
       clients.findOwnedById.mockResolvedValue(client({ userId: 'u1' }));
       assessments.findLatestByClient.mockResolvedValue([
@@ -390,7 +423,11 @@ describe('StudentsService', () => {
       const result = await service.get(EDUCATOR, STUDENT_ID);
 
       expect(result.birthDate).toBeNull();
-      expect(result.overview).toEqual({ latest: null, variation: null });
+      expect(result.overview).toEqual({
+        latest: null,
+        variation: null,
+        currentWorkout: null,
+      });
     });
 
     it.each([

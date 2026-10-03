@@ -3,6 +3,7 @@ import {
   ClientsRepository,
   ClientWithLatestAssessment,
 } from '@/repositories/clients/clients.repository';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Injectable, Logger } from '@nestjs/common';
@@ -50,6 +51,7 @@ export class StudentsService {
     private readonly clients: ClientsRepository,
     private readonly users: UserRepository,
     private readonly assessments: PhysicalAssessmentsRepository,
+    private readonly workouts: EducatorWorkoutsRepository,
   ) {}
 
   // The whole list is read in one query; search, ordering and paging run over
@@ -275,14 +277,23 @@ export class StudentsService {
   }
 
   private async buildOverview(clientId: string): Promise<StudentOverviewDTO> {
-    const [latest, all] = await Promise.all([
+    const [latest, all, active] = await Promise.all([
       this.assessments.findLatestByClient(clientId, 1),
       this.assessments.findAllForVariation(clientId),
+      this.workouts.findActiveByClient(clientId),
     ]);
 
     return {
       latest: latest[0] ? toAssessmentResponse(latest[0]) : null,
       variation: computeVariation(all),
+      currentWorkout: active
+        ? {
+            id: active.id,
+            title: active.title,
+            weeklyFrequency: active.weeklyFrequency,
+            sessionNames: active.sessions.map((session) => session.name),
+          }
+        : null,
     };
   }
 

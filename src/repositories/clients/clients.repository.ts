@@ -115,6 +115,16 @@ export class ClientsRepository {
     });
   }
 
+  // The records among `ids` that belong to this professional, ids unique.
+  async findOwnedByIds(
+    ids: string[],
+    professionalId: string,
+  ): Promise<Client[]> {
+    return await this.prisma.client.findMany({
+      where: { id: { in: ids }, professionalId },
+    });
+  }
+
   // Every student of the professional with the date of the latest assessment,
   // in one query. Search, ordering and paging run over this whole list.
   async findAllWithLatestAssessment(

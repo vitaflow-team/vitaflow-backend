@@ -27,6 +27,7 @@ import { ProfessionalMirrorService } from '@/professional-mirror/professionalMir
 import { ProgressController } from '@/progress/progress.controller';
 import { ProgressService } from '@/progress/progress.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -89,6 +90,7 @@ describe('Educator assessments integration', () => {
         UserRepository,
         ClientsRepository,
         PhysicalAssessmentsRepository,
+        EducatorWorkoutsRepository,
         MeasurementRecordsRepository,
         ConsentRepository,
         ConsentService,

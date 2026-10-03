@@ -27,7 +27,7 @@ export class UnreadCountEntity {
 }
 
 // One key per NotificationCategory — Swagger can't express a dynamic-key
-// Record cleanly, so this documents the exact five-category shape returned.
+// Record cleanly, so this documents the exact per-category shape returned.
 export class NotificationPreferencesEntity {
   @ApiProperty()
   WORKOUT_REMINDER: boolean;
@@ -43,4 +43,10 @@ export class NotificationPreferencesEntity {
 
   @ApiProperty()
   PRODUCT_NEWS: boolean;
+
+  @ApiProperty()
+  CONNECTION_REQUEST: boolean;
+
+  @ApiProperty()
+  WORKOUT_PLAN: boolean;
 }

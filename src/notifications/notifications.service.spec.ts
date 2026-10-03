@@ -2,7 +2,7 @@ import { MailService } from '@/mail/mail.service';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
-import { Notification, Users } from '@prisma/client';
+import { Notification, NotificationCategory, Users } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 
 function makeNotification(overrides: Partial<Notification> = {}): Notification {
@@ -226,7 +226,17 @@ describe('NotificationsService', () => {
         BILLING: true,
         PRODUCT_NEWS: false,
         CONNECTION_REQUEST: true,
+        WORKOUT_PLAN: true,
       });
+    });
+
+    it('UT-074 WORKOUT_PLAN is a category and its default is enabled', async () => {
+      notificationsFindAllPreferences.mockResolvedValue([]);
+
+      const preferences = await service.getPreferences('user-1');
+
+      expect(Object.keys(NotificationCategory)).toContain('WORKOUT_PLAN');
+      expect(preferences.WORKOUT_PLAN).toBe(true);
     });
 
     it('UT-010 disabling a category stops the email; re-enabling restores it', async () => {
