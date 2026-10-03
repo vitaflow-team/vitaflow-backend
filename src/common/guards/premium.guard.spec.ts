@@ -39,6 +39,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     groupId: 'group-1',
     type: 'USER',
     stripeId: null,
+    tier: 'STANDARD',
     createdAt: new Date('2026-09-30T09:00:00.000Z'),
     updatedAt: new Date('2026-09-30T09:00:00.000Z'),
     ...overrides,

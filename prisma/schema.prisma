@@ -103,6 +103,8 @@ model Users {
   viewAsSessionsAsStaff       BackofficeViewAsSession[] @relation("BackofficeViewAsStaff")
   assessmentTemplates         AssessmentTemplate[]
 
+  billingAccounts BillingAccount[]
+
   // No longer a plain @@unique: a staff invitation must be able to coexist
   // with a pre-existing customer account on the same email, as two entirely
   // separate rows (platform-admin-access ADR-005, task_02). Replaced by two
@@ -178,6 +180,10 @@ model Client {
   turmaEnrollments TurmaEnrollment[]
   formRecords      FormRecord[]
   mealPlans        MealPlan[]
+
+  invoices         Invoice[]
+  billingCustomers BillingCustomer[]
+  taxId            StudentTaxId?
 
   @@index([email])
   @@index([academiaId])
@@ -378,6 +384,7 @@ model Product {
   group        ProductGroup  @relation(fields: [groupId], references: [id])
   groupId      String
   type         ProductType   @default(USER)
+  tier         ProductTier   @default(STANDARD)
   stripeId     String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -617,6 +624,95 @@ model ProgressPhoto {
   updatedAt       DateTime   @updatedAt
 
   @@index([userId, angle, takenAt])
+}
+
+enum ProductTier {
+  FREE
+  STANDARD
+  PREMIUM
+}
+
+enum BillingProvider {
+  ASAAS
+}
+
+enum BillingAccountStatus {
+  ACTIVE
+  REPLACED
+  DISCONNECTED
+}
+
+enum InvoiceStatus {
+  PENDING
+  OVERDUE
+  PAID
+  PAID_MANUALLY
+  CANCELED
+}
+
+model BillingAccount {
+  id                String               @id @default(uuid(7))
+  userId            String
+  user              Users                @relation(fields: [userId], references: [id])
+  provider          BillingProvider
+  status            BillingAccountStatus @default(ACTIVE)
+  accountName       String
+  apiKeyEncrypted   String?
+  apiKeyFingerprint String
+  webhookId         String?
+  webhookTokenHash  String               @unique
+  keyInvalidAt      DateTime?
+  invoices          Invoice[]
+  customers         BillingCustomer[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([userId])
+}
+
+model BillingCustomer {
+  id               String         @id @default(uuid(7))
+  billingAccountId String
+  billingAccount   BillingAccount @relation(fields: [billingAccountId], references: [id])
+  clientId         String
+  client           Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  externalId       String
+
+  @@unique([billingAccountId, clientId])
+}
+
+model StudentTaxId {
+  clientId   String   @id
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ciphertext String
+  updatedAt  DateTime @updatedAt
+}
+
+model Invoice {
+  id                String         @id @default(uuid(7))
+  clientId          String
+  client            Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  billingAccountId  String
+  billingAccount    BillingAccount @relation(fields: [billingAccountId], references: [id])
+  competenceYear    Int
+  competenceMonth   Int
+  amountCents       Int
+  dueDate           DateTime       @db.Date
+  status            InvoiceStatus  @default(PENDING)
+  externalId        String?
+  paymentUrl        String?
+  paidAt            DateTime?      @db.Date
+  paidAmountCents   Int?
+  manualNote        String?
+  linkSentAt        DateTime?
+  overdueNotifiedAt DateTime?
+  paidNotifiedAt    DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([billingAccountId, externalId])
+  @@index([clientId, competenceYear, competenceMonth])
+  @@index([status, dueDate])
 }
 
 enum NotificationCategory {

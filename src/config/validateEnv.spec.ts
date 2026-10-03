@@ -15,9 +15,29 @@ const requiredEnv = {
   MAIL_PORT: '465',
   MAIL_USER: 'mailer@example.com',
   MAIL_PASS: 'mail-password',
+  BILLING_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+  API_PUBLIC_URL: 'https://api.vitaflow.test',
 };
 
 describe('validateEnv', () => {
+  it('UT-108 names the billing variable when the encryption key is not 32 bytes, without echoing it', () => {
+    const short = Buffer.alloc(31, 1).toString('base64');
+    let message = '';
+    try {
+      validateEnv({ ...requiredEnv, BILLING_ENCRYPTION_KEY: short });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('BILLING_ENCRYPTION_KEY');
+    expect(message).not.toContain(short);
+  });
+
+  it('UT-108 names API_PUBLIC_URL when it is missing', () => {
+    const rest: Record<string, string> = { ...requiredEnv };
+    delete rest.API_PUBLIC_URL;
+    expect(() => validateEnv(rest)).toThrow('API_PUBLIC_URL');
+  });
+
   it('UT-040 accepts required variables with both Google credentials', () => {
     expect(() =>
       validateEnv({

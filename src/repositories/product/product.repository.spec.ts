@@ -22,6 +22,7 @@ const productGroupsMock: ProductGroupWithDetails[] = [
         type: 'USER',
         groupId: 'group-1',
         stripeId: 'st_123',
+        tier: 'STANDARD',
         createdAt: new Date(),
         updatedAt: new Date(),
         productInfos: [
@@ -45,6 +46,7 @@ const freeProductMock: Product = {
   type: 'USER',
   groupId: 'group-1',
   stripeId: null,
+  tier: 'STANDARD',
   createdAt: new Date(),
   updatedAt: new Date(),
 };

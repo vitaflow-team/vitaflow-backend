@@ -1,3 +1,5 @@
+import { decodeCipherKey } from '@/billing/shared/secretCipher';
+
 const REQUIRED_VARIABLES = [
   'JWT_SECRET',
   'DATABASE_URL',
@@ -13,6 +15,8 @@ const REQUIRED_VARIABLES = [
   'MAIL_PORT',
   'MAIL_USER',
   'MAIL_PASS',
+  'BILLING_ENCRYPTION_KEY',
+  'API_PUBLIC_URL',
 ] as const;
 
 export const JWT_SECRET_MIN_LENGTH = 32;
@@ -71,6 +75,20 @@ function assertWellFormed(env: NodeJS.ProcessEnv): void {
       'Invalid environment variable: TRUST_PROXY_HOPS must be a non-negative integer',
     );
   }
+
+  if (!isHttpUrl(env.API_PUBLIC_URL!)) {
+    throw new Error(
+      'Invalid environment variable: API_PUBLIC_URL must be an absolute http(s) URL',
+    );
+  }
+
+  if (isPresent(env.ASAAS_BASE_URL) && !isHttpUrl(env.ASAAS_BASE_URL!)) {
+    throw new Error(
+      'Invalid environment variable: ASAAS_BASE_URL must be an absolute http(s) URL',
+    );
+  }
+
+  decodeCipherKey(env.BILLING_ENCRYPTION_KEY!);
 }
 
 export function splitList(value: string | undefined): string[] {
