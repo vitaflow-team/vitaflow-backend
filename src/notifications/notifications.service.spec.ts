@@ -227,6 +227,7 @@ describe('NotificationsService', () => {
         PRODUCT_NEWS: false,
         CONNECTION_REQUEST: true,
         WORKOUT_PLAN: true,
+        SCHEDULE_CHANGE: true,
       });
     });
 

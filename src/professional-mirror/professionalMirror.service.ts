@@ -1,3 +1,10 @@
+import { Clock } from '@/scheduling/clock.service';
+import type { NextScheduleEntity } from './professionalMirror.entity';
+import {
+  FixedSessionsService,
+  NextSession,
+} from '@/scheduling/fixed-times/fixedSessions.service';
+import { resolveLetter } from '@/scheduling/fixed-times/fixedTime.util';
 import { toIsoDay } from '@/educator-students/assessments/assessmentFormat.util';
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
@@ -24,6 +31,8 @@ export class ProfessionalMirrorService {
     private readonly professionalDiscovery: ProfessionalDiscoveryService,
     private readonly assessments: PhysicalAssessmentsRepository,
     private readonly workouts: EducatorWorkoutsRepository,
+    private readonly fixedSessions: FixedSessionsService,
+    private readonly clock: Clock,
   ) {}
 
   async getNutritionistMirror(
@@ -46,10 +55,23 @@ export class ProfessionalMirrorService {
     const link = await this.resolveLink(userId, ProductType.PHYSICAL_EDUCATOR);
     if (!link) return { hasProfessional: false };
 
+    const now = this.clock.now();
+    const [next, todaySessionId] = await Promise.all([
+      this.fixedSessions.nextForRecords(
+        link.professional.id,
+        [{ clientId: link.client.id, userId: link.client.userId }],
+        now,
+      ),
+      this.fixedSessions.todaySessionId(link.client.id, now),
+    ]);
+    const upcoming = next.get(link.client.id) ?? null;
+
     return {
       professional: link.professional,
-      todayWorkout: await this.currentWorkout(link.client.id),
-      nextSchedule: null,
+      todayWorkout: await this.currentWorkout(link.client.id, todaySessionId),
+      nextSchedule: upcoming
+        ? await this.nextSchedule(link.client.id, upcoming)
+        : null,
       physicalAssessment: await this.latestAssessments(link.client.id),
       billingStatus: null,
     };
@@ -57,8 +79,27 @@ export class ProfessionalMirrorService {
 
   // A summary of the educator's active workout for this record, or null. No
   // session is marked as today's: that exists only through the schedule.
+  private async nextSchedule(
+    clientId: string,
+    next: NextSession,
+  ): Promise<NextScheduleEntity> {
+    const active = await this.workouts.findActiveByClient(clientId);
+    const names = active
+      ? active.sessions.map((session) => session.name)
+      : null;
+    return {
+      startAt: next.startAt,
+      endAt: next.endAt,
+      type: next.type,
+      onlineLink: next.onlineLink,
+      workoutLetter: next.workoutLetter,
+      workoutSessionName: resolveLetter(next.workoutLetter, names).sessionName,
+    };
+  }
+
   private async currentWorkout(
     clientId: string,
+    todaySessionId: string | null,
   ): Promise<MirrorWorkoutEntity | null> {
     const active = await this.workouts.findActiveByClient(clientId);
     if (!active) return null;
@@ -73,7 +114,7 @@ export class ProfessionalMirrorService {
         name: session.name,
         exerciseCount: session._count.exercises,
       })),
-      todaySessionId: null,
+      todaySessionId,
     };
   }
 

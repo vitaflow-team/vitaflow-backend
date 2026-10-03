@@ -12,6 +12,10 @@ import { SetOnlineLinkDto } from './dto/setOnlineLink.Dto';
 import { generateSlotsForWindow } from './slotGeneration.util';
 import { AvailabilityWindowEntity } from './availabilityWindow.entity';
 import { SlotEntity, UpcomingSlotEntity } from './slot.entity';
+import {
+  FixedSessionsService,
+  UpcomingFixedItem,
+} from './fixed-times/fixedSessions.service';
 import { appUrl, formatDateTime } from './schedulingFormat.util';
 
 const END_BEFORE_START = 'O horário final deve ser depois do horário inicial.';
@@ -53,6 +57,7 @@ export class SchedulingService {
     private readonly users: UserRepository,
     private readonly notifications: NotificationsService,
     private readonly clock: Clock,
+    private readonly fixedSessions: FixedSessionsService,
   ) {}
 
   // US-001: publishes a recurring window and immediately expands it into
@@ -217,18 +222,27 @@ export class SchedulingService {
 
   // US-003/US-007: scoped correctly whether the caller is a professional or
   // a user — findUpcomingForActor matches either role in one query.
-  async listUpcoming(actorId: string): Promise<UpcomingSlotEntity[]> {
-    const slots = await this.scheduling.findUpcomingForActor(
-      actorId,
-      this.clock.now(),
-    );
+  // Bookings and fixed sessions in one time-ordered list, each labeled with
+  // its source. A user with bookings only gets exactly the previous items.
+  async listUpcoming(
+    actorId: string,
+  ): Promise<Array<UpcomingSlotEntity | UpcomingFixedItem>> {
+    const now = this.clock.now();
+    const [slots, fixed] = await Promise.all([
+      this.scheduling.findUpcomingForActor(actorId, now),
+      this.fixedSessions.listUpcomingForActor(actorId, now),
+    ]);
 
-    return slots.map((slot) => {
+    const booked = slots.map((slot) => {
       const isActorProfessional = slot.professionalId === actorId;
       // A BOOKED slot always has a userId, so `slot.user` is always
       // populated here despite the relation's nullable type.
       const counterpart = isActorProfessional ? slot.user! : slot.professional;
-      return { ...toSlotEntity(slot), counterpart };
+      return { ...toSlotEntity(slot), counterpart, source: 'BOOKING' as const };
     });
+
+    return [...booked, ...fixed].sort(
+      (a, b) => a.startAt.getTime() - b.startAt.getTime(),
+    );
   }
 }

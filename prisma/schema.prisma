@@ -81,6 +81,8 @@ model Users {
   availabilityWindows         AvailabilityWindow[]
   slotsAsProfessional         Slot[]                   @relation("SlotProfessional")
   slotsAsUser                 Slot[]                   @relation("SlotUser")
+  fixedTimesAsProfessional    FixedTime[]              @relation("FixedTimeProfessional")
+  fixedSessionsAsProfessional FixedSession[]           @relation("FixedSessionProfessional")
 
   @@unique([email])
 }
@@ -129,6 +131,8 @@ model Client {
 
   assessments      PhysicalAssessment[]
   educatorWorkouts EducatorWorkout[]
+  fixedTimes       FixedTime[]
+  fixedSessions    FixedSession[]
 
   @@unique([email, professionalId])
   @@index([email])
@@ -402,6 +406,7 @@ enum NotificationCategory {
   PRODUCT_NEWS
   CONNECTION_REQUEST
   WORKOUT_PLAN
+  SCHEDULE_CHANGE
 }
 
 // A missing `NotificationPreference` row for a (userId, category) pair is
@@ -506,6 +511,62 @@ model Message {
 enum SessionType {
   PRESENCIAL
   ONLINE
+}
+
+enum FixedSessionStatus {
+  SCHEDULED
+  CANCELED
+}
+
+// A physical educator's fixed weekly time for one student (ADR-002). The rule
+// is attached to the student record and removed with it (cascade). The
+// weekday is ISO (1 Mon .. 7 Sun); the start is minutes from midnight in
+// Brasília time (UTC-3). A session row materializes one date (see FixedSession).
+model FixedTime {
+  id              String         @id @default(uuid(7))
+  clientId        String
+  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  professionalId  String
+  professional    Users          @relation("FixedTimeProfessional", fields: [professionalId], references: [id])
+  weekday         Int
+  startMinute     Int
+  durationMinutes Int
+  type            SessionType
+  onlineLink      String?
+  workoutLetter   String?
+  sessions        FixedSession[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([professionalId])
+  @@index([clientId])
+}
+
+// One occurrence of a fixed time (UTC instants). Kept for the next 35 days
+// and renewed by a daily job (ADR-006). The reference is cleared, never the
+// row, when the rule is removed while the session has started (UT-044).
+model FixedSession {
+  id             String             @id @default(uuid(7))
+  fixedTimeId    String?
+  fixedTime      FixedTime?         @relation(fields: [fixedTimeId], references: [id], onDelete: SetNull)
+  clientId       String
+  client         Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  professionalId String
+  professional   Users              @relation("FixedSessionProfessional", fields: [professionalId], references: [id])
+  startAt        DateTime
+  endAt          DateTime
+  status         FixedSessionStatus @default(SCHEDULED)
+  canceledBy     String?
+  type           SessionType
+  onlineLink     String?
+  workoutLetter  String?
+  reminderSentAt DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([fixedTimeId, startAt])
+  @@index([professionalId, startAt])
+  @@index([clientId, startAt])
 }
 
 enum SlotStatus {

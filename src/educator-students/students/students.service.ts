@@ -1,3 +1,7 @@
+import type { NextSession } from '@/scheduling/fixed-times/fixedSessions.service';
+import type { NextSessionDTO } from './dto/studentResponse.Dto';
+import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
+import { Clock } from '@/scheduling/clock.service';
 import { CodedError } from '@/common/errors/codedError';
 import {
   ClientsRepository,
@@ -52,6 +56,8 @@ export class StudentsService {
     private readonly users: UserRepository,
     private readonly assessments: PhysicalAssessmentsRepository,
     private readonly workouts: EducatorWorkoutsRepository,
+    private readonly fixedSessions: FixedSessionsService,
+    private readonly clock: Clock,
   ) {}
 
   // The whole list is read in one query; search, ordering and paging run over
@@ -61,11 +67,13 @@ export class StudentsService {
     query: ListStudentsQueryDTO,
   ): Promise<StudentListResponseDTO> {
     const rows = await this.clients.findAllWithLatestAssessment(educatorId);
-    const matched = rows
-      .filter((row) => matchesSearch(row, query.search))
-      .sort((a, b) =>
-        a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }),
-      );
+    const matched = rows.filter((row) => matchesSearch(row, query.search));
+    const next = await this.fixedSessions.nextForRecords(
+      educatorId,
+      matched.map((row) => ({ clientId: row.id, userId: row.userId })),
+      this.clock.now(),
+    );
+    matched.sort((a, b) => compareStudents(a, b, next, query.order));
 
     const page = query.page ?? 1;
     const start = (page - 1) * STUDENTS_PAGE_SIZE;
@@ -73,7 +81,7 @@ export class StudentsService {
     return {
       items: matched
         .slice(start, start + STUDENTS_PAGE_SIZE)
-        .map((row) => this.toListItem(row)),
+        .map((row) => this.toListItem(row, next.get(row.id) ?? null)),
       total: matched.length,
       page,
       pageSize: STUDENTS_PAGE_SIZE,
@@ -121,10 +129,7 @@ export class StudentsService {
     this.logger.log(
       `student_registered educatorId=${educatorId} linked=${created.userId !== null}`,
     );
-    return this.toStudentResponse(
-      created,
-      await this.buildOverview(created.id),
-    );
+    return this.toStudentResponse(created, await this.buildOverview(created));
   }
 
   async get(
@@ -132,10 +137,7 @@ export class StudentsService {
     studentId: string,
   ): Promise<StudentResponseDTO> {
     const student = await this.findOwned(educatorId, studentId);
-    return this.toStudentResponse(
-      student,
-      await this.buildOverview(student.id),
-    );
+    return this.toStudentResponse(student, await this.buildOverview(student));
   }
 
   async update(
@@ -151,7 +153,7 @@ export class StudentsService {
         ? student
         : await this.clients.update(student.id, patch);
 
-    return this.toStudentResponse(saved, await this.buildOverview(saved.id));
+    return this.toStudentResponse(saved, await this.buildOverview(saved));
   }
 
   // Deleting the record removes its assessments with it (database cascade).
@@ -276,14 +278,21 @@ export class StudentsService {
     return account ? { email, userId: account.id } : { email };
   }
 
-  private async buildOverview(clientId: string): Promise<StudentOverviewDTO> {
-    const [latest, all, active] = await Promise.all([
+  private async buildOverview(student: Client): Promise<StudentOverviewDTO> {
+    const clientId = student.id;
+    const [latest, all, active, next] = await Promise.all([
       this.assessments.findLatestByClient(clientId, 1),
       this.assessments.findAllForVariation(clientId),
       this.workouts.findActiveByClient(clientId),
+      this.fixedSessions.nextForRecords(
+        student.professionalId,
+        [{ clientId, userId: student.userId }],
+        this.clock.now(),
+      ),
     ]);
 
     return {
+      nextSession: toNextSessionDTO(next.get(clientId) ?? null),
       latest: latest[0] ? toAssessmentResponse(latest[0]) : null,
       variation: computeVariation(all),
       currentWorkout: active
@@ -297,9 +306,13 @@ export class StudentsService {
     };
   }
 
-  private toListItem(row: ClientWithLatestAssessment): StudentListItemDTO {
+  private toListItem(
+    row: ClientWithLatestAssessment,
+    next: NextSession | null,
+  ): StudentListItemDTO {
     return {
       id: row.id,
+      nextSession: toNextSessionDTO(next),
       name: row.name,
       email: row.email,
       hasAccount: row.userId !== null,
@@ -325,4 +338,30 @@ export class StudentsService {
       overview,
     };
   }
+}
+
+// Soonest next session first; students with none after them; ties and the
+// rest by name. `order=name` is alphabetical only.
+function compareStudents(
+  a: ClientWithLatestAssessment,
+  b: ClientWithLatestAssessment,
+  next: Map<string, NextSession>,
+  order: 'next' | 'name' | undefined,
+): number {
+  const byName = a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' });
+  if (order === 'name') return byName;
+
+  const nextA = next.get(a.id)?.startAt;
+  const nextB = next.get(b.id)?.startAt;
+  if (nextA && nextB) {
+    const diff = nextA.getTime() - nextB.getTime();
+    return diff !== 0 ? diff : byName;
+  }
+  if (nextA) return -1;
+  if (nextB) return 1;
+  return byName;
+}
+
+function toNextSessionDTO(next: NextSession | null): NextSessionDTO | null {
+  return next ? { startAt: next.startAt, type: next.type } : null;
 }

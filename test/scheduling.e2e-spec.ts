@@ -31,6 +31,9 @@ import { Prisma, ProductType, Users } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
+import { FixedTimesRepository } from '@/repositories/fixed-times/fixedTimes.repository';
+import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 jest.setTimeout(30_000);
 
 const RUN_TAG = `sched-${Date.now()}`;
@@ -60,6 +63,12 @@ describe('Scheduling integration', () => {
       imports: [JwtModule.register({ secret: jwtSecret })],
       controllers: [AvailabilityController, BookingController],
       providers: [
+        FixedTimesRepository,
+        FixedSessionsService,
+        Clock,
+        EducatorWorkoutsRepository,
+        NotificationsService,
+        NotificationsRepository,
         PrismaService,
         UserRepository,
         ClientsRepository,

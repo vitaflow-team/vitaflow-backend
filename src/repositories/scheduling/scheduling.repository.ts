@@ -2,6 +2,7 @@ import { PrismaService } from '@/database/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { AvailabilityWindow, SessionType, Slot } from '@prisma/client';
 import { GeneratedSlot } from '@/scheduling/slotGeneration.util';
+import { educatorScheduleLockKey } from '@/scheduling/fixed-times/fixedTime.util';
 
 export type SlotWithParticipants = Slot & {
   user: { id: string; name: string } | null;
@@ -75,12 +76,15 @@ export class SchedulingRepository {
     });
   }
 
+  // Open slots are listed except those a scheduled fixed session covers
+  // (half-open overlap: touching is not overlap). Nothing is deleted or
+  // converted: the slot reappears when the session is canceled or removed.
   async findOpenSlots(
     professionalId: string,
     from: Date,
     to: Date,
   ): Promise<Slot[]> {
-    return await this.prisma.slot.findMany({
+    const slots = await this.prisma.slot.findMany({
       where: {
         professionalId,
         status: 'OPEN',
@@ -88,6 +92,23 @@ export class SchedulingRepository {
       },
       orderBy: { startAt: 'asc' },
     });
+    if (slots.length === 0) return slots;
+
+    const covering = await this.prisma.fixedSession.findMany({
+      where: {
+        professionalId,
+        status: 'SCHEDULED',
+        startAt: { lt: to },
+        endAt: { gt: from },
+      },
+      select: { startAt: true, endAt: true },
+    });
+    return slots.filter(
+      (slot) =>
+        !covering.some(
+          (row) => row.startAt < slot.endAt && slot.startAt < row.endAt,
+        ),
+    );
   }
 
   async findSlotById(id: string): Promise<Slot | null> {
@@ -97,16 +118,38 @@ export class SchedulingRepository {
   // The atomic conditional claim (ADR-002): an update scoped to status
   // OPEN, never a create-then-check. A returned count of 0 means someone
   // else won the race — the caller maps that to the 409 "just taken" path.
+  // The claim runs under the educator's advisory lock, the same lock fixed-time
+  // writes take (ADR-005): a scheduled fixed session overlapping the slot
+  // refuses the booking before the claim is attempted (returns 0).
   async claimSlot(
     slotId: string,
     userId: string,
     type: SessionType,
   ): Promise<number> {
-    const result = await this.prisma.slot.updateMany({
-      where: { id: slotId, status: 'OPEN' },
-      data: { status: 'BOOKED', userId, type },
+    return await this.prisma.$transaction(async (tx) => {
+      const slot = await tx.slot.findUnique({
+        where: { id: slotId },
+        select: { professionalId: true, startAt: true, endAt: true },
+      });
+      if (!slot) return 0;
+
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${educatorScheduleLockKey(slot.professionalId)}))`;
+      const covered = await tx.fixedSession.count({
+        where: {
+          professionalId: slot.professionalId,
+          status: 'SCHEDULED',
+          startAt: { lt: slot.endAt },
+          endAt: { gt: slot.startAt },
+        },
+      });
+      if (covered > 0) return 0;
+
+      const result = await tx.slot.updateMany({
+        where: { id: slotId, status: 'OPEN' },
+        data: { status: 'BOOKED', userId, type },
+      });
+      return result.count;
     });
-    return result.count;
   }
 
   // Resets every booking-specific field, not just status/userId — the next

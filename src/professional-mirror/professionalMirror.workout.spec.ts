@@ -40,6 +40,11 @@ describe('ProfessionalMirrorService — current workout', () => {
       discovery as unknown as ProfessionalDiscoveryService,
       assessments as unknown as PhysicalAssessmentsRepository,
       workouts as unknown as EducatorWorkoutsRepository,
+      {
+        nextForRecords: jest.fn().mockResolvedValue(new Map()),
+        todaySessionId: jest.fn().mockResolvedValue(null),
+      } as any,
+      { now: () => new Date('2026-10-01T12:00:00Z') } as any,
     );
   });
 

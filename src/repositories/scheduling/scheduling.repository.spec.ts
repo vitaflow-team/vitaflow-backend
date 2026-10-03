@@ -12,6 +12,9 @@ describe('SchedulingRepository', () => {
   const slotFindUnique = jest.fn();
   const updateMany = jest.fn();
   const update = jest.fn();
+  const executeRaw = jest.fn();
+  const fixedCount = jest.fn();
+  const fixedFindMany = jest.fn();
 
   const prisma = {
     availabilityWindow: {
@@ -28,6 +31,9 @@ describe('SchedulingRepository', () => {
       updateMany,
       update,
     },
+    fixedSession: { count: fixedCount, findMany: fixedFindMany },
+    $executeRaw: executeRaw,
+    $transaction: (fn: (client: unknown) => unknown) => fn(prisma),
   } as unknown as PrismaService;
 
   const repository = new SchedulingRepository(prisma);
@@ -163,7 +169,19 @@ describe('SchedulingRepository', () => {
   });
 
   describe('claimSlot', () => {
-    it('issues an atomic conditional update scoped to status OPEN', async () => {
+    const slotRange = {
+      professionalId: 'professional-1',
+      startAt: new Date('2026-10-12T18:00:00Z'),
+      endAt: new Date('2026-10-12T19:00:00Z'),
+    };
+
+    beforeEach(() => {
+      slotFindUnique.mockResolvedValue(slotRange);
+      fixedCount.mockResolvedValue(0);
+      executeRaw.mockResolvedValue(0);
+    });
+
+    it('takes the educator lock and issues an atomic conditional update scoped to status OPEN', async () => {
       updateMany.mockResolvedValue({ count: 1 });
 
       const count = await repository.claimSlot(
@@ -173,10 +191,29 @@ describe('SchedulingRepository', () => {
       );
 
       expect(count).toBe(1);
+      expect(executeRaw.mock.calls[0][0].join('')).toContain(
+        'pg_advisory_xact_lock',
+      );
+      expect(executeRaw.mock.calls[0][1]).toBe(
+        'educator-schedule:professional-1',
+      );
       expect(updateMany).toHaveBeenCalledWith({
         where: { id: 'slot-1', status: 'OPEN' },
         data: { status: 'BOOKED', userId: 'user-1', type: 'PRESENCIAL' },
       });
+    });
+
+    it('UT-065 refuses an overlap with a scheduled fixed session before the claim', async () => {
+      fixedCount.mockResolvedValue(1);
+
+      const count = await repository.claimSlot(
+        'slot-1',
+        'user-1',
+        'PRESENCIAL',
+      );
+
+      expect(count).toBe(0);
+      expect(updateMany).not.toHaveBeenCalled();
     });
 
     it('returns 0 when the slot was already claimed by someone else', async () => {

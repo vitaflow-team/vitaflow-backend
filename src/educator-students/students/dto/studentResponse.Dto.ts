@@ -4,11 +4,18 @@ import type {
 } from '../../assessments/dto/assessmentResponse.Dto';
 
 // Response shapes only: plain interfaces, never validated at runtime.
+export interface NextSessionDTO {
+  startAt: Date;
+  type: 'PRESENCIAL' | 'ONLINE';
+}
+
 export interface StudentListItemDTO {
   id: string;
   name: string;
   email: string;
   hasAccount: boolean;
+  /** The next scheduled fixed session or booking with this educator, or null. */
+  nextSession: NextSessionDTO | null;
   /** `YYYY-MM-DD`, or null when the student has no assessment yet. */
   lastAssessedOn: string | null;
 }
@@ -28,6 +35,8 @@ export interface CurrentWorkoutDTO {
 }
 
 export interface StudentOverviewDTO {
+  /** The next scheduled fixed session or booking with this educator, or null. */
+  nextSession: NextSessionDTO | null;
   latest: AssessmentResponseDTO | null;
   variation: AssessmentVariationDTO | null;
   /** The educator's active workout for this student, or null. */

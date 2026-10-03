@@ -23,6 +23,7 @@ import { ListOpenSlotsDto } from './dto/listOpenSlots.Dto';
 import { SetOnlineLinkDto } from './dto/setOnlineLink.Dto';
 import { SchedulingService } from './scheduling.service';
 import { SlotEntity, UpcomingSlotEntity } from './slot.entity';
+import type { UpcomingFixedItem } from './fixed-times/fixedSessions.service';
 
 @ApiTags('Scheduling')
 @Controller('scheduling')
@@ -94,7 +95,7 @@ export class BookingController {
   @Get('upcoming')
   async listUpcoming(
     @Request() req: AuthenticatedRequest,
-  ): Promise<UpcomingSlotEntity[]> {
+  ): Promise<Array<UpcomingSlotEntity | UpcomingFixedItem>> {
     return await this.service.listUpcoming(req.user.id);
   }
 }

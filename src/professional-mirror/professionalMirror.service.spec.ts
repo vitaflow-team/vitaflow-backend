@@ -1,3 +1,5 @@
+import { Clock } from '@/scheduling/clock.service';
+import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
@@ -54,6 +56,17 @@ describe('ProfessionalMirrorService', () => {
         {
           provide: ProfessionalDiscoveryService,
           useValue: { getProfile: professionalDiscoveryGetProfile },
+        },
+        {
+          provide: FixedSessionsService,
+          useValue: {
+            nextForRecords: jest.fn().mockResolvedValue(new Map()),
+            todaySessionId: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: Clock,
+          useValue: { now: () => new Date('2026-10-01T12:00:00Z') },
         },
       ],
     }).compile();
