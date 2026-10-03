@@ -1,5 +1,6 @@
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Client } from '@prisma/client';
 import { ProfessionalMirrorService } from './professionalMirror.service';
@@ -23,11 +24,13 @@ function makeClient(overrides: Partial<Client> = {}): Client {
 describe('ProfessionalMirrorService', () => {
   const clientsFindByUserAndProfessionalType = jest.fn();
   const professionalDiscoveryGetProfile = jest.fn();
+  const findLatestByClient = jest.fn();
 
   let service: ProfessionalMirrorService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    findLatestByClient.mockResolvedValue([]);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfessionalMirrorService,
@@ -36,6 +39,10 @@ describe('ProfessionalMirrorService', () => {
           useValue: {
             findByUserAndProfessionalType: clientsFindByUserAndProfessionalType,
           },
+        },
+        {
+          provide: PhysicalAssessmentsRepository,
+          useValue: { findLatestByClient },
         },
         {
           provide: ProfessionalDiscoveryService,

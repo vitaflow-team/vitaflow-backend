@@ -1,4 +1,5 @@
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
+import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { AppError } from '@/utils/app.erro';
 import { Injectable } from '@nestjs/common';
 import { MeasurementRecord } from '@prisma/client';
@@ -9,26 +10,64 @@ import { DashboardResponseDTO } from './dto/dashboardResponse.Dto';
 import { LatestRecordResponseDTO } from './dto/latestRecordResponse.Dto';
 import { MeasurementRecordResponseDTO } from './dto/measurementRecordResponse.Dto';
 import { UpdateMeasurementRecordDTO } from './dto/updateMeasurementRecord.Dto';
+import {
+  MergedPoint,
+  mergeMeasurementPoints,
+  ownRecordToPoint,
+} from './mergeMeasurements.util';
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const RECENT_LIMIT = 10;
+// Upper bound for the points inside the chart window (12 weeks at most).
+const PERIOD_LIMIT = 500;
+
+// A chart point names its educator only when an educator measured it, so the
+// series of a user with no educator points is exactly what it was before.
+function educatorLabel(point: MergedPoint): { educatorName?: string } {
+  return point.source === 'EDUCATOR' && point.educatorName
+    ? { educatorName: point.educatorName }
+    : {};
+}
 
 @Injectable()
 export class ProgressService {
   constructor(
     private readonly measurementRecords: MeasurementRecordsRepository,
+    private readonly assessments: PhysicalAssessmentsRepository,
   ) {}
 
+  // The student's own records and the points of every linked educator,
+  // merged on read: one source of truth, nothing copied (educator points
+  // always reflect the educator's current assessment).
   async getDashboard(
     userId: string,
     weeks: DashboardWeeks = DEFAULT_DASHBOARD_WEEKS,
   ): Promise<DashboardResponseDTO> {
     const now = new Date(Date.now());
     const since = new Date(now.getTime() - weeks * 7 * DAY_IN_MS);
-    const recent = await this.measurementRecords.findRecentByUser(userId, 10);
-    const withinPeriod = await this.measurementRecords.findByUserSince(
-      userId,
-      since,
+    // Assessments are date-only: read one day earlier, then filter by the
+    // exact instant each point takes.
+    const assessmentsSince = new Date(since.getTime() - DAY_IN_MS);
+
+    const [ownRecent, ownPeriod, assessmentsRecent, assessmentsPeriod] =
+      await Promise.all([
+        this.measurementRecords.findRecentByUser(userId, RECENT_LIMIT),
+        this.measurementRecords.findByUserSince(userId, since),
+        this.assessments.findRecentByLinkedUser(userId, RECENT_LIMIT),
+        this.assessments.findRecentByLinkedUser(
+          userId,
+          PERIOD_LIMIT,
+          assessmentsSince,
+        ),
+      ]);
+
+    const recent = mergeMeasurementPoints(ownRecent, assessmentsRecent).slice(
+      0,
+      RECENT_LIMIT,
     );
+    const withinPeriod = mergeMeasurementPoints(ownPeriod, assessmentsPeriod)
+      .filter((point) => point.recordedAt >= since)
+      .reverse();
 
     return {
       latest: recent[0] ? this.toResponse(recent[0]) : null,
@@ -36,15 +75,17 @@ export class ProgressService {
         recent.length >= 2
           ? Math.round((recent[0].weightKg - recent[1].weightKg) * 10) / 10
           : null,
-      weightSeries: withinPeriod.map((record) => ({
-        recordedAt: record.recordedAt.toISOString(),
-        weightKg: record.weightKg,
+      weightSeries: withinPeriod.map((point) => ({
+        recordedAt: point.recordedAt.toISOString(),
+        weightKg: point.weightKg,
+        ...educatorLabel(point),
       })),
-      bmiSeries: withinPeriod.map((record) => ({
-        recordedAt: record.recordedAt.toISOString(),
-        bmi: calculateBmi(record.weightKg, record.heightCm),
+      bmiSeries: withinPeriod.map((point) => ({
+        recordedAt: point.recordedAt.toISOString(),
+        bmi: calculateBmi(point.weightKg, point.heightCm),
+        ...educatorLabel(point),
       })),
-      history: recent.map((record) => this.toResponse(record)),
+      history: recent.map((point) => this.toResponse(point)),
       period: {
         weeks,
         start: since.toISOString(),
@@ -54,9 +95,13 @@ export class ProgressService {
   }
 
   async getLatest(userId: string): Promise<LatestRecordResponseDTO> {
-    const record = await this.measurementRecords.findLatestByUser(userId);
+    const [own, assessments] = await Promise.all([
+      this.measurementRecords.findLatestByUser(userId),
+      this.assessments.findRecentByLinkedUser(userId, 1),
+    ]);
+    const [latest] = mergeMeasurementPoints(own ? [own] : [], assessments);
 
-    return { latest: record ? this.toResponse(record) : null };
+    return { latest: latest ? this.toResponse(latest) : null };
   }
 
   async create(
@@ -67,7 +112,7 @@ export class ProgressService {
       userId,
       this.toInput(dto),
     );
-    return this.toResponse(record);
+    return this.toResponse(ownRecordToPoint(record));
   }
 
   async update(
@@ -77,9 +122,11 @@ export class ProgressService {
   ): Promise<MeasurementRecordResponseDTO> {
     await this.assertOwnership(id, userId);
     const record = await this.measurementRecords.update(id, this.toInput(dto));
-    return this.toResponse(record);
+    return this.toResponse(ownRecordToPoint(record));
   }
 
+  // An assessment id is not a measurement record, so it answers 404 here:
+  // educator points can never be changed through the user's own routes.
   async delete(id: string, userId: string): Promise<void> {
     await this.assertOwnership(id, userId);
     await this.measurementRecords.delete(id);
@@ -102,18 +149,21 @@ export class ProgressService {
     return record;
   }
 
-  private toResponse(record: MeasurementRecord): MeasurementRecordResponseDTO {
-    const bmi = calculateBmi(record.weightKg, record.heightCm);
+  private toResponse(point: MergedPoint): MeasurementRecordResponseDTO {
+    const bmi = calculateBmi(point.weightKg, point.heightCm);
 
     return {
-      id: record.id,
-      weightKg: record.weightKg,
-      heightCm: record.heightCm,
-      waistCm: record.waistCm,
-      hipCm: record.hipCm,
-      recordedAt: record.recordedAt.toISOString(),
+      id: point.id,
+      weightKg: point.weightKg,
+      heightCm: point.heightCm,
+      waistCm: point.waistCm,
+      hipCm: point.hipCm,
+      recordedAt: point.recordedAt.toISOString(),
       bmi,
       bmiClassification: classifyBmi(bmi),
+      source: point.source,
+      readOnly: point.readOnly,
+      educatorName: point.educatorName,
     };
   }
 

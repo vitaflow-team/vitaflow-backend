@@ -6,4 +6,12 @@ export class WeightPointDTO {
 
   @ApiProperty({ example: 70.5 })
   weightKg: number;
+
+  @ApiProperty({
+    required: false,
+    example: 'Thiago Ramos',
+    description:
+      'Present only for a point measured by an educator, so a chart can name who measured it.',
+  })
+  educatorName?: string;
 }

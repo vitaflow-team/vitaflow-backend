@@ -40,6 +40,19 @@ export class NutritionistMirrorEntity {
   billingStatus: null;
 }
 
+// One of the educator's latest physical assessments as the student sees it.
+export class MirrorAssessmentEntity {
+  @ApiProperty() id: string;
+
+  @ApiProperty({ example: '2026-09-15', description: 'Calendar date.' })
+  assessedOn: string;
+
+  @ApiProperty({ example: 78.2 }) weightKg: number;
+
+  @ApiProperty({ example: 18.4, nullable: true, type: Number })
+  bodyFatPercent: number | null;
+}
+
 export class EducatorMirrorEntity {
   @ApiProperty({ type: MirrorProfessionalEntity })
   professional: MirrorProfessionalEntity;
@@ -58,10 +71,12 @@ export class EducatorMirrorEntity {
   nextSchedule: null;
 
   @ApiProperty({
+    type: [MirrorAssessmentEntity],
     nullable: true,
-    description: 'Populated by a future Educador-module PRD.',
+    description:
+      "The educator's three latest physical assessments of this student, newest first; null when there are none.",
   })
-  physicalAssessment: null;
+  physicalAssessment: MirrorAssessmentEntity[] | null;
 
   @ApiProperty({
     nullable: true,

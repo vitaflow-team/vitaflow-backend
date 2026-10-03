@@ -1,4 +1,5 @@
 import { AuthGuard } from '@/auth/auth.guard';
+import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
@@ -19,7 +20,14 @@ describe('ProgressController', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [ProgressController],
-      providers: [ProgressService, MeasurementRecordsRepositoryMock],
+      providers: [
+        ProgressService,
+        MeasurementRecordsRepositoryMock,
+        {
+          provide: PhysicalAssessmentsRepository,
+          useValue: { findRecentByLinkedUser: jest.fn().mockResolvedValue([]) },
+        },
+      ],
     })
       .overrideGuard(AuthGuard)
       .useValue({

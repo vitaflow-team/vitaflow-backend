@@ -458,6 +458,51 @@ describe('AuthService.signInWithGoogle', () => {
     });
   });
 
+  describe('linking registered students on first Google account creation', () => {
+    it('UT-096 links every record with the verified e-mail after the identity exists', async () => {
+      const order: string[] = [];
+      identities.create.mockImplementation(() => {
+        order.push('identity');
+        return Promise.resolve(undefined);
+      });
+      clients.setAllClientUser.mockImplementation(() => {
+        order.push('link');
+        return Promise.resolve(undefined);
+      });
+      users.findByEmailInsensitive.mockResolvedValue(null);
+      users.create.mockResolvedValue(activeUser);
+      users.findByIdWithProduct.mockResolvedValue(activeUser);
+
+      await service.signInWithGoogle('raw-id-token');
+
+      expect(clients.setAllClientUser).toHaveBeenCalledWith(
+        activeUser.id,
+        expect.stringMatching(/^[^A-Z]+$/),
+      );
+      expect(order).toEqual(['identity', 'link']);
+    });
+
+    it('UT-097 still signs in and logs google_link_failed when the link fails', async () => {
+      users.findByEmailInsensitive.mockResolvedValue(null);
+      users.create.mockResolvedValue(activeUser);
+      users.findByIdWithProduct.mockResolvedValue(activeUser);
+      clients.setAllClientUser.mockRejectedValue(new Error('db down'));
+      const warned = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      await expect(service.signInWithGoogle('raw-id-token')).resolves.toEqual(
+        expect.objectContaining({ accessToken: 'issued-jwt' }),
+      );
+
+      expect(warned).toHaveBeenCalledWith(
+        expect.stringContaining('google_link_failed'),
+      );
+      expect(JSON.stringify(warned.mock.calls)).not.toContain('db down');
+      warned.mockRestore();
+    });
+  });
+
   // UT-013: branches that sat 3 levels deep (catch > if > if) before
   // createGoogleUser and createIdentity were flattened.
   const uniqueViolation = () =>

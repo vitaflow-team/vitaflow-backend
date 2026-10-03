@@ -127,6 +127,8 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  assessments PhysicalAssessment[]
+
   @@unique([email, professionalId])
   @@index([email])
 }
@@ -351,6 +353,7 @@ model WaterLog {
 
 enum ConsentFeature {
   PROGRESS_PHOTOS
+  PHYSICAL_ASSESSMENT_RECORDING
 }
 
 // Generic, reusable LGPD consent gate (ADR-006): the first feature in the
@@ -546,4 +549,30 @@ model Slot {
 
   @@unique([professionalId, startAt])
   @@index([status, startAt])
+}
+
+// A physical educator's assessment of one of their students (Client). It is
+// attached to the student record, never to a user, so it exists before the
+// student has an account and is removed with the record (cascade).
+model PhysicalAssessment {
+  id               String   @id @default(uuid(7))
+  clientId         String
+  client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assessedOn       DateTime @db.Date
+  weightKg         Float
+  heightCm         Float
+  bodyFatPercent   Float?
+  restingHeartRate Int?
+  flexibilityCm    Float?
+  armCm            Float?
+  chestCm          Float?
+  waistCm          Float?
+  abdomenCm        Float?
+  hipCm            Float?
+  thighCm          Float?
+  calfCm           Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([clientId, assessedOn])
 }

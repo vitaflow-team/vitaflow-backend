@@ -3,6 +3,10 @@ import { escapeLikePattern } from '@/utils/escapeLikePattern';
 import { Injectable } from '@nestjs/common';
 import { Client, Prisma, ProductType } from '@prisma/client';
 
+export type ClientWithLatestAssessment = Client & {
+  assessments: { assessedOn: Date }[];
+};
+
 @Injectable()
 export class ClientsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -97,6 +101,34 @@ export class ClientsRepository {
   ): Promise<Client | null> {
     return await this.prisma.client.findFirst({
       where: { userId, professionalId },
+    });
+  }
+
+  // A student record only if it belongs to this professional: another
+  // professional's id resolves to null, exactly like an id that does not exist.
+  async findOwnedById(
+    id: string,
+    professionalId: string,
+  ): Promise<Client | null> {
+    return await this.prisma.client.findFirst({
+      where: { id, professionalId },
+    });
+  }
+
+  // Every student of the professional with the date of the latest assessment,
+  // in one query. Search, ordering and paging run over this whole list.
+  async findAllWithLatestAssessment(
+    professionalId: string,
+  ): Promise<ClientWithLatestAssessment[]> {
+    return await this.prisma.client.findMany({
+      where: { professionalId },
+      include: {
+        assessments: {
+          select: { assessedOn: true },
+          orderBy: { assessedOn: 'desc' },
+          take: 1,
+        },
+      },
     });
   }
 

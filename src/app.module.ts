@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { ApiKeyGuard } from './common/guards/apiKey.guard';
 import { PrismaService } from './database/prisma.service';
+import { EducatorStudentsModule } from './educator-students/educatorStudents.module';
 import { ExerciseLibraryModule } from './exercise-library/exerciseLibrary.module';
 import { FoodDiaryModule } from './food-diary/foodDiary.module';
 import { MailModule } from './mail/mail.module';
@@ -44,6 +45,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ProfessionalMirrorModule,
     MessagesModule,
     SchedulingModule,
+    EducatorStudentsModule,
   ],
   controllers: [],
   providers: [
