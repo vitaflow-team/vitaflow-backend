@@ -20,9 +20,18 @@ export interface StudentListResponseDTO {
   pageSize: number;
 }
 
+export interface CurrentWorkoutDTO {
+  id: string;
+  title: string;
+  weeklyFrequency: number | null;
+  sessionNames: string[];
+}
+
 export interface StudentOverviewDTO {
   latest: AssessmentResponseDTO | null;
   variation: AssessmentVariationDTO | null;
+  /** The educator's active workout for this student, or null. */
+  currentWorkout: CurrentWorkoutDTO | null;
 }
 
 export interface StudentResponseDTO {

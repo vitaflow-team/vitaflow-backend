@@ -53,16 +53,45 @@ export class MirrorAssessmentEntity {
   bodyFatPercent: number | null;
 }
 
+export class MirrorWorkoutSessionEntity {
+  @ApiProperty() id: string;
+
+  @ApiProperty({ example: 'A', description: 'A, B, C… from the position.' })
+  label: string;
+
+  @ApiProperty() name: string;
+
+  @ApiProperty() exerciseCount: number;
+}
+
+// The educator's current workout as a summary. "Today's workout" exists only
+// through the schedule, so no session is marked as today's here.
+export class MirrorWorkoutEntity {
+  @ApiProperty() id: string;
+
+  @ApiProperty() title: string;
+
+  @ApiProperty({ nullable: true, type: Number })
+  weeklyFrequency: number | null;
+
+  @ApiProperty({ type: [MirrorWorkoutSessionEntity] })
+  sessions: MirrorWorkoutSessionEntity[];
+
+  @ApiProperty({ nullable: true, type: String })
+  todaySessionId: string | null;
+}
+
 export class EducatorMirrorEntity {
   @ApiProperty({ type: MirrorProfessionalEntity })
   professional: MirrorProfessionalEntity;
 
   @ApiProperty({
+    type: MirrorWorkoutEntity,
     nullable: true,
     description:
-      'Populated once the Educador side prescribes a workout (distinct from the AI Workout Generator plan).',
+      "Summary of the educator's active workout for this student (distinct from the AI Workout Generator plan); null when none is active.",
   })
-  todayWorkout: null;
+  todayWorkout: MirrorWorkoutEntity | null;
 
   @ApiProperty({
     nullable: true,

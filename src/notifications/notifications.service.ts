@@ -21,6 +21,7 @@ const DEFAULT_PREFERENCES: Record<NotificationCategory, boolean> = {
   BILLING: true,
   PRODUCT_NEWS: false,
   CONNECTION_REQUEST: true,
+  WORKOUT_PLAN: true,
 };
 
 @Injectable()

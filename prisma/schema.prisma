@@ -55,32 +55,32 @@ model Users {
   // explicitly, never inferred from email domain or product type.
   isBackoffice Boolean @default(false)
 
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  usersTokens             UsersToken[]
-  userAddresses           UserAddress?
-  clients                 Client[]
-  oAuthIdentity           OAuthIdentity?
-  measurementRecords      MeasurementRecord[]
-  submittedExercises      Exercise[]               @relation("ExerciseSubmittedBy")
-  reviewedExercises       Exercise[]               @relation("ExerciseReviewedBy")
-  fitnessProfile          FitnessProfile?
-  workouts                Workout[]
-  meals                   Meal[]
-  waterLogs               WaterLog[]
-  featureConsents         FeatureConsent[]
-  progressPhotos          ProgressPhoto[]
-  notifications           Notification[]
-  notificationPreferences NotificationPreference[]
-  professionalProfile     ProfessionalProfile?
-  connectionRequestsSent     ConnectionRequest[] @relation("ConnectionRequestFromUser")
-  connectionRequestsReceived ConnectionRequest[] @relation("ConnectionRequestToProfessional")
-  conversationsAsUser         Conversation[] @relation("ConversationAsUser")
-  conversationsAsProfessional Conversation[] @relation("ConversationAsProfessional")
-  sentMessages                Message[]      @relation("MessageSender")
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+  usersTokens                 UsersToken[]
+  userAddresses               UserAddress?
+  clients                     Client[]
+  oAuthIdentity               OAuthIdentity?
+  measurementRecords          MeasurementRecord[]
+  submittedExercises          Exercise[]               @relation("ExerciseSubmittedBy")
+  reviewedExercises           Exercise[]               @relation("ExerciseReviewedBy")
+  fitnessProfile              FitnessProfile?
+  workouts                    Workout[]
+  meals                       Meal[]
+  waterLogs                   WaterLog[]
+  featureConsents             FeatureConsent[]
+  progressPhotos              ProgressPhoto[]
+  notifications               Notification[]
+  notificationPreferences     NotificationPreference[]
+  professionalProfile         ProfessionalProfile?
+  connectionRequestsSent      ConnectionRequest[]      @relation("ConnectionRequestFromUser")
+  connectionRequestsReceived  ConnectionRequest[]      @relation("ConnectionRequestToProfessional")
+  conversationsAsUser         Conversation[]           @relation("ConversationAsUser")
+  conversationsAsProfessional Conversation[]           @relation("ConversationAsProfessional")
+  sentMessages                Message[]                @relation("MessageSender")
   availabilityWindows         AvailabilityWindow[]
-  slotsAsProfessional         Slot[]         @relation("SlotProfessional")
-  slotsAsUser                 Slot[]         @relation("SlotUser")
+  slotsAsProfessional         Slot[]                   @relation("SlotProfessional")
+  slotsAsUser                 Slot[]                   @relation("SlotUser")
 
   @@unique([email])
 }
@@ -127,7 +127,8 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assessments PhysicalAssessment[]
+  assessments      PhysicalAssessment[]
+  educatorWorkouts EducatorWorkout[]
 
   @@unique([email, professionalId])
   @@index([email])
@@ -220,30 +221,31 @@ enum ExerciseStatus {
 }
 
 model Exercise {
-  id                String                     @id @default(uuid(7))
-  name              String
-  description       String
-  muscleGroup       String
-  primaryMuscles    String[]
-  secondaryMuscles  String[]
-  equipment         ExerciseEquipment
-  contraindications ExerciseContraindication[]
-  difficulty        String?
-  imageUrl          String?
-  videoUrl          String?
-  status            ExerciseStatus             @default(APPROVED)
+  id                       String                     @id @default(uuid(7))
+  name                     String
+  description              String
+  muscleGroup              String
+  primaryMuscles           String[]
+  secondaryMuscles         String[]
+  equipment                ExerciseEquipment
+  contraindications        ExerciseContraindication[]
+  difficulty               String?
+  imageUrl                 String?
+  videoUrl                 String?
+  status                   ExerciseStatus             @default(APPROVED)
   // Per-record source/license metadata for imported rows (ADR-001); null
   // for exercises authored in-house.
-  sourceAttribution String?
-  sourceLicense     String?
-  submittedById     String?
-  submittedBy       Users?                     @relation("ExerciseSubmittedBy", fields: [submittedById], references: [id])
-  reviewedById      String?
-  reviewedBy        Users?                     @relation("ExerciseReviewedBy", fields: [reviewedById], references: [id])
-  rejectionReason   String?
-  createdAt         DateTime                   @default(now())
-  updatedAt         DateTime                   @updatedAt
-  workoutExercises  WorkoutExercise[]
+  sourceAttribution        String?
+  sourceLicense            String?
+  submittedById            String?
+  submittedBy              Users?                     @relation("ExerciseSubmittedBy", fields: [submittedById], references: [id])
+  reviewedById             String?
+  reviewedBy               Users?                     @relation("ExerciseReviewedBy", fields: [reviewedById], references: [id])
+  rejectionReason          String?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  workoutExercises         WorkoutExercise[]
+  educatorWorkoutExercises EducatorWorkoutExercise[]
 
   @@index([status])
   @@index([equipment])
@@ -399,6 +401,7 @@ enum NotificationCategory {
   BILLING
   PRODUCT_NEWS
   CONNECTION_REQUEST
+  WORKOUT_PLAN
 }
 
 // A missing `NotificationPreference` row for a (userId, category) pair is
@@ -575,4 +578,67 @@ model PhysicalAssessment {
   updatedAt        DateTime @updatedAt
 
   @@index([clientId, assessedOn])
+}
+
+// Workouts an educator builds for a student record (E2). They live in their
+// own tables, attached to the record, so they exist without an account and go
+// away with the student (cascade). The AI workout tables are untouched.
+enum EducatorWorkoutStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum EducatorExerciseSource {
+  LIBRARY
+  FREE
+}
+
+// One ACTIVE workout per student record is also guaranteed by a partial unique
+// index that the schema language cannot declare: see the add_educator_workouts
+// migration (EducatorWorkout_one_active_per_client).
+model EducatorWorkout {
+  id                 String                   @id @default(uuid(7))
+  clientId           String
+  client             Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title              String
+  weeklyFrequency    Int?
+  status             EducatorWorkoutStatus    @default(DRAFT)
+  // Start of the 30-minute window that groups edit notifications.
+  lastEditNotifiedAt DateTime?
+  sessions           EducatorWorkoutSession[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  @@index([clientId, status])
+}
+
+model EducatorWorkoutSession {
+  id        String                    @id @default(uuid(7))
+  workoutId String
+  workout   EducatorWorkout           @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  name      String
+  position  Int
+  exercises EducatorWorkoutExercise[]
+
+  @@index([workoutId])
+}
+
+model EducatorWorkoutExercise {
+  id          String                 @id @default(uuid(7))
+  sessionId   String
+  session     EducatorWorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  position    Int
+  source      EducatorExerciseSource
+  exerciseId  String?
+  exercise    Exercise?              @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
+  name        String
+  muscleGroup String
+  equipment   ExerciseEquipment?
+  sets        Int
+  reps        String
+  load        String?
+  videoUrl    String?
+
+  @@index([sessionId])
 }

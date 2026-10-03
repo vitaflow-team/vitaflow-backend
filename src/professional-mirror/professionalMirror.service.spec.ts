@@ -1,5 +1,6 @@
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Client } from '@prisma/client';
@@ -25,12 +26,14 @@ describe('ProfessionalMirrorService', () => {
   const clientsFindByUserAndProfessionalType = jest.fn();
   const professionalDiscoveryGetProfile = jest.fn();
   const findLatestByClient = jest.fn();
+  const findActiveByClient = jest.fn();
 
   let service: ProfessionalMirrorService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     findLatestByClient.mockResolvedValue([]);
+    findActiveByClient.mockResolvedValue(null);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfessionalMirrorService,
@@ -39,6 +42,10 @@ describe('ProfessionalMirrorService', () => {
           useValue: {
             findByUserAndProfessionalType: clientsFindByUserAndProfessionalType,
           },
+        },
+        {
+          provide: EducatorWorkoutsRepository,
+          useValue: { findActiveByClient },
         },
         {
           provide: PhysicalAssessmentsRepository,

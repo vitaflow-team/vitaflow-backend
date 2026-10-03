@@ -1,5 +1,6 @@
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
 import { ProfessionalMirrorService } from './professionalMirror.service';
 
@@ -18,6 +19,7 @@ describe('ProfessionalMirrorService — physical assessment', () => {
   const clients = { findByUserAndProfessionalType: jest.fn() };
   const discovery = { getProfile: jest.fn() };
   const assessments = { findLatestByClient: jest.fn() };
+  const workouts = { findActiveByClient: jest.fn() };
   let service: ProfessionalMirrorService;
 
   beforeEach(() => {
@@ -33,10 +35,12 @@ describe('ProfessionalMirrorService — physical assessment', () => {
       specialty: 'Hipertrofia',
     });
     assessments.findLatestByClient.mockResolvedValue([]);
+    workouts.findActiveByClient.mockResolvedValue(null);
     service = new ProfessionalMirrorService(
       clients as unknown as ClientsRepository,
       discovery as unknown as ProfessionalDiscoveryService,
       assessments as unknown as PhysicalAssessmentsRepository,
+      workouts as unknown as EducatorWorkoutsRepository,
     );
   });
 
