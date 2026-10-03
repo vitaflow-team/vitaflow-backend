@@ -189,11 +189,28 @@ export class AuthService {
       return await this.signInIdentityRaceWinner(verified.sub);
     }
 
+    await this.linkRegisteredStudents(created.id, email);
+
     const user = await this.users.findByIdWithProduct(created.id);
     return {
       user: user ?? { ...created, product: null },
       outcome: 'created',
     };
+  }
+
+  // A student an educator registered before this account existed is connected
+  // now: Google has already verified the e-mail, which is the proof the
+  // password signup waits for until activation. A failure here must never fail
+  // the sign-in; the record is still linked by the next activation-type event.
+  private async linkRegisteredStudents(
+    userId: string,
+    email: string,
+  ): Promise<void> {
+    try {
+      await this.clients.setAllClientUser(userId, email);
+    } catch {
+      this.logger.warn(`google_link_failed userId=${userId}`);
+    }
   }
 
   // Same rule as the password signup: Gratuito is resolved first so a

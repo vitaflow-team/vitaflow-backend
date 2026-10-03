@@ -26,4 +26,24 @@ export class MeasurementRecordResponseDTO {
 
   @ApiProperty({ example: 'PESO_NORMAL' })
   bmiClassification: BmiClassification;
+
+  @ApiProperty({
+    enum: ['SELF', 'EDUCATOR'],
+    description: 'Who recorded the point: the user or a linked educator.',
+  })
+  source: 'SELF' | 'EDUCATOR';
+
+  @ApiProperty({
+    description:
+      'True for an educator point: the user cannot edit or delete it.',
+  })
+  readOnly: boolean;
+
+  @ApiProperty({
+    example: 'Thiago Ramos',
+    nullable: true,
+    type: String,
+    description: 'The educator who measured it; null for the user own records.',
+  })
+  educatorName: string | null;
 }
