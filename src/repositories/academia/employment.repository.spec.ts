@@ -14,6 +14,9 @@ function makeTx() {
     client: {
       updateMany: jest.fn().mockResolvedValue({ count: 2 }),
     },
+    turma: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
   };
 }
 
@@ -60,5 +63,34 @@ describe('EmploymentRepository.end', () => {
     expect(result).toBe(false);
     expect(tx.employment.findUniqueOrThrow).not.toHaveBeenCalled();
     expect(tx.client.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('gym-classes UT-025 also clears Turma.professionalId for every turma this educator was responsible for at this academia, same transaction', async () => {
+    await repository.end('academia-1', 'employment-1');
+
+    expect(tx.turma.updateMany).toHaveBeenCalledWith({
+      where: { academiaId: 'academia-1', professionalId: 'educator-1' },
+      data: { professionalId: null },
+    });
+  });
+
+  it("gym-classes UT-026 ending every employed educator at once clears each one's own turmas independently", async () => {
+    await repository.end('academia-1', 'employment-1');
+
+    tx.employment.findUniqueOrThrow.mockResolvedValue({
+      id: 'employment-2',
+      academiaId: 'academia-1',
+      educatorId: 'educator-2',
+    });
+    await repository.end('academia-1', 'employment-2');
+
+    expect(tx.turma.updateMany).toHaveBeenNthCalledWith(1, {
+      where: { academiaId: 'academia-1', professionalId: 'educator-1' },
+      data: { professionalId: null },
+    });
+    expect(tx.turma.updateMany).toHaveBeenNthCalledWith(2, {
+      where: { academiaId: 'academia-1', professionalId: 'educator-2' },
+      data: { professionalId: null },
+    });
   });
 });

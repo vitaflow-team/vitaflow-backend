@@ -182,6 +182,21 @@ export class ClientsRepository {
     });
   }
 
+  async findAcademiaOwnedByUserId(userId: string): Promise<Client[]> {
+    return await this.prisma.client.findMany({
+      where: { userId, academiaId: { not: null } },
+    });
+  }
+
+  async findByUserAndAcademiaId(
+    userId: string,
+    academiaId: string,
+  ): Promise<Client | null> {
+    return await this.prisma.client.findFirst({
+      where: { userId, academiaId },
+    });
+  }
+
   async setAllClientUser(userId: string, email: string): Promise<void> {
     await this.prisma.client.updateMany({
       where: {

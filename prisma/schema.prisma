@@ -93,6 +93,7 @@ model Users {
   fixedTimesAsProfessional    FixedTime[]              @relation("FixedTimeProfessional")
   fixedSessionsAsProfessional FixedSession[]           @relation("FixedSessionProfessional")
   employments                 Employment[]             @relation("EmploymentEducator")
+  turmasAsProfessional        Turma[]                  @relation("TurmaProfessional")
 
   @@unique([email])
 }
@@ -154,6 +155,7 @@ model Client {
   educatorWorkouts EducatorWorkout[]
   fixedTimes       FixedTime[]
   fixedSessions    FixedSession[]
+  turmaEnrollments TurmaEnrollment[]
 
   @@index([email])
   @@index([academiaId])
@@ -221,6 +223,7 @@ model Academia {
   students    Client[]
   staff       AcademiaStaffMember[]
   accessPlans AcademiaAccessPlan[]
+  turmas      Turma[]
   createdAt   DateTime             @default(now())
 }
 
@@ -866,4 +869,57 @@ model EducatorWorkoutExercise {
   videoUrl    String?
 
   @@index([sessionId])
+}
+
+// A weekly recurring group class owned by an academia (gym-classes
+// ADR-001): no conflict detection against the responsible educator's own
+// agenda or against any other turma. Mirrors FixedTime's shape.
+model Turma {
+  id              String            @id @default(uuid(7))
+  academia        Academia          @relation(fields: [academiaId], references: [id])
+  academiaId      String
+  name            String
+  professional    Users?            @relation("TurmaProfessional", fields: [professionalId], references: [id])
+  professionalId  String?
+  weekday         Int
+  startMinute     Int
+  durationMinutes Int
+  capacity        Int
+  // Soft-delete (gym-classes ADR-005): set on removal, the turma and its
+  // enrollments are never destroyed.
+  removedAt       DateTime?
+  enrollments     TurmaEnrollment[]
+  sessions        TurmaSession[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([academiaId])
+}
+
+// The codebase's first many-to-many join table. A cancelled enrollment is
+// hard-deleted (nothing worth preserving); a removed turma's enrollment
+// rows are left as-is (gym-classes ADR-005).
+model TurmaEnrollment {
+  id        String   @id @default(uuid(7))
+  turma     Turma    @relation(fields: [turmaId], references: [id])
+  turmaId   String
+  client    Client   @relation(fields: [clientId], references: [id])
+  clientId  String
+  createdAt DateTime @default(now())
+
+  @@unique([turmaId, clientId])
+}
+
+// One materialized occurrence of a turma (mirrors FixedSession), renewed by
+// a daily job (gym-classes ADR-006).
+model TurmaSession {
+  id        String   @id @default(uuid(7))
+  turma     Turma    @relation(fields: [turmaId], references: [id])
+  turmaId   String
+  startAt   DateTime
+  endAt     DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([turmaId, startAt])
+  @@index([turmaId, startAt])
 }
