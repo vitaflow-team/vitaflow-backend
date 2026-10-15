@@ -1,13 +1,3 @@
-/**
- * Integration tests for PRD `gym-students` (task_01, task_02, backend).
- *
- * Runs the real AcademiaStudentsController/AcademiaStudentsService,
- * StudentsService.createForAcademia, the repositories, AuthGuard,
- * AcademiaOwnerGuard and the app's global ValidationPipe against an
- * isolated database.
- *
- * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
- */
 import { AuthGuard } from '@/auth/auth.guard';
 import { AcademiaOwnerGuard } from '@/common/guards/academiaOwner.guard';
 import { createValidationPipe } from '@/config/validationPipe';

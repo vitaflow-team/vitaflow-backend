@@ -69,9 +69,6 @@ describe('AcademiaStudentsService', () => {
 
     it('UT-009 a private client never appears, since the query is scoped to this academiaId alone', async () => {
       const deps = makeDeps();
-      // The repository's own `where: { academiaId }` clause is what keeps a
-      // private client (academiaId: null) out — this confirms the service
-      // only ever renders what the scoped query returns, nothing more.
       deps.clients.findAllByAcademiaId.mockResolvedValue([]);
       const service = makeService(deps);
 

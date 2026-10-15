@@ -164,9 +164,6 @@ export class StudentsService {
     );
   }
 
-  // Direct academia registration (gym-students ADR-004): a sibling entry
-  // point, not a parameter change to create() — academiaId is always the
-  // owner, professionalId only the optionally assigned educator.
   async createForAcademia(
     academiaId: string,
     professionalId: string | null,

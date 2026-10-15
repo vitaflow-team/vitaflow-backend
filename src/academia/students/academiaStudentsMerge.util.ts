@@ -123,9 +123,6 @@ export type NextForRecordsFn = (
   now: Date,
 ) => Promise<Map<string, NextSessionSummary>>;
 
-// ADR-003: nextForRecords is single-educator-scoped, so a page with mixed
-// assigned educators is grouped by distinct professionalId and batched, one
-// call per educator, merging the resulting maps.
 export async function buildNextSessionMap(
   assignedStudents: AssignedStudentRecord[],
   now: Date,

@@ -185,8 +185,6 @@ describe('buildAcademiaStudentsList', () => {
 
   it('UT-007 an unassigned student is always excluded from COM and always included in SEM', () => {
     const records = [record({ id: 'c1', name: 'Sem Educador' })];
-    // Even if a (bogus) entry existed in the map, unassigned students never
-    // consult it — their nextSession is null by construction.
     const nextSessionByClientId = new Map([['c1', session()]]);
 
     const com = buildAcademiaStudentsList({
@@ -235,8 +233,6 @@ describe('buildAcademiaStudentsList', () => {
   });
 
   it('UT-009 a record not scoped to this academia by the repository query never appears (pass-through safety)', () => {
-    // The repository query is what actually enforces academiaId scoping;
-    // this confirms the merge function only ever operates on what it is given.
     const result = buildAcademiaStudentsList({
       records: [record({ id: 'c1', name: 'Aluno da Academia' })],
       nextSessionByClientId: new Map(),
