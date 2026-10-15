@@ -1,7 +1,10 @@
 import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
+import { EducatorStudentsModule } from '@/educator-students/educatorStudents.module';
 import { MailModule } from '@/mail/mail.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
+import { Clock } from '@/scheduling/clock.service';
+import { FixedTimesModule } from '@/scheduling/fixed-times/fixedTimes.module';
 import { ReceptionistAuthGuard } from '@/common/guards/receptionistAuth.guard';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
 import { AcademiaInvitationRepository } from '@/repositories/academia/academiaInvitation.repository';
@@ -36,7 +39,13 @@ import { AcademiaStudentsController } from './students/academiaStudents.controll
 import { AcademiaStudentsService } from './students/academiaStudents.service';
 
 @Module({
-  imports: [AuthModule, MailModule, NotificationsModule],
+  imports: [
+    AuthModule,
+    MailModule,
+    NotificationsModule,
+    EducatorStudentsModule,
+    FixedTimesModule,
+  ],
   controllers: [
     AcademiaEmploymentController,
     EducatorEmploymentController,
@@ -70,6 +79,7 @@ import { AcademiaStudentsService } from './students/academiaStudents.service';
     ProfessoresRepository,
     ProfessoresService,
     ReceptionistAuthGuard,
+    Clock,
   ],
   exports: [
     AcademiaProvisioningService,

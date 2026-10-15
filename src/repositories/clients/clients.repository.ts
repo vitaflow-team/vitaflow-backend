@@ -7,6 +7,10 @@ export type ClientWithLatestAssessment = Client & {
   assessments: { assessedOn: Date }[];
 };
 
+export type ClientWithEducator = Client & {
+  professional: { id: string; name: string } | null;
+};
+
 @Injectable()
 export class ClientsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -58,9 +62,10 @@ export class ClientsRepository {
     });
   }
 
-  async findAllByAcademiaId(academiaId: string): Promise<Client[]> {
+  async findAllByAcademiaId(academiaId: string): Promise<ClientWithEducator[]> {
     return await this.prisma.client.findMany({
       where: { academiaId },
+      include: { professional: { select: { id: true, name: true } } },
       orderBy: { name: 'asc' },
     });
   }
