@@ -1,4 +1,5 @@
 import { PrismaService } from '@/database/prisma.service';
+import { escapeLikePattern } from '@/utils/escapeLikePattern';
 import { Injectable } from '@nestjs/common';
 import { AcademiaStaffMember, Prisma } from '@prisma/client';
 
@@ -23,6 +24,39 @@ export class AcademiaStaffMemberRepository {
   ): Promise<AcademiaStaffMember> {
     return await this.prisma.academiaStaffMember.create({
       data: { academiaId, name, email, passwordHash: null },
+    });
+  }
+
+  // Every receptionist on the platform the backoffice directory can find
+  // (platform-admin-access ADR-006), across every academia.
+  async searchAll(search: string | undefined): Promise<AcademiaStaffMember[]> {
+    return await this.prisma.academiaStaffMember.findMany({
+      where: search
+        ? {
+            OR: [
+              {
+                name: {
+                  contains: escapeLikePattern(search),
+                  mode: 'insensitive',
+                },
+              },
+              {
+                email: {
+                  contains: escapeLikePattern(search),
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          }
+        : {},
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async findManyByIds(ids: string[]): Promise<AcademiaStaffMember[]> {
+    if (ids.length === 0) return [];
+    return await this.prisma.academiaStaffMember.findMany({
+      where: { id: { in: ids } },
     });
   }
 

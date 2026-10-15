@@ -74,6 +74,15 @@ export const userRepositoryMock = {
       );
       return Promise.resolve(user ?? null);
     }),
+    // Case-insensitive, like the real repository. userMock has no two rows
+    // sharing an email, so this returns the same single-element (or empty)
+    // array findByEmail's single result would imply.
+    findAllByEmail: jest.fn().mockImplementation((email: string) => {
+      const users = userMock.filter(
+        (user) => user.email.toLowerCase() === email.toLowerCase(),
+      );
+      return Promise.resolve(users);
+    }),
     activateUser: jest.fn().mockImplementation((id: string) => {
       const user = userMock.find((user) => user.id === id);
       return Promise.resolve({

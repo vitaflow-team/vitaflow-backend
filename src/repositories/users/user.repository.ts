@@ -3,8 +3,10 @@ import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
 import { escapeLikePattern } from '@/utils/escapeLikePattern';
 import { Injectable } from '@nestjs/common';
 import {
+  BackofficeTier,
   Prisma,
   Product,
+  ProductType,
   UserAddress,
   Users,
   UsersToken,
@@ -42,6 +44,25 @@ export class UserRepository {
     });
   }
 
+  // Scoped email uniqueness is now partial (platform-admin-access ADR-005
+  // coexistence): a backoffice staff row and a customer row can legitimately
+  // share one email as two separate Users rows. Callers that must consider
+  // every account at that email (sign-in password matching) use this
+  // instead of findByEmail, which only ever returns one of them.
+  async findAllByEmail(
+    email: string,
+  ): Promise<(Users & { product: Product | null })[]> {
+    return await this.prisma.users.findMany({
+      where: {
+        email: { equals: escapeLikePattern(email), mode: 'insensitive' },
+      },
+      include: {
+        product: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   async findByEmailInsensitive(
     email: string,
   ): Promise<(Users & { product: Product | null }) | null> {
@@ -51,6 +72,29 @@ export class UserRepository {
           equals: email,
           mode: 'insensitive',
         },
+      },
+      include: {
+        product: true,
+      },
+    });
+  }
+
+  // Scoped to isBackoffice: false, which the Users_email_customer_key
+  // partial unique index (platform-admin-access ADR-005 coexistence)
+  // guarantees matches at most one row — unlike findByEmailInsensitive,
+  // which can now hit either a customer or a staff row sharing the same
+  // email with no way to tell which. Google sign-in uses this one: it must
+  // never match, and thereby auto-activate or OAuth-link, a staff invite
+  // row, since staff are only ever meant to activate through the admin's
+  // invitation-token link (ADR-005), not by anyone proving they own the
+  // invited email address via Google.
+  async findCustomerByEmailInsensitive(
+    email: string,
+  ): Promise<(Users & { product: Product | null }) | null> {
+    return await this.prisma.users.findFirst({
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        isBackoffice: false,
       },
       include: {
         product: true,
@@ -127,6 +171,25 @@ export class UserRepository {
     });
   }
 
+  // Staff activation sets both the real password (never collected at
+  // invite time, unlike customer signup) and `active: true` in the same
+  // token-consuming transaction as every other token-authorized change.
+  async activateStaffWithTokenAndPassword(
+    token: UsersToken,
+    password: string,
+  ): Promise<Users | null> {
+    return await this.prisma.$transaction(async (tx) => {
+      if (!(await this.consumeToken(tx, token.id))) {
+        return null;
+      }
+
+      return await tx.users.update({
+        where: { id: token.userID },
+        data: { active: true, password },
+      });
+    });
+  }
+
   async updatePasswordWithToken(
     token: UsersToken,
     password: string,
@@ -195,6 +258,87 @@ export class UserRepository {
         data: { userId: null },
       });
       await tx.users.delete({ where: { id: userId } });
+    });
+  }
+
+  // Scoped to isBackoffice rows only, so a same-email customer row (ADR-005
+  // coexistence) is never mistaken for the staff row.
+  async findStaffByEmail(email: string): Promise<Users | null> {
+    return await this.prisma.users.findFirst({
+      where: {
+        email: { equals: escapeLikePattern(email), mode: 'insensitive' },
+        isBackoffice: true,
+      },
+    });
+  }
+
+  async findManyByIds(ids: string[]): Promise<Users[]> {
+    if (ids.length === 0) return [];
+    return await this.prisma.users.findMany({ where: { id: { in: ids } } });
+  }
+
+  async findAllBackofficeStaff(): Promise<Users[]> {
+    return await this.prisma.users.findMany({
+      where: { isBackoffice: true },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async countAdmins(): Promise<number> {
+    return await this.prisma.users.count({
+      where: { isBackoffice: true, backofficeTier: BackofficeTier.ADMIN },
+    });
+  }
+
+  async updateBackofficeTier(id: string, tier: BackofficeTier): Promise<Users> {
+    return await this.prisma.users.update({
+      where: { id },
+      data: { backofficeTier: tier },
+    });
+  }
+
+  // Never deletes the row (consistent with every other lifecycle-ending
+  // action across the Academia module) — `backofficeTier` is left as-is,
+  // irrelevant once isBackoffice is false (platform-admin-access ADR-005).
+  async setIsBackoffice(id: string, value: boolean): Promise<Users> {
+    return await this.prisma.users.update({
+      where: { id },
+      data: { isBackoffice: value },
+    });
+  }
+
+  // Every non-staff account the backoffice directory can find (platform-
+  // admin-access ADR-006): staff themselves (isBackoffice: true) are never
+  // included — they have their own screen, GET /backoffice/staff.
+  async searchDirectory(
+    search: string | undefined,
+    productType: ProductType | undefined,
+  ): Promise<(Users & { product: { type: ProductType } | null })[]> {
+    return await this.prisma.users.findMany({
+      where: {
+        isBackoffice: false,
+        ...(productType ? { product: { type: productType } } : {}),
+        ...(search
+          ? {
+              OR: [
+                {
+                  name: {
+                    contains: escapeLikePattern(search),
+                    mode: 'insensitive',
+                  },
+                },
+                {
+                  email: {
+                    contains: escapeLikePattern(search),
+                    mode: 'insensitive',
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      include: { product: { select: { type: true } } },
+      orderBy: { name: 'asc' },
     });
   }
 

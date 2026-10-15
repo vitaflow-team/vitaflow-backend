@@ -85,7 +85,14 @@ export class AuthService {
       return { user, outcome: 'signed_in' };
     }
 
-    const matchedUser = await this.users.findByEmailInsensitive(verified.email);
+    // Scoped to customer rows only (findCustomerByEmailInsensitive): a
+    // platform-admin-access staff invite sharing this email must never be
+    // matched, and thereby auto-activated/OAuth-linked, by someone merely
+    // proving Google ownership of the invited address — staff activate only
+    // through the admin's invitation-token link (ADR-005).
+    const matchedUser = await this.users.findCustomerByEmailInsensitive(
+      verified.email,
+    );
     if (matchedUser) {
       return await this.resolveMatchedUser(verified, matchedUser);
     }
@@ -243,7 +250,7 @@ export class AuthService {
       return { user: winningUser, outcome: 'signed_in' };
     }
 
-    const existing = await this.users.findByEmailInsensitive(email);
+    const existing = await this.users.findCustomerByEmailInsensitive(email);
     if (!existing) {
       throw error;
     }

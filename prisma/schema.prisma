@@ -56,6 +56,12 @@ model Users {
   // explicitly, never inferred from email domain or product type.
   isBackoffice Boolean @default(false)
 
+  // Set only for isBackoffice rows, at invitation time (platform-admin-access
+  // ADR-005). Null for every non-staff row. Left as-is on removal (isBackoffice
+  // set back to false) — irrelevant once the row isn't staff, and preserves
+  // the historical fact of what tier they held.
+  backofficeTier BackofficeTier?
+
   // Set only on the Users row of an Academia's owner/manager, the moment
   // their subscription becomes an ACADEMIA product (AcademiaProvisioningService).
   // The Academia itself, not this row, is the stable identity every other
@@ -94,8 +100,20 @@ model Users {
   fixedSessionsAsProfessional FixedSession[]           @relation("FixedSessionProfessional")
   employments                 Employment[]             @relation("EmploymentEducator")
   turmasAsProfessional        Turma[]                  @relation("TurmaProfessional")
+  viewAsSessionsAsStaff       BackofficeViewAsSession[] @relation("BackofficeViewAsStaff")
 
-  @@unique([email])
+  // No longer a plain @@unique: a staff invitation must be able to coexist
+  // with a pre-existing customer account on the same email, as two entirely
+  // separate rows (platform-admin-access ADR-005, task_02). Replaced by two
+  // hand-authored partial unique indexes, scoped by isBackoffice, in this
+  // feature's migration — Prisma's schema DSL cannot express a partial
+  // index, so there is no attribute-level equivalent here (same pattern as
+  // Client's email scoping, gym-foundation ADR-009).
+}
+
+enum BackofficeTier {
+  EQUIPE
+  ADMIN
 }
 
 model MeasurementRecord {
@@ -920,6 +938,8 @@ model StudentAccessPlan {
   updatedAt      DateTime                @updatedAt
 
   @@index([clientId])
+}
+
 // A weekly recurring group class owned by an academia (gym-classes
 // ADR-001): no conflict detection against the responsible educator's own
 // agenda or against any other turma. Mirrors FixedTime's shape.
@@ -971,4 +991,31 @@ model TurmaSession {
 
   @@unique([turmaId, startAt])
   @@index([turmaId, startAt])
+}
+
+enum ViewAsTargetKind {
+  USER
+  ACADEMIA_STAFF
+}
+
+// A "ver como" session: a staff member viewing the platform as another
+// account, read-only (platform-admin-access ADR-001/ADR-004). Doubles as
+// the session's own audit record — exactly one of targetUserId/targetStaffId
+// is set, matching targetKind. endedAt null means still open (either genuinely
+// active or abandoned past expiresAt, until the expiry-sweep cron closes it).
+model BackofficeViewAsSession {
+  id            String           @id @default(uuid(7))
+  staff         Users            @relation("BackofficeViewAsStaff", fields: [staffUserId], references: [id])
+  staffUserId   String
+  targetKind    ViewAsTargetKind
+  targetUserId  String?
+  targetStaffId String?
+  reason        String
+  startedAt     DateTime         @default(now())
+  expiresAt     DateTime
+  endedAt       DateTime?
+  createdAt     DateTime         @default(now())
+
+  @@index([staffUserId, startedAt])
+  @@index([endedAt, expiresAt])
 }
