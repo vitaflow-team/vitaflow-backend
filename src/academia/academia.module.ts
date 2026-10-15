@@ -24,6 +24,9 @@ import { EducatorEmploymentController } from './invitations/educatorEmployment.c
 import { EmploymentService } from './invitations/employment.service';
 import { PainelController } from './painel/painel.controller';
 import { PainelService } from './painel/painel.service';
+import { ProfessoresController } from './professores/professores.controller';
+import { ProfessoresService } from './professores/professores.service';
+import { ProfessoresRepository } from '@/repositories/academia/professores.repository';
 import {
   AcademiaStaffActivationController,
   AcademiaStaffController,
@@ -43,6 +46,7 @@ import { AcademiaStudentsService } from './students/academiaStudents.service';
     AcademiaStudentsController,
     AcademiaAccessPlanController,
     PainelController,
+    ProfessoresController,
   ],
   providers: [
     PrismaService,
@@ -63,6 +67,8 @@ import { AcademiaStudentsService } from './students/academiaStudents.service';
     AcademiaAccessPlanRepository,
     AcademiaAccessPlanService,
     PainelService,
+    ProfessoresRepository,
+    ProfessoresService,
     ReceptionistAuthGuard,
   ],
   exports: [
