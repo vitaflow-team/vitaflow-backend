@@ -199,6 +199,18 @@ export class ClientsRepository {
     return await this.prisma.client.findMany({
       where: { userId, academiaId: { not: null } },
       orderBy: { createdAt: 'asc' },
+  async findAcademiaOwnedByUserId(userId: string): Promise<Client[]> {
+    return await this.prisma.client.findMany({
+      where: { userId, academiaId: { not: null } },
+    });
+  }
+
+  async findByUserAndAcademiaId(
+    userId: string,
+    academiaId: string,
+  ): Promise<Client | null> {
+    return await this.prisma.client.findFirst({
+      where: { userId, academiaId },
     });
   }
 

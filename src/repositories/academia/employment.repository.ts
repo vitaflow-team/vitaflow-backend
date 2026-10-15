@@ -75,6 +75,13 @@ export class EmploymentRepository {
         },
         data: { professionalId: null },
       });
+      await tx.turma.updateMany({
+        where: {
+          academiaId,
+          professionalId: employment.educatorId,
+        },
+        data: { professionalId: null },
+      });
       return true;
     });
   }

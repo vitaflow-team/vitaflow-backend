@@ -14,6 +14,8 @@ import { AcademiaStaffMemberTokenRepository } from '@/repositories/academia/acad
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { CheckInRepository } from '@/repositories/academia/checkIn.repository';
 import { StudentAccessPlanRepository } from '@/repositories/academia/studentAccessPlan.repository';
+import { TurmasRepository } from '@/repositories/academia/turmas.repository';
+import { TurmaEnrollmentRepository } from '@/repositories/academia/turmaEnrollment.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -47,6 +49,11 @@ import { StudentAccessPlanController } from './checkin/studentAccessPlan.control
 import { StudentAccessPlanService } from './checkin/studentAccessPlan.service';
 import { EngajamentoController } from './engajamento/engajamento.controller';
 import { EngajamentoService } from './engajamento/engajamento.service';
+import { StudentTurmasController } from './turmas/studentTurmas.controller';
+import { TurmaEnrollmentService } from './turmas/turmaEnrollment.service';
+import { TurmaSessionsRenewalService } from './turmas/turmaSessionsRenewal.service';
+import { TurmasController } from './turmas/turmas.controller';
+import { TurmasService } from './turmas/turmas.service';
 
 @Module({
   imports: [
@@ -70,6 +77,8 @@ import { EngajamentoService } from './engajamento/engajamento.service';
     ReceptionistCheckInController,
     StudentAccessPlanController,
     EngajamentoController,
+    TurmasController,
+    StudentTurmasController,
   ],
   providers: [
     PrismaService,
@@ -100,6 +109,11 @@ import { EngajamentoService } from './engajamento/engajamento.service';
     CheckInService,
     StudentAccessPlanService,
     EngajamentoService,
+    TurmasRepository,
+    TurmaEnrollmentRepository,
+    TurmasService,
+    TurmaEnrollmentService,
+    TurmaSessionsRenewalService,
   ],
   exports: [
     AcademiaProvisioningService,
