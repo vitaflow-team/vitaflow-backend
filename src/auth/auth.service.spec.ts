@@ -62,7 +62,7 @@ describe('AuthService.signInWithGoogle', () => {
     create: jest.Mock;
   };
   let users: {
-    findByEmailInsensitive: jest.Mock;
+    findCustomerByEmailInsensitive: jest.Mock;
     findByIdWithProduct: jest.Mock;
     create: jest.Mock;
     activateUser: jest.Mock;
@@ -86,7 +86,7 @@ describe('AuthService.signInWithGoogle', () => {
       create: jest.fn().mockResolvedValue(identity),
     };
     users = {
-      findByEmailInsensitive: jest.fn().mockResolvedValue(null),
+      findCustomerByEmailInsensitive: jest.fn().mockResolvedValue(null),
       findByIdWithProduct: jest.fn().mockResolvedValue(activeUser),
       create: jest.fn().mockResolvedValue(activeUser),
       activateUser: jest.fn().mockResolvedValue(activeUser),
@@ -151,7 +151,7 @@ describe('AuthService.signInWithGoogle', () => {
 
   it('UT-012 activates and links a matching inactive user', async () => {
     const inactive = { ...activeUser, active: false };
-    users.findByEmailInsensitive.mockResolvedValue(inactive);
+    users.findCustomerByEmailInsensitive.mockResolvedValue(inactive);
     users.findByIdWithProduct.mockResolvedValue(activeUser);
 
     const result = await service.signInWithGoogle('raw-id-token');
@@ -172,7 +172,7 @@ describe('AuthService.signInWithGoogle', () => {
       passwordHash.generateHash.mockImplementation((payload: string) =>
         bcrypt.generateHash(payload),
       );
-      users.findByEmailInsensitive.mockResolvedValue({
+      users.findCustomerByEmailInsensitive.mockResolvedValue({
         ...activeUser,
         active: false,
         password: originalHash,
@@ -203,7 +203,7 @@ describe('AuthService.signInWithGoogle', () => {
     });
 
     it('revokes the old credentials before the account becomes active', async () => {
-      users.findByEmailInsensitive.mockResolvedValue({
+      users.findCustomerByEmailInsensitive.mockResolvedValue({
         ...activeUser,
         active: false,
       });
@@ -216,7 +216,7 @@ describe('AuthService.signInWithGoogle', () => {
     });
 
     it('links client records registered under the email once activated', async () => {
-      users.findByEmailInsensitive.mockResolvedValue({
+      users.findCustomerByEmailInsensitive.mockResolvedValue({
         ...activeUser,
         active: false,
       });
@@ -240,7 +240,7 @@ describe('AuthService.signInWithGoogle', () => {
     });
 
     it('skips the password write for an inactive account without a password', async () => {
-      users.findByEmailInsensitive.mockResolvedValue({
+      users.findCustomerByEmailInsensitive.mockResolvedValue({
         ...activeUser,
         active: false,
         password: '',
@@ -255,7 +255,7 @@ describe('AuthService.signInWithGoogle', () => {
     });
 
     it('never touches the password of an already active account', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(activeUser);
+      users.findCustomerByEmailInsensitive.mockResolvedValue(activeUser);
 
       await service.signInWithGoogle('raw-id-token');
 
@@ -266,7 +266,7 @@ describe('AuthService.signInWithGoogle', () => {
   });
 
   it('UT-013 links an active user, notifies exactly once, and signs in', async () => {
-    users.findByEmailInsensitive.mockResolvedValue(activeUser);
+    users.findCustomerByEmailInsensitive.mockResolvedValue(activeUser);
 
     const result = await service.signInWithGoogle('raw-id-token');
 
@@ -291,11 +291,11 @@ describe('AuthService.signInWithGoogle', () => {
     const result = await service.signInWithGoogle('raw-id-token');
 
     expect(result.id).toBe(activeUser.id);
-    expect(users.findByEmailInsensitive).not.toHaveBeenCalled();
+    expect(users.findCustomerByEmailInsensitive).not.toHaveBeenCalled();
   });
 
   it('UT-016 rejects a user already linked to a different Google sub', async () => {
-    users.findByEmailInsensitive.mockResolvedValue(activeUser);
+    users.findCustomerByEmailInsensitive.mockResolvedValue(activeUser);
     identities.findByUserId.mockResolvedValue({
       ...identity,
       providerAccountId: 'different-sub',
@@ -350,7 +350,7 @@ describe('AuthService.signInWithGoogle', () => {
   });
 
   it('UT-019 emits a distinct account_linked audit event for first linking', async () => {
-    users.findByEmailInsensitive.mockResolvedValue(activeUser);
+    users.findCustomerByEmailInsensitive.mockResolvedValue(activeUser);
 
     await service.signInWithGoogle('raw-id-token');
 
@@ -368,7 +368,7 @@ describe('AuthService.signInWithGoogle', () => {
   ])(
     'UT-020 emits no account_linked event for %s outcome',
     async (_case, matched, loaded) => {
-      users.findByEmailInsensitive.mockResolvedValue(matched);
+      users.findCustomerByEmailInsensitive.mockResolvedValue(matched);
       users.findByIdWithProduct.mockResolvedValue(loaded);
 
       await service.signInWithGoogle('raw-id-token');
@@ -380,7 +380,7 @@ describe('AuthService.signInWithGoogle', () => {
   );
 
   it('UT-021 returns a valid response when notification mail fails', async () => {
-    users.findByEmailInsensitive.mockResolvedValue(activeUser);
+    users.findCustomerByEmailInsensitive.mockResolvedValue(activeUser);
     mailService.sendEmailPassword.mockRejectedValue(new Error('mailer down'));
 
     await expect(service.signInWithGoogle('raw-id-token')).resolves.toEqual(
@@ -469,7 +469,7 @@ describe('AuthService.signInWithGoogle', () => {
         order.push('link');
         return Promise.resolve(undefined);
       });
-      users.findByEmailInsensitive.mockResolvedValue(null);
+      users.findCustomerByEmailInsensitive.mockResolvedValue(null);
       users.create.mockResolvedValue(activeUser);
       users.findByIdWithProduct.mockResolvedValue(activeUser);
 
@@ -483,7 +483,7 @@ describe('AuthService.signInWithGoogle', () => {
     });
 
     it('UT-097 still signs in and logs google_link_failed when the link fails', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(null);
+      users.findCustomerByEmailInsensitive.mockResolvedValue(null);
       users.create.mockResolvedValue(activeUser);
       users.findByIdWithProduct.mockResolvedValue(activeUser);
       clients.setAllClientUser.mockRejectedValue(new Error('db down'));
@@ -522,7 +522,7 @@ describe('AuthService.signInWithGoogle', () => {
 
       expect(response.id).toBe(winnerUser.id);
       expect(users.findByIdWithProduct).toHaveBeenCalledWith(winnerUser.id);
-      expect(users.findByEmailInsensitive).toHaveBeenCalledTimes(1);
+      expect(users.findCustomerByEmailInsensitive).toHaveBeenCalledTimes(1);
       expect(identities.create).not.toHaveBeenCalled();
     });
 
@@ -533,14 +533,14 @@ describe('AuthService.signInWithGoogle', () => {
       identities.findByUserId.mockResolvedValue(identity);
       users.create.mockRejectedValue(uniqueViolation());
       users.findByIdWithProduct.mockResolvedValue(null);
-      users.findByEmailInsensitive
+      users.findCustomerByEmailInsensitive
         .mockResolvedValueOnce(null)
         .mockResolvedValue(activeUser);
 
       const response = await service.signInWithGoogle('raw-id-token');
 
       expect(response.id).toBe(activeUser.id);
-      expect(users.findByEmailInsensitive).toHaveBeenCalledTimes(2);
+      expect(users.findCustomerByEmailInsensitive).toHaveBeenCalledTimes(2);
       expect(identities.create).not.toHaveBeenCalled();
     });
   });

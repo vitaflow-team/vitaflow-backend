@@ -38,10 +38,10 @@ export class SignInService {
     const attempt: SignInAttempt = { failureReason: 'internal_error' };
 
     try {
-      const user = await this.user.findByEmail(email);
-      if (user) {
+      const candidates = await this.user.findAllByEmail(email);
+      if (candidates.length > 0) {
         const authenticated = await this.authenticateUser(
-          user,
+          candidates,
           password,
           attempt,
         );
@@ -79,27 +79,46 @@ export class SignInService {
 
   // Records on `attempt` why and for whom it failed, so the caller's failure
   // audit line carries the same reason and user id as before the split.
+  //
+  // `candidates` holds every Users row at this email (platform-admin-access
+  // ADR-005 lets a staff row and a customer row coexist on one email), in
+  // `createdAt asc` order. Each has an independent password, so trying the
+  // submitted password against each in turn is unambiguous: at most one can
+  // match. The common, single-row case tries exactly one hash, same as
+  // before this method accepted a list.
   private async authenticateUser(
-    user: UserWithProduct,
+    candidates: UserWithProduct[],
     password: string,
     attempt: SignInAttempt,
   ): Promise<UserWithProduct> {
-    attempt.userId = user.id;
+    const matched = await this.matchCandidate(candidates, password);
+    attempt.userId = matched?.id ?? candidates[0]?.id;
 
-    const validPassword = await this.hash.compareHash(password, user.password);
-    if (!validPassword) {
+    if (!matched) {
       attempt.failureReason = 'invalid_credentials';
       throw new AppError(UNAUTHORIZED_USER, 401);
     }
 
     // Checked only after the password matched, so the inactive-account
     // message never tells a caller without the password that it exists.
-    if (!user.active) {
+    if (!matched.active) {
       attempt.failureReason = 'inactive_account';
       throw new AppError(ACCOUNT_INACTIVE, 401);
     }
 
-    return user;
+    return matched;
+  }
+
+  private async matchCandidate(
+    candidates: UserWithProduct[],
+    password: string,
+  ): Promise<UserWithProduct | undefined> {
+    for (const candidate of candidates) {
+      if (await this.hash.compareHash(password, candidate.password)) {
+        return candidate;
+      }
+    }
+    return undefined;
   }
 
   private async authenticateStaff(

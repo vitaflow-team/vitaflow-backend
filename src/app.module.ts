@@ -4,9 +4,13 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AcademiaModule } from './academia/academia.module';
 import { AuthModule } from './auth/auth.module';
+import { BackofficeModule } from './backoffice/backoffice.module';
 import { ClientsModule } from './clients/clients.module';
 import { ApiKeyGuard } from './common/guards/apiKey.guard';
+import { ViewAsWriteBlockGuard } from './common/guards/viewAsWriteBlock.guard';
 import { PrismaService } from './database/prisma.service';
+import { BackofficeViewAsSessionRepository } from './repositories/backoffice/backofficeViewAsSession.repository';
+import { UserRepository } from './repositories/users/user.repository';
 import { EducatorStudentsModule } from './educator-students/educatorStudents.module';
 import { ExerciseLibraryModule } from './exercise-library/exerciseLibrary.module';
 import { FoodDiaryModule } from './food-diary/foodDiary.module';
@@ -48,13 +52,20 @@ import { WorkoutsModule } from './workouts/workouts.module';
     SchedulingModule,
     EducatorStudentsModule,
     AcademiaModule,
+    BackofficeModule,
   ],
   controllers: [],
   providers: [
     PrismaService,
+    UserRepository,
+    BackofficeViewAsSessionRepository,
     {
       provide: APP_GUARD,
       useClass: ApiKeyGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ViewAsWriteBlockGuard,
     },
   ],
 })
