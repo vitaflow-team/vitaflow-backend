@@ -1,3 +1,4 @@
+import { AcademiaModule } from '@/academia/academia.module';
 import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
 import { MailModule } from '@/mail/mail.module';
@@ -25,7 +26,7 @@ import { SubscriptionSyncController } from './subscription/subscriptionSync.cont
 import { UserTokenService } from './token/userToken.service';
 
 @Module({
-  imports: [AuthModule, MailModule, NotificationsModule],
+  imports: [AuthModule, MailModule, NotificationsModule, AcademiaModule],
   controllers: [
     SignUpController,
     SignInController,

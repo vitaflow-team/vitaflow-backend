@@ -8,6 +8,7 @@ export const PLAN_CATEGORIES = [
   'USUARIO',
   'NUTRICIONISTA',
   'EDUCADOR_FISICO',
+  'ACADEMIA',
 ] as const;
 
 export type PlanCategory = (typeof PLAN_CATEGORIES)[number];
@@ -16,6 +17,7 @@ const CATEGORY_TYPES: Record<PlanCategory, ProductType> = {
   USUARIO: 'USER',
   NUTRICIONISTA: 'NUTRITIONIST',
   EDUCADOR_FISICO: 'PHYSICAL_EDUCATOR',
+  ACADEMIA: 'ACADEMIA',
 };
 
 export function typeOfCategory(category: PlanCategory): ProductType {

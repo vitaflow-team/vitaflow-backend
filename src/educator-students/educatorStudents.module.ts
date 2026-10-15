@@ -1,9 +1,11 @@
+import { AcademiaActivityService } from '@/academia/activity/academiaActivity.service';
 import { AuthModule } from '@/auth/auth.module';
 import { ConsentRepository } from '@/common/consent/consent.repository';
 import { ConsentService } from '@/common/consent/consent.service';
 import { PhysicalEducatorGuard } from '@/common/guards/physicalEducator.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { NotificationsModule } from '@/notifications/notifications.module';
+import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
@@ -48,6 +50,8 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     PrismaService,
     UserRepository,
     ClientsRepository,
+    EmploymentRepository,
+    AcademiaActivityService,
     PhysicalAssessmentsRepository,
     EducatorWorkoutsRepository,
     ExercisesRepository,

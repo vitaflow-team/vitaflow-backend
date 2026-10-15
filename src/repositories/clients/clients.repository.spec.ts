@@ -25,7 +25,8 @@ describe('UserRepository Tests', () => {
                       email: data.email,
                       birthDate: new Date('1990-05-20'),
                       phone: data.phone,
-                      professionalId: data.professional.connect!.id!,
+                      professionalId: data.professional?.connect?.id ?? null,
+                      academiaId: null,
                       createdAt: new Date(),
                       updatedAt: new Date(),
                     } satisfies Client);
@@ -242,6 +243,19 @@ describe('UserRepository Tests', () => {
       {
         where: {
           professionalId: 'p1',
+        },
+      },
+    );
+  });
+
+  it('Count clients by academiaId only — never includes a private client', async () => {
+    const total = await clientsRepository.countByAcademiaId('academia-1');
+
+    expect(total).toEqual(3);
+    expect((clientsRepository as any).prisma.client.count).toHaveBeenCalledWith(
+      {
+        where: {
+          academiaId: 'academia-1',
         },
       },
     );

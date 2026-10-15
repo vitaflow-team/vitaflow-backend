@@ -66,6 +66,7 @@ describe('StudentsService', () => {
     findAllWithLatestAssessment: jest.fn(),
     findOwnedById: jest.fn(),
     findByEmailAndProfessionalId: jest.fn(),
+    findByEmailAndAcademiaId: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
@@ -76,11 +77,16 @@ describe('StudentsService', () => {
     findAllForVariation: jest.fn(),
   };
   const workouts = { findActiveByClient: jest.fn() };
+  const employments = { listActiveByEducator: jest.fn() };
+  const activity = { recordActivity: jest.fn() };
   let service: StudentsService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     clients.findByEmailAndProfessionalId.mockResolvedValue(null);
+    clients.findByEmailAndAcademiaId.mockResolvedValue(null);
+    employments.listActiveByEducator.mockResolvedValue([]);
+    activity.recordActivity.mockResolvedValue(undefined);
     clients.create.mockImplementation((data: Record<string, unknown>) =>
       Promise.resolve(client({ ...data, birthDate: data.birthDate ?? null })),
     );
@@ -102,6 +108,8 @@ describe('StudentsService', () => {
         todaySessionId: jest.fn().mockResolvedValue(null),
       } as any,
       { now: () => new Date('2026-10-01T12:00:00Z') } as any,
+      employments as any,
+      activity as any,
     );
   });
 
@@ -344,6 +352,106 @@ describe('StudentsService', () => {
       clients.create.mockRejectedValue(new Error('boom'));
 
       await expect(service.create(EDUCATOR, register)).rejects.toThrow('boom');
+    });
+
+    describe('academia ownership (gym-foundation)', () => {
+      it('gym-foundation UT-041 auto-assigns the academia when exactly one active employment exists', async () => {
+        employments.listActiveByEducator.mockResolvedValue([
+          { academiaId: 'academia-1' },
+        ]);
+
+        await service.create(EDUCATOR, { ...register, ownership: 'ACADEMIA' });
+
+        expect(clients.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            academia: { connect: { id: 'academia-1' } },
+          }),
+        );
+      });
+
+      it('gym-foundation UT-042 requires an explicit academiaId with 2+ active employments', async () => {
+        employments.listActiveByEducator.mockResolvedValue([
+          { academiaId: 'academia-1' },
+          { academiaId: 'academia-2' },
+        ]);
+
+        const result = await codeOf(
+          service.create(EDUCATOR, { ...register, ownership: 'ACADEMIA' }),
+        );
+
+        expect(result).toEqual({ status: 400, code: 'academia_ambiguous' });
+        expect(clients.create).not.toHaveBeenCalled();
+      });
+
+      it('gym-foundation UT-042 (continued) accepts an explicit academiaId among the active employments', async () => {
+        employments.listActiveByEducator.mockResolvedValue([
+          { academiaId: 'academia-1' },
+          { academiaId: 'academia-2' },
+        ]);
+
+        await service.create(EDUCATOR, {
+          ...register,
+          ownership: 'ACADEMIA',
+          academiaId: 'academia-2',
+        });
+
+        expect(clients.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            academia: { connect: { id: 'academia-2' } },
+          }),
+        );
+      });
+
+      it('rejects an explicit academiaId the educator is not actually employed by', async () => {
+        employments.listActiveByEducator.mockResolvedValue([
+          { academiaId: 'academia-1' },
+        ]);
+
+        const result = await codeOf(
+          service.create(EDUCATOR, {
+            ...register,
+            ownership: 'ACADEMIA',
+            academiaId: 'some-other-academia',
+          }),
+        );
+
+        expect(result).toEqual({ status: 400, code: 'not_employed_here' });
+      });
+
+      it('gym-foundation UT-043 rejects ACADEMIA ownership with zero active employments', async () => {
+        employments.listActiveByEducator.mockResolvedValue([]);
+
+        const result = await codeOf(
+          service.create(EDUCATOR, { ...register, ownership: 'ACADEMIA' }),
+        );
+
+        expect(result).toEqual({ status: 400, code: 'no_active_employment' });
+        expect(clients.create).not.toHaveBeenCalled();
+      });
+
+      it('gym-foundation UT-040 scopes the duplicate-email check to the academia, not the professional', async () => {
+        employments.listActiveByEducator.mockResolvedValue([
+          { academiaId: 'academia-1' },
+        ]);
+        clients.findByEmailAndAcademiaId.mockResolvedValue(client());
+
+        const result = await codeOf(
+          service.create(EDUCATOR, { ...register, ownership: 'ACADEMIA' }),
+        );
+
+        expect(result).toEqual({
+          status: 409,
+          code: 'student_already_registered',
+        });
+        expect(clients.findByEmailAndProfessionalId).not.toHaveBeenCalled();
+      });
+
+      it('gym-foundation UT-040 (continued) a private particular registration with the same e-mail as an academia student elsewhere is a distinct, new row', async () => {
+        await service.create(EDUCATOR, register);
+
+        expect(clients.findByEmailAndAcademiaId).not.toHaveBeenCalled();
+        expect(clients.findByEmailAndProfessionalId).toHaveBeenCalled();
+      });
     });
   });
 

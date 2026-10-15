@@ -16,6 +16,7 @@ function makeUser(overrides: Partial<Users> = {}): Users {
     phone: null,
     birthDate: null,
     productId: null,
+    academiaId: null,
     termsAcceptedAt: null,
     healthDataConsentAt: null,
     stripeCustomerId: null,

@@ -9,6 +9,8 @@ export function toProductType(value: string): ProductType {
       return ProductType.NUTRITIONIST;
     case ProductType.PHYSICAL_EDUCATOR:
       return ProductType.PHYSICAL_EDUCATOR;
+    case ProductType.ACADEMIA:
+      return ProductType.ACADEMIA;
     default:
       throw new AppError(`Unknown product type: ${JSON.stringify(value)}`, 400);
   }

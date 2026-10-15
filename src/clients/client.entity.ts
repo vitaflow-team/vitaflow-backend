@@ -43,10 +43,25 @@ export class ClientEntity implements Client {
   birthDate: Date | null;
 
   @ApiProperty({
-    description: 'ID of the professional managing this client',
+    description:
+      'ID of the currently assigned educator. Required for a particular ' +
+      '(private) client; optional for a gym (academia) client, which the ' +
+      'owning academia may leave unassigned or reassign at will.',
     example: 'professional-uuid-string',
+    required: false,
+    nullable: true,
   })
-  professionalId: string;
+  professionalId: string | null;
+
+  @ApiProperty({
+    description:
+      'ID of the owning academia, for a gym (academia) client only — null ' +
+      'for a particular (private) client, which has no academia owner.',
+    example: 'academia-uuid-string',
+    required: false,
+    nullable: true,
+  })
+  academiaId: string | null;
 
   @ApiProperty({
     description: 'Date when the client was created',

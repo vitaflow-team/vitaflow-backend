@@ -1,3 +1,4 @@
+import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -34,6 +35,7 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
   };
   let stripeVerification: { verifySubscriptionWithStripe: jest.Mock };
   let notifications: { create: jest.Mock };
+  let academiaProvisioning: { provisionForOwner: jest.Mock };
 
   /** The `data` object the service handed to `updateSubscription`. */
   const updateData = () =>
@@ -65,6 +67,9 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
       }),
     };
     notifications = { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) };
+    academiaProvisioning = {
+      provisionForOwner: jest.fn().mockResolvedValue(null),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -73,6 +78,10 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
         { provide: ProductsRepository, useValue: products },
         { provide: StripeVerification, useValue: stripeVerification },
         { provide: NotificationsService, useValue: notifications },
+        {
+          provide: AcademiaProvisioningService,
+          useValue: academiaProvisioning,
+        },
       ],
     }).compile();
 

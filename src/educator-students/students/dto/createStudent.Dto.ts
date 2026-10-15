@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsDate,
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -72,4 +73,24 @@ export class CreateStudentDTO {
   })
   @IsBoolean()
   linkExistingAccount: boolean;
+
+  @ApiProperty({
+    required: false,
+    enum: ['PARTICULAR', 'ACADEMIA'],
+    default: 'PARTICULAR',
+    description:
+      'PARTICULAR (default): a private client of this educator, unchanged. ACADEMIA: a gym student, owned by one of the academias currently employing this educator (gym-foundation ADR-005/US-013).',
+  })
+  @IsOptional()
+  @IsIn(['PARTICULAR', 'ACADEMIA'])
+  ownership?: 'PARTICULAR' | 'ACADEMIA';
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Required only when ownership=ACADEMIA and this educator has more than one active employment — which academia this student belongs to.',
+  })
+  @IsOptional()
+  @IsString()
+  academiaId?: string;
 }

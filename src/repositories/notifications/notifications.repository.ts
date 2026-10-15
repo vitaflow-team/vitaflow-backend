@@ -39,6 +39,18 @@ export class NotificationsRepository {
     });
   }
 
+  async findRecentByUserAndCategory(
+    userId: string,
+    category: NotificationCategory,
+    limit: number,
+  ): Promise<Notification[]> {
+    return await this.prisma.notification.findMany({
+      where: { userId, category },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+  }
+
   async markRead(id: string): Promise<Notification> {
     return await this.prisma.notification.update({
       where: { id },

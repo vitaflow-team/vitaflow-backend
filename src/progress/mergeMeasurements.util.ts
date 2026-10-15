@@ -47,7 +47,7 @@ export function assessmentToPoint(
     createdAt: assessment.createdAt,
     source: 'EDUCATOR',
     readOnly: true,
-    educatorName: assessment.client.professional.name,
+    educatorName: assessment.client.professional?.name ?? null,
   };
 }
 

@@ -86,6 +86,37 @@ async function main() {
       ],
     },
     {
+      name: 'Academia',
+      products: [
+        {
+          name: 'Plano 1',
+          price: 149.9,
+          stripeId: 'price_ACADEMIA_PLANO_1_REPLACE_ME',
+          type: 'ACADEMIA',
+          productInfos: [
+            {
+              description:
+                'Gerencie educadores físicos e alunos da sua academia',
+            },
+            { description: 'Convide educadores e recepcionistas por e-mail' },
+          ],
+        },
+        {
+          name: 'Plano 2',
+          price: 249.9,
+          stripeId: 'price_ACADEMIA_PLANO_2_REPLACE_ME',
+          type: 'ACADEMIA',
+          productInfos: [
+            {
+              description:
+                'Gerencie educadores físicos e alunos da sua academia',
+            },
+            { description: 'Convide educadores e recepcionistas por e-mail' },
+          ],
+        },
+      ],
+    },
+    {
       name: 'Nutricionistas',
       products: [
         {

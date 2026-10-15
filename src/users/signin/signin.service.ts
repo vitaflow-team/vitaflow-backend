@@ -1,3 +1,4 @@
+import { AcademiaStaffAuthService } from '@/academia/staff/academiaStaffAuth.service';
 import { AuditLogger } from '@/auth/auditLogger.service';
 import { SignInResponseDTO } from '@/auth/signInResponse.Dto';
 import { AuditEvent } from '@/auth/types/auditEvent';
@@ -7,6 +8,7 @@ import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
 import { JwtService } from '@nestjs/jwt';
+import { AcademiaStaffMember } from '@prisma/client';
 import { SignInAttempt } from './signInAttempt';
 import { SignInDTO } from './signin.Dto';
 
@@ -25,6 +27,7 @@ import { Injectable } from '@nestjs/common';
 export class SignInService {
   constructor(
     private readonly user: UserRepository,
+    private readonly academiaStaff: AcademiaStaffAuthService,
     private readonly hash: PasswordHash,
     private readonly jwtService: JwtService,
     private readonly uploadService: UploadService,
@@ -35,17 +38,38 @@ export class SignInService {
     const attempt: SignInAttempt = { failureReason: 'internal_error' };
 
     try {
-      const user = await this.authenticate(email, password, attempt);
-      const response = await this.createSignInResponse(user);
+      const user = await this.user.findByEmail(email);
+      if (user) {
+        const authenticated = await this.authenticateUser(
+          user,
+          password,
+          attempt,
+        );
+        const response = await this.createSignInResponse(authenticated);
+        this.audit({
+          event: 'signin_attempt',
+          method: 'password',
+          outcome: 'success',
+          userId: authenticated.id,
+          timestamp: new Date().toISOString(),
+        });
+        return response;
+      }
 
+      const staff = await this.academiaStaff.findByEmail(email);
+      const authenticatedStaff = await this.authenticateStaff(
+        staff,
+        password,
+        attempt,
+      );
+      const response = await this.createStaffSignInResponse(authenticatedStaff);
       this.audit({
         event: 'signin_attempt',
         method: 'password',
         outcome: 'success',
-        userId: user.id,
+        userId: authenticatedStaff.id,
         timestamp: new Date().toISOString(),
       });
-
       return response;
     } catch (error) {
       this.auditFailure(attempt.failureReason, attempt.userId);
@@ -55,19 +79,15 @@ export class SignInService {
 
   // Records on `attempt` why and for whom it failed, so the caller's failure
   // audit line carries the same reason and user id as before the split.
-  private async authenticate(
-    email: string,
+  private async authenticateUser(
+    user: UserWithProduct,
     password: string,
     attempt: SignInAttempt,
   ): Promise<UserWithProduct> {
-    const user = await this.user.findByEmail(email);
-    attempt.userId = user?.id;
+    attempt.userId = user.id;
 
-    const validPassword = await this.hash.compareHash(
-      password,
-      user?.password ?? DUMMY_PASSWORD_HASH,
-    );
-    if (!user || !validPassword) {
+    const validPassword = await this.hash.compareHash(password, user.password);
+    if (!validPassword) {
       attempt.failureReason = 'invalid_credentials';
       throw new AppError(UNAUTHORIZED_USER, 401);
     }
@@ -80,6 +100,30 @@ export class SignInService {
     }
 
     return user;
+  }
+
+  private async authenticateStaff(
+    staff: AcademiaStaffMember | null,
+    password: string,
+    attempt: SignInAttempt,
+  ): Promise<AcademiaStaffMember> {
+    attempt.userId = staff?.id;
+
+    const validPassword = await this.hash.compareHash(
+      password,
+      staff?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+    if (!staff || !staff.passwordHash || !validPassword) {
+      attempt.failureReason = 'invalid_credentials';
+      throw new AppError(UNAUTHORIZED_USER, 401);
+    }
+
+    if (!staff.active) {
+      attempt.failureReason = 'inactive_account';
+      throw new AppError(ACCOUNT_INACTIVE, 401);
+    }
+
+    return staff;
   }
 
   private async createSignInResponse(
@@ -107,6 +151,26 @@ export class SignInService {
       productId: user.productId,
       productType: user.product?.type,
       productGroupId: user.product?.groupId,
+      accessToken: await this.jwtService.signAsync(payload),
+    };
+  }
+
+  private async createStaffSignInResponse(
+    staff: AcademiaStaffMember,
+  ): Promise<SignInResponseDTO> {
+    const payload = {
+      name: staff.name,
+      email: staff.email,
+      id: staff.id,
+      role: 'RECEPTIONIST' as const,
+    };
+
+    return {
+      id: staff.id,
+      name: staff.name,
+      email: staff.email,
+      avatar: null,
+      productId: null,
       accessToken: await this.jwtService.signAsync(payload),
     };
   }

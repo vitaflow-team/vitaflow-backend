@@ -29,6 +29,7 @@ function makeUser(overrides: Partial<Users> = {}): Users {
     phone: null,
     birthDate: null,
     productId: null,
+    academiaId: null,
     termsAcceptedAt: null,
     healthDataConsentAt: null,
     stripeCustomerId: null,
@@ -228,6 +229,7 @@ describe('NotificationsService', () => {
         CONNECTION_REQUEST: true,
         WORKOUT_PLAN: true,
         SCHEDULE_CHANGE: true,
+        ACADEMIA_ACTIVITY: true,
       });
     });
 

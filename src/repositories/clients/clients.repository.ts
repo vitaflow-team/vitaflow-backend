@@ -46,6 +46,41 @@ export class ClientsRepository {
     });
   }
 
+  async findByEmailAndAcademiaId(
+    email: string,
+    academiaId: string,
+  ): Promise<Client | null> {
+    return await this.prisma.client.findFirst({
+      where: {
+        email: { equals: escapeLikePattern(email), mode: 'insensitive' },
+        academiaId,
+      },
+    });
+  }
+
+  async findAllByAcademiaId(academiaId: string): Promise<Client[]> {
+    return await this.prisma.client.findMany({
+      where: { academiaId },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async countByAcademiaId(academiaId: string): Promise<number> {
+    return await this.prisma.client.count({ where: { academiaId } });
+  }
+
+  async assignEducator(
+    clientId: string,
+    academiaId: string,
+    professionalId: string | null,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.client.updateMany({
+      where: { id: clientId, academiaId },
+      data: { professionalId },
+    });
+    return count === 1;
+  }
+
   async getClientById(id: string): Promise<Client | null> {
     return await this.prisma.client.findUnique({
       where: {
