@@ -154,6 +154,8 @@ model Client {
   educatorWorkouts EducatorWorkout[]
   fixedTimes       FixedTime[]
   fixedSessions    FixedSession[]
+  checkIns         CheckIn[]
+  accessPlans      StudentAccessPlan[]
 
   @@index([email])
   @@index([academiaId])
@@ -246,6 +248,8 @@ model AcademiaAccessPlan {
   active         Boolean                @default(true)
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
+
+  studentAssignments StudentAccessPlan[]
 
   @@index([academiaId])
 }
@@ -866,4 +870,51 @@ model EducatorWorkoutExercise {
   videoUrl    String?
 
   @@index([sessionId])
+}
+
+enum CheckInSource {
+  SELF
+  RECEPTIONIST
+}
+
+// One row per tap, self-service or receptionist-assisted (gym-checkin
+// ADR-001/ADR-003). planValidAtCheckIn is a write-time snapshot (ADR-006),
+// never recomputed — a later plan change never alters a past check-in.
+model CheckIn {
+  id                  String        @id @default(uuid(7))
+  client              Client        @relation(fields: [clientId], references: [id])
+  clientId            String
+  source              CheckInSource
+  registeredByStaffId String?
+  planValidAtCheckIn  Boolean
+  createdAt           DateTime      @default(now())
+
+  @@index([clientId, createdAt])
+}
+
+enum StudentAccessPlanStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// A gym student's access-plan assignment: at most one ACTIVE per client
+// (gym-checkin ADR-007, enforced by a hand-authored partial unique index —
+// see the migration). Snapshots the catalog entry's validity terms at
+// assignment time, never live-referencing it.
+model StudentAccessPlan {
+  id             String                  @id @default(uuid(7))
+  client         Client                  @relation(fields: [clientId], references: [id])
+  clientId       String
+  accessPlan     AcademiaAccessPlan      @relation(fields: [accessPlanId], references: [id])
+  accessPlanId   String
+  validityType   AccessPlanValidityType
+  validityValue  Int
+  referencePrice Decimal                 @db.Decimal(10, 2)
+  status         StudentAccessPlanStatus @default(ACTIVE)
+  assignedAt     DateTime                @default(now())
+  expiresAt      DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([clientId])
 }

@@ -6,11 +6,14 @@ import { NotificationsModule } from '@/notifications/notifications.module';
 import { Clock } from '@/scheduling/clock.service';
 import { FixedTimesModule } from '@/scheduling/fixed-times/fixedTimes.module';
 import { ReceptionistAuthGuard } from '@/common/guards/receptionistAuth.guard';
+import { GymStudentGuard } from '@/common/guards/gymStudent.guard';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
 import { AcademiaInvitationRepository } from '@/repositories/academia/academiaInvitation.repository';
 import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
 import { AcademiaStaffMemberTokenRepository } from '@/repositories/academia/academiaStaffMemberToken.repository';
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
+import { CheckInRepository } from '@/repositories/academia/checkIn.repository';
+import { StudentAccessPlanRepository } from '@/repositories/academia/studentAccessPlan.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -37,6 +40,13 @@ import {
 import { AcademiaStaffAuthService } from './staff/academiaStaffAuth.service';
 import { AcademiaStudentsController } from './students/academiaStudents.controller';
 import { AcademiaStudentsService } from './students/academiaStudents.service';
+import { CheckInController } from './checkin/checkin.controller';
+import { CheckInService } from './checkin/checkin.service';
+import { ReceptionistCheckInController } from './checkin/receptionistCheckin.controller';
+import { StudentAccessPlanController } from './checkin/studentAccessPlan.controller';
+import { StudentAccessPlanService } from './checkin/studentAccessPlan.service';
+import { EngajamentoController } from './engajamento/engajamento.controller';
+import { EngajamentoService } from './engajamento/engajamento.service';
 
 @Module({
   imports: [
@@ -56,6 +66,10 @@ import { AcademiaStudentsService } from './students/academiaStudents.service';
     AcademiaAccessPlanController,
     PainelController,
     ProfessoresController,
+    CheckInController,
+    ReceptionistCheckInController,
+    StudentAccessPlanController,
+    EngajamentoController,
   ],
   providers: [
     PrismaService,
@@ -79,7 +93,13 @@ import { AcademiaStudentsService } from './students/academiaStudents.service';
     ProfessoresRepository,
     ProfessoresService,
     ReceptionistAuthGuard,
+    GymStudentGuard,
     Clock,
+    CheckInRepository,
+    StudentAccessPlanRepository,
+    CheckInService,
+    StudentAccessPlanService,
+    EngajamentoService,
   ],
   exports: [
     AcademiaProvisioningService,
