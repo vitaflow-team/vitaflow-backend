@@ -920,6 +920,8 @@ model StudentAccessPlan {
   updatedAt      DateTime                @updatedAt
 
   @@index([clientId])
+}
+
 // A weekly recurring group class owned by an academia (gym-classes
 // ADR-001): no conflict detection against the responsible educator's own
 // agenda or against any other turma. Mirrors FixedTime's shape.
