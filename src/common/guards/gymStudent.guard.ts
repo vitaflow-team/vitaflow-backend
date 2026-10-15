@@ -6,6 +6,9 @@ import type { AuthenticatedRequest } from '../types/authenticatedRequest';
 
 const USER_ONLY = 'Apenas contas de aluno podem acessar este recurso.';
 
+// Must run after AuthGuard, which populates req.user. Mirrors
+// PhysicalEducatorGuard's shape: re-fetch with the product join rather than
+// trust anything beyond `id` on req.user.
 @Injectable()
 export class GymStudentGuard implements CanActivate {
   constructor(private readonly users: UserRepository) {}

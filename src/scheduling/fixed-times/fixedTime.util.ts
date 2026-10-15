@@ -1,4 +1,5 @@
 import { SessionType } from '@prisma/client';
+import { brtDateKey } from '@/utils/brtDate';
 import {
   FIXED_DAY_MINUTES,
   FIXED_DURATION_MAX_MINUTES,
@@ -10,6 +11,8 @@ import {
   FIXED_WEEKDAY_MIN,
   FIXED_WORKOUT_LETTERS,
 } from './fixedTime.constants';
+
+export { brtDateKey };
 
 // Brazil has no DST since 2019 (TechSpec Key Decisions): a fixed offset.
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -43,12 +46,6 @@ export interface OccupancyRow extends TimeRange {
 
 export interface Conflict extends TimeRange {
   studentName: string;
-}
-
-/** The Brasília calendar date of an instant, as `YYYY-MM-DD`. */
-export function brtDateKey(instant: Date): string {
-  const shifted = new Date(instant.getTime() - BRT_OFFSET_MS);
-  return shifted.toISOString().slice(0, 10);
 }
 
 /** The ISO weekday (1 Mon .. 7 Sun) of a Brasília calendar date. */
