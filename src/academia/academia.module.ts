@@ -6,11 +6,14 @@ import { NotificationsModule } from '@/notifications/notifications.module';
 import { Clock } from '@/scheduling/clock.service';
 import { FixedTimesModule } from '@/scheduling/fixed-times/fixedTimes.module';
 import { ReceptionistAuthGuard } from '@/common/guards/receptionistAuth.guard';
+import { GymStudentGuard } from '@/common/guards/gymStudent.guard';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
 import { AcademiaInvitationRepository } from '@/repositories/academia/academiaInvitation.repository';
 import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
 import { AcademiaStaffMemberTokenRepository } from '@/repositories/academia/academiaStaffMemberToken.repository';
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
+import { TurmasRepository } from '@/repositories/academia/turmas.repository';
+import { TurmaEnrollmentRepository } from '@/repositories/academia/turmaEnrollment.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -37,6 +40,11 @@ import {
 import { AcademiaStaffAuthService } from './staff/academiaStaffAuth.service';
 import { AcademiaStudentsController } from './students/academiaStudents.controller';
 import { AcademiaStudentsService } from './students/academiaStudents.service';
+import { StudentTurmasController } from './turmas/studentTurmas.controller';
+import { TurmaEnrollmentService } from './turmas/turmaEnrollment.service';
+import { TurmaSessionsRenewalService } from './turmas/turmaSessionsRenewal.service';
+import { TurmasController } from './turmas/turmas.controller';
+import { TurmasService } from './turmas/turmas.service';
 
 @Module({
   imports: [
@@ -56,6 +64,8 @@ import { AcademiaStudentsService } from './students/academiaStudents.service';
     AcademiaAccessPlanController,
     PainelController,
     ProfessoresController,
+    TurmasController,
+    StudentTurmasController,
   ],
   providers: [
     PrismaService,
@@ -79,7 +89,13 @@ import { AcademiaStudentsService } from './students/academiaStudents.service';
     ProfessoresRepository,
     ProfessoresService,
     ReceptionistAuthGuard,
+    GymStudentGuard,
     Clock,
+    TurmasRepository,
+    TurmaEnrollmentRepository,
+    TurmasService,
+    TurmaEnrollmentService,
+    TurmaSessionsRenewalService,
   ],
   exports: [
     AcademiaProvisioningService,
