@@ -15,6 +15,7 @@ function makeDeps() {
       academia: { id: 'academia-1', name: 'Academia Vida Ativa' },
     }),
     cancelIfPending: jest.fn().mockResolvedValue(1),
+    listSentByAcademia: jest.fn().mockResolvedValue([]),
     listPendingForEducator: jest.fn().mockResolvedValue([]),
     transitionIfPendingForEducator: jest.fn().mockResolvedValue(1),
     listPendingReceptionistInvitations: jest.fn().mockResolvedValue([]),
@@ -222,6 +223,22 @@ describe('AcademiaInvitationService', () => {
       await expect(
         service.cancel('invite-1', 'other-academia'),
       ).rejects.toMatchObject({ code: 'invitation_not_found' });
+    });
+  });
+
+  describe('listSentByAcademia', () => {
+    it('returns every sent invitation for the academia, any kind or status', async () => {
+      const deps = makeDeps();
+      const invitations = [{ id: 'invite-1' }, { id: 'invite-2' }];
+      deps.invitations.listSentByAcademia.mockResolvedValue(invitations);
+      const service = makeService(deps);
+
+      const result = await service.listSentByAcademia('academia-1');
+
+      expect(deps.invitations.listSentByAcademia).toHaveBeenCalledWith(
+        'academia-1',
+      );
+      expect(result).toBe(invitations);
     });
   });
 

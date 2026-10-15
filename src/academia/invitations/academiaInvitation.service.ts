@@ -81,6 +81,12 @@ export class AcademiaInvitationService {
     return withAcademia as AcademiaInvitationWithAcademia;
   }
 
+  async listSentByAcademia(
+    academiaId: string,
+  ): Promise<AcademiaInvitationWithAcademia[]> {
+    return await this.invitations.listSentByAcademia(academiaId);
+  }
+
   async cancel(invitationId: string, academiaId: string): Promise<void> {
     const count = await this.invitations.cancelIfPending(
       invitationId,
