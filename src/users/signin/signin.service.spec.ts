@@ -1,3 +1,4 @@
+import { AcademiaStaffAuthService } from '@/academia/staff/academiaStaffAuth.service';
 import { AuditLogger } from '@/auth/auditLogger.service';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
@@ -28,6 +29,7 @@ describe('SignInService', () => {
     product: null,
   };
   const users = { findByEmail: jest.fn() };
+  const academiaStaff = { findByEmail: jest.fn().mockResolvedValue(null) };
   const passwordHash = { compareHash: jest.fn() };
   const jwtService = { signAsync: jest.fn().mockResolvedValue('signed-jwt') };
   const uploadService = { getSignedUrl: jest.fn() };
@@ -38,6 +40,7 @@ describe('SignInService', () => {
     jest.clearAllMocks();
     service = new SignInService(
       users as unknown as UserRepository,
+      academiaStaff as unknown as AcademiaStaffAuthService,
       passwordHash as unknown as PasswordHash,
       jwtService as unknown as JwtService,
       uploadService as unknown as UploadService,
@@ -142,6 +145,87 @@ describe('SignInService', () => {
     ];
     expect(payload).toBe('guess');
     expect(getRounds(dummyHash)).toBe(12);
+  });
+
+  describe('dual lookup (gym-foundation ADR-008)', () => {
+    const activeStaff = {
+      id: 'staff-1',
+      name: 'Recepção',
+      email: 'recepcao@example.com',
+      passwordHash: 'staff-stored-hash',
+      active: true,
+      academiaId: 'academia-1',
+    };
+
+    it('resolves against AcademiaStaffMember when no Users row matches the email', async () => {
+      users.findByEmail.mockResolvedValue(null);
+      academiaStaff.findByEmail.mockResolvedValue(activeStaff);
+      passwordHash.compareHash.mockResolvedValue(true);
+
+      const response = await service.postSignIn({
+        email: activeStaff.email,
+        password: 'correct-password',
+      });
+
+      expect(response).toEqual(
+        expect.objectContaining({
+          id: activeStaff.id,
+          productId: null,
+          accessToken: 'signed-jwt',
+        }),
+      );
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ id: activeStaff.id, role: 'RECEPTIONIST' }),
+      );
+    });
+
+    it('never attempts a staff lookup once a Users row has already matched', async () => {
+      users.findByEmail.mockResolvedValue(activeUser);
+      passwordHash.compareHash.mockResolvedValue(true);
+
+      await service.postSignIn({
+        email: activeUser.email,
+        password: 'correct-password',
+      });
+
+      expect(academiaStaff.findByEmail).not.toHaveBeenCalled();
+    });
+
+    it('rejects a staff account with no password set yet (not yet activated)', async () => {
+      users.findByEmail.mockResolvedValue(null);
+      academiaStaff.findByEmail.mockResolvedValue({
+        ...activeStaff,
+        passwordHash: null,
+      });
+
+      const error = await rejectionOf(
+        service.postSignIn({
+          email: activeStaff.email,
+          password: 'anything',
+        }),
+      );
+
+      expect(error.getStatus()).toBe(401);
+    });
+
+    it('rejects a removed (inactive) staff account even with the correct password', async () => {
+      users.findByEmail.mockResolvedValue(null);
+      academiaStaff.findByEmail.mockResolvedValue({
+        ...activeStaff,
+        active: false,
+      });
+      passwordHash.compareHash.mockResolvedValue(true);
+
+      const error = await rejectionOf(
+        service.postSignIn({
+          email: activeStaff.email,
+          password: 'correct-password',
+        }),
+      );
+
+      expect(error.getStatus()).toBe(401);
+      expect(error.message).toBe('Usuário não autorizado. Conta inativa.');
+    });
   });
 
   it('UT-044 logs a structured password failure without the password', async () => {

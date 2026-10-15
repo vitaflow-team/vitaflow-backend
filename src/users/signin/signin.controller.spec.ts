@@ -3,6 +3,7 @@ import { PrismaService } from '@/database/prisma.service';
 import { AppError } from '@/utils/app.erro';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { academiaStaffAuthServiceMock } from 'mock/academiaStaffAuth.service.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { passwordHashMock } from 'mock/password.hash.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
@@ -24,6 +25,7 @@ describe('SignInController Tests', () => {
         passwordHashMock,
         userRepositoryMock,
         uploadServiceMock,
+        academiaStaffAuthServiceMock,
         {
           provide: AuditLogger,
           useValue: { log: jest.fn(), warn: jest.fn() },

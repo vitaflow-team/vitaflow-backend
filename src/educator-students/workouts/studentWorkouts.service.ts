@@ -9,6 +9,12 @@ import { StudentWorkoutsResponseDTO } from './dto/studentWorkout.Dto';
 import { effectiveVideoUrl, sessionLabel } from './workoutTree.util';
 
 function toStudentWorkout(row: ActiveWorkoutWithEducator) {
+  if (!row.client.professional) {
+    throw new Error(
+      `active workout ${row.id} has no assigned educator — unsupported until an academia-aware student-workout view exists`,
+    );
+  }
+
   return {
     educator: {
       id: row.client.professional.id,

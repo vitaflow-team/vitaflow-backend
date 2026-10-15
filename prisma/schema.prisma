@@ -17,6 +17,7 @@ enum ProductType {
   USER
   NUTRITIONIST
   PHYSICAL_EDUCATOR
+  ACADEMIA
 }
 
 model Users {
@@ -55,6 +56,14 @@ model Users {
   // explicitly, never inferred from email domain or product type.
   isBackoffice Boolean @default(false)
 
+  // Set only on the Users row of an Academia's owner/manager, the moment
+  // their subscription becomes an ACADEMIA product (AcademiaProvisioningService).
+  // The Academia itself, not this row, is the stable identity every other
+  // Academia-module concept (employment, students, invitations) references —
+  // see gym-foundation ADR-007.
+  academia   Academia? @relation("AcademiaOwner", fields: [academiaId], references: [id])
+  academiaId String?   @unique
+
   createdAt                   DateTime                 @default(now())
   updatedAt                   DateTime                 @updatedAt
   usersTokens                 UsersToken[]
@@ -83,6 +92,7 @@ model Users {
   slotsAsUser                 Slot[]                   @relation("SlotUser")
   fixedTimesAsProfessional    FixedTime[]              @relation("FixedTimeProfessional")
   fixedSessionsAsProfessional FixedSession[]           @relation("FixedSessionProfessional")
+  employments                 Employment[]             @relation("EmploymentEducator")
 
   @@unique([email])
 }
@@ -123,8 +133,19 @@ model Client {
   userId    String?   @map("user_id")
   birthDate DateTime?
 
-  professional   Users  @relation(fields: [professionalId], references: [id])
-  professionalId String
+  // A particular (private) student: owned by exactly one educator, required.
+  // A gym (academia) student: owned by the academia (`academiaId` required
+  // instead), with `professionalId` repurposed as "currently assigned
+  // educator" — nullable, freely reassignable by the gym owner, never the
+  // ownership itself (gym-foundation ADR-009). Exactly one of
+  // academiaId/professionalId's ownership role is ever in play per row; a
+  // hand-authored CHECK constraint (migration SQL) enforces at least one is
+  // set, and two hand-authored partial unique indexes replace the old
+  // `@@unique([email, professionalId])` — see that migration for why.
+  professional   Users?    @relation(fields: [professionalId], references: [id])
+  professionalId String?
+  academia       Academia? @relation(fields: [academiaId], references: [id])
+  academiaId     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -134,8 +155,8 @@ model Client {
   fixedTimes       FixedTime[]
   fixedSessions    FixedSession[]
 
-  @@unique([email, professionalId])
   @@index([email])
+  @@index([academiaId])
 }
 
 enum TokenType {
@@ -178,6 +199,148 @@ model ProductGroup {
   updatedAt DateTime  @updatedAt
   products  Product[]
 }
+
+// The gym itself — a stable, person-independent identity the rest of the
+// Academia module (employment, students, invitations, access plans)
+// references, rather than the owner's own Users.id. Created the moment the
+// owner's subscription becomes an ACADEMIA product (AcademiaProvisioningService).
+// Carries no billing fields of its own — the owner's Users row keeps the
+// subscription exactly as every other account type does (gym-foundation ADR-007).
+model Academia {
+  id          String               @id @default(uuid(7))
+  // The gym's own business name (distinct from the owner's personal
+  // Users.name) — defaults to the owner's name at provisioning time, since
+  // the generic signup form collects no per-type fields (every account
+  // starts on the free USER product; the academia's own name is collected
+  // at checkout time by the frontend, task_07); renameable later via
+  // Configurações.
+  name        String
+  owner       Users?               @relation("AcademiaOwner")
+  invitations AcademiaInvitation[]
+  employments Employment[]
+  students    Client[]
+  staff       AcademiaStaffMember[]
+  accessPlans AcademiaAccessPlan[]
+  createdAt   DateTime             @default(now())
+}
+
+enum AccessPlanValidityType {
+  DAYS
+  VISITS
+}
+
+// The gym's own catalog of access/membership plans — informational only,
+// VitaFlow never charges anyone for these (gym-foundation ADR-006).
+// `validityValue` means "days" or "visits" depending on `validityType`; a
+// single numeric field, not two, so "exactly one dimension is meaningful"
+// holds by construction, never a both-set/neither-set state to validate
+// against.
+model AcademiaAccessPlan {
+  id             String                 @id @default(uuid(7))
+  academia       Academia               @relation(fields: [academiaId], references: [id])
+  academiaId     String
+  name           String
+  validityType   AccessPlanValidityType
+  validityValue  Int
+  referencePrice Decimal                @db.Decimal(10, 2)
+  active         Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([academiaId])
+}
+
+// The receptionist's own login identity — deliberately kept outside `Users`
+// (gym-foundation ADR-008): different trust boundary, no subscription, no
+// reason to exist in the same table `signup.service.ts` treats as "the next
+// customer". Authenticates through the same shared login screen via a
+// dual lookup (Users first, this table as fallback).
+model AcademiaStaffMember {
+  id           String    @id @default(uuid(7))
+  academia     Academia  @relation(fields: [academiaId], references: [id])
+  academiaId   String
+  name         String
+  email        String    @unique
+  passwordHash String?
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  tokens       AcademiaStaffMemberToken[]
+}
+
+// Mirrors `UsersToken`'s hash-stored, single-live-token pattern, scoped to
+// `AcademiaStaffMember` instead of `Users`. Activation only for now (no
+// password-recovery flow is in this stage's scope) — a `type` column isn't
+// added speculatively; extend additively if/when recovery is needed.
+model AcademiaStaffMemberToken {
+  id            String              @id @default(uuid(7))
+  tokenHash     String              @unique
+  expiresAt     DateTime
+  staffMember   AcademiaStaffMember @relation(fields: [staffMemberId], references: [id])
+  staffMemberId String
+  createdAt     DateTime            @default(now())
+
+  @@index([staffMemberId])
+}
+
+enum AcademiaInvitationKind {
+  EMPLOYMENT
+  RECEPTIONIST
+}
+
+enum AcademiaInvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+// One shared invitation mechanism for both the academia->educator employment
+// link and the academia->receptionist link (gym-foundation ADR-003, ADR-010).
+// Resolved by email match (case-insensitive) against whichever account later
+// claims it — `educatorId` is an opportunistic, lazily-populated convenience
+// field for the EMPLOYMENT case (set the first time a matching Users row is
+// found), never the sole lookup key; `email` is always the canonical match.
+model AcademiaInvitation {
+  id         String                   @id @default(uuid(7))
+  academia   Academia                 @relation(fields: [academiaId], references: [id])
+  academiaId String
+  kind       AcademiaInvitationKind
+  email      String
+  status     AcademiaInvitationStatus @default(PENDING)
+  educatorId String?
+  staffId    String?
+  createdAt  DateTime                 @default(now())
+  decidedAt  DateTime?
+
+  @@index([email, kind, status])
+  @@index([academiaId, status])
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  ENDED
+}
+
+// Many-to-many academia<->educator employment (gym-foundation ADR-004):
+// an educator may hold any number of simultaneous ACTIVE employments, one
+// per academia. Materialized only when an EMPLOYMENT invitation is accepted.
+model Employment {
+  id         String           @id @default(uuid(7))
+  academia   Academia         @relation(fields: [academiaId], references: [id])
+  academiaId String
+  educator   Users            @relation("EmploymentEducator", fields: [educatorId], references: [id])
+  educatorId String
+  status     EmploymentStatus @default(ACTIVE)
+  startedAt  DateTime         @default(now())
+  endedAt    DateTime?
+
+  @@index([academiaId, status])
+  @@index([educatorId, status])
+}
+// A hand-authored partial unique index enforces "at most one ACTIVE
+// employment per (academiaId, educatorId) pair" — see the migration SQL;
+// Prisma's schema DSL cannot express a partial (WHERE-qualified) index.
 
 model Product {
   id           String        @id @default(uuid(7))
@@ -407,6 +570,7 @@ enum NotificationCategory {
   CONNECTION_REQUEST
   WORKOUT_PLAN
   SCHEDULE_CHANGE
+  ACADEMIA_ACTIVITY
 }
 
 // A missing `NotificationPreference` row for a (userId, category) pair is

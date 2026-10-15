@@ -1,6 +1,7 @@
 import { AuthGuard } from '@/auth/auth.guard';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
+import { academiaProvisioningServiceMock } from 'mock/academiaProvisioning.service.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { notificationsServiceMock } from 'mock/notifications.service.mock';
 import { ProductsRepositoryMock } from 'mock/product.repository.mock';
@@ -21,6 +22,7 @@ describe('SubscriptionController Tests', () => {
         jwtServiceMock,
         stripeVerificationMock,
         notificationsServiceMock,
+        academiaProvisioningServiceMock,
         SubscriptionService,
       ],
     }).compile();

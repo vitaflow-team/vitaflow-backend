@@ -23,6 +23,7 @@ const DEFAULT_PREFERENCES: Record<NotificationCategory, boolean> = {
   CONNECTION_REQUEST: true,
   WORKOUT_PLAN: true,
   SCHEDULE_CHANGE: true,
+  ACADEMIA_ACTIVITY: true,
 };
 
 @Injectable()

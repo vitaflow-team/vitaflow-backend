@@ -1,3 +1,4 @@
+import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -31,6 +32,7 @@ export class SubscriptionService {
     private readonly products: ProductsRepository,
     private readonly stripeVerification: StripeVerification,
     private readonly notifications: NotificationsService,
+    private readonly academiaProvisioning: AcademiaProvisioningService,
   ) {}
 
   async getForUser(userId: string): Promise<SubscriptionStateResponseDTO> {
@@ -101,6 +103,8 @@ export class SubscriptionService {
           : null,
       }),
     });
+
+    await this.academiaProvisioning.provisionForOwner(userId);
 
     return this.toResponse(user);
   }
@@ -174,6 +178,8 @@ export class SubscriptionService {
     // catches its own email-send errors; nothing here can throw past the
     // sync's own result.
     await this.notifyBillingEvent(user.id, user.subscriptionStatus, newStatus);
+
+    await this.academiaProvisioning.provisionForOwner(user.id);
 
     return this.toResponse(updated);
   }

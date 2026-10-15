@@ -38,6 +38,7 @@ function makeClient(overrides: Partial<Client> = {}): Client {
     userId: 'user-1',
     birthDate: null,
     professionalId: 'professional-1',
+    academiaId: null,
     createdAt: new Date('2026-10-01T09:00:00.000Z'),
     updatedAt: new Date('2026-10-01T09:00:00.000Z'),
     ...overrides,

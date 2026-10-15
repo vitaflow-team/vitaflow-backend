@@ -13,7 +13,7 @@ export type AssessmentForVariation = Pick<
 >;
 
 export type AssessmentWithEducator = PhysicalAssessment & {
-  client: { professional: { id: string; name: string } };
+  client: { professional: { id: string; name: string } | null };
 };
 
 const NEWEST_FIRST: Prisma.PhysicalAssessmentOrderByWithRelationInput[] = [

@@ -50,7 +50,7 @@ describe('ClientRegisterService.postRegister — ownership', () => {
         phone: '987654321',
         birthDate: new Date('1990-05-20'),
       },
-      ownClient.professionalId,
+      ownClient.professionalId!,
     );
 
     expect(clients.update).toHaveBeenCalledWith(
@@ -70,7 +70,7 @@ describe('ClientRegisterService.postRegister — ownership', () => {
         phone: '000',
         birthDate: new Date('1990-05-20'),
       },
-      ownClient.professionalId,
+      ownClient.professionalId!,
     );
 
     await expect(attempt).rejects.toBeInstanceOf(AppError);
@@ -88,7 +88,7 @@ describe('ClientRegisterService.postRegister — ownership', () => {
         phone: '000',
         birthDate: new Date('1990-05-20'),
       },
-      ownClient.professionalId,
+      ownClient.professionalId!,
     );
 
     await expect(attempt).rejects.toMatchObject({
@@ -106,7 +106,7 @@ describe('ClientRegisterService.postRegister — ownership', () => {
         phone: '123',
         birthDate: new Date('1990-05-20'),
       },
-      ownClient.professionalId,
+      ownClient.professionalId!,
     );
 
     expect(clients.getClientById).not.toHaveBeenCalled();
@@ -123,7 +123,7 @@ describe('ClientRegisterService.postRegister — ownership', () => {
         phone: '123',
         birthDate: new Date('1990-05-20'),
       },
-      ownClient.professionalId,
+      ownClient.professionalId!,
     );
 
     await expect(attempt).rejects.toBeInstanceOf(AppError);
@@ -146,7 +146,7 @@ describe('ClientRegisterService.postRegister — ownership', () => {
         phone: '123',
         birthDate: new Date('1990-05-20'),
       },
-      target.professionalId,
+      target.professionalId!,
     );
 
     await expect(attempt).rejects.toBeInstanceOf(AppError);

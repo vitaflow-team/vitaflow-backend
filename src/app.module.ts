@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AcademiaModule } from './academia/academia.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { ApiKeyGuard } from './common/guards/apiKey.guard';
@@ -46,6 +47,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     MessagesModule,
     SchedulingModule,
     EducatorStudentsModule,
+    AcademiaModule,
   ],
   controllers: [],
   providers: [

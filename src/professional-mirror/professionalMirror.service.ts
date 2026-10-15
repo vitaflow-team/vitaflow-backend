@@ -155,7 +155,7 @@ export class ProfessionalMirrorService {
     if (!client) return null;
 
     const profile = await this.professionalDiscovery.getProfile(
-      client.professionalId,
+      client.professionalId as string,
     );
     return {
       client,

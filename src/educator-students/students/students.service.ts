@@ -1,8 +1,10 @@
 import type { NextSession } from '@/scheduling/fixed-times/fixedSessions.service';
 import type { NextSessionDTO } from './dto/studentResponse.Dto';
+import { AcademiaActivityService } from '@/academia/activity/academiaActivity.service';
 import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import { Clock } from '@/scheduling/clock.service';
 import { CodedError } from '@/common/errors/codedError';
+import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import {
   ClientsRepository,
   ClientWithLatestAssessment,
@@ -33,6 +35,12 @@ import { matchesSearch } from './studentSearch.util';
 export const STUDENTS_PAGE_SIZE = 50;
 
 const ALREADY_REGISTERED = 'Aluno já cadastrado para o profissional.';
+const ALREADY_REGISTERED_ACADEMIA = 'Aluno já cadastrado nesta academia.';
+const NO_ACTIVE_EMPLOYMENT =
+  'Você precisa estar empregado por uma academia para cadastrar um aluno dela.';
+const ACADEMIA_AMBIGUOUS =
+  'Você está empregado por mais de uma academia — especifique para qual este aluno pertence.';
+const NOT_EMPLOYED_HERE = 'Você não está empregado por esta academia.';
 const ACCOUNT_EXISTS =
   'Já existe uma conta Vita Flow confirmada com este e-mail. Confirme a conta encontrada para vincular o aluno.';
 const ACCOUNT_NOT_FOUND = 'Não existe uma conta confirmada com este e-mail.';
@@ -58,6 +66,8 @@ export class StudentsService {
     private readonly workouts: EducatorWorkoutsRepository,
     private readonly fixedSessions: FixedSessionsService,
     private readonly clock: Clock,
+    private readonly employments: EmploymentRepository,
+    private readonly activity: AcademiaActivityService,
   ) {}
 
   // The whole list is read in one query; search, ordering and paging run over
@@ -104,7 +114,17 @@ export class StudentsService {
     dto: CreateStudentDTO,
   ): Promise<StudentResponseDTO> {
     await this.assertNotSelf(educatorId, dto.email);
-    await this.assertNotRegistered(educatorId, dto.email);
+
+    const academiaId =
+      dto.ownership === 'ACADEMIA'
+        ? await this.resolveAcademiaId(educatorId, dto.academiaId)
+        : null;
+
+    if (academiaId) {
+      await this.assertNotRegisteredForAcademia(dto.email, academiaId);
+    } else {
+      await this.assertNotRegistered(educatorId, dto.email);
+    }
 
     const account = await this.findConfirmedAccount(dto.email);
     const data = this.resolveCreationData(dto, account);
@@ -114,11 +134,12 @@ export class StudentsService {
       created = await this.clients.create({
         ...data,
         professional: { connect: { id: educatorId } },
+        ...(academiaId ? { academia: { connect: { id: academiaId } } } : {}),
       });
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new CodedError(
-          ALREADY_REGISTERED,
+          academiaId ? ALREADY_REGISTERED_ACADEMIA : ALREADY_REGISTERED,
           409,
           'student_already_registered',
         );
@@ -127,9 +148,57 @@ export class StudentsService {
     }
 
     this.logger.log(
-      `student_registered educatorId=${educatorId} linked=${created.userId !== null}`,
+      `student_registered educatorId=${educatorId} linked=${created.userId !== null} academia=${academiaId !== null}`,
     );
-    return this.toStudentResponse(created, await this.buildOverview(created));
+    if (academiaId) {
+      await this.activity.recordActivity(
+        academiaId,
+        `Novo aluno da academia cadastrado: ${created.name}.`,
+      );
+    }
+    return this.toStudentResponse(
+      created,
+      await this.buildOverview(educatorId, created),
+    );
+  }
+
+  private async resolveAcademiaId(
+    educatorId: string,
+    requested: string | undefined,
+  ): Promise<string> {
+    const active = await this.employments.listActiveByEducator(educatorId);
+    if (active.length === 0) {
+      throw new CodedError(NO_ACTIVE_EMPLOYMENT, 400, 'no_active_employment');
+    }
+
+    if (!requested) {
+      if (active.length > 1) {
+        throw new CodedError(ACADEMIA_AMBIGUOUS, 400, 'academia_ambiguous');
+      }
+      return active[0].academiaId;
+    }
+
+    if (!active.some((employment) => employment.academiaId === requested)) {
+      throw new CodedError(NOT_EMPLOYED_HERE, 400, 'not_employed_here');
+    }
+    return requested;
+  }
+
+  private async assertNotRegisteredForAcademia(
+    email: string,
+    academiaId: string,
+  ): Promise<void> {
+    const existing = await this.clients.findByEmailAndAcademiaId(
+      email,
+      academiaId,
+    );
+    if (existing) {
+      throw new CodedError(
+        ALREADY_REGISTERED_ACADEMIA,
+        409,
+        'student_already_registered',
+      );
+    }
   }
 
   async get(
@@ -137,7 +206,10 @@ export class StudentsService {
     studentId: string,
   ): Promise<StudentResponseDTO> {
     const student = await this.findOwned(educatorId, studentId);
-    return this.toStudentResponse(student, await this.buildOverview(student));
+    return this.toStudentResponse(
+      student,
+      await this.buildOverview(educatorId, student),
+    );
   }
 
   async update(
@@ -153,7 +225,10 @@ export class StudentsService {
         ? student
         : await this.clients.update(student.id, patch);
 
-    return this.toStudentResponse(saved, await this.buildOverview(saved));
+    return this.toStudentResponse(
+      saved,
+      await this.buildOverview(educatorId, saved),
+    );
   }
 
   // Deleting the record removes its assessments with it (database cascade).
@@ -278,14 +353,17 @@ export class StudentsService {
     return account ? { email, userId: account.id } : { email };
   }
 
-  private async buildOverview(student: Client): Promise<StudentOverviewDTO> {
+  private async buildOverview(
+    educatorId: string,
+    student: Client,
+  ): Promise<StudentOverviewDTO> {
     const clientId = student.id;
     const [latest, all, active, next] = await Promise.all([
       this.assessments.findLatestByClient(clientId, 1),
       this.assessments.findAllForVariation(clientId),
       this.workouts.findActiveByClient(clientId),
       this.fixedSessions.nextForRecords(
-        student.professionalId,
+        educatorId,
         [{ clientId, userId: student.userId }],
         this.clock.now(),
       ),
