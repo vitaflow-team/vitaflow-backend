@@ -28,7 +28,6 @@ describe('SignInService', () => {
     productId: null,
     product: null,
   };
-  const users = { findByEmail: jest.fn() };
   const users = { findAllByEmail: jest.fn() };
   const academiaStaff = { findByEmail: jest.fn().mockResolvedValue(null) };
   const passwordHash = { compareHash: jest.fn() };
@@ -259,7 +258,6 @@ describe('SignInService', () => {
     };
 
     it('resolves against AcademiaStaffMember when no Users row matches the email', async () => {
-      users.findByEmail.mockResolvedValue(null);
       users.findAllByEmail.mockResolvedValue([]);
       academiaStaff.findByEmail.mockResolvedValue(activeStaff);
       passwordHash.compareHash.mockResolvedValue(true);
@@ -282,7 +280,6 @@ describe('SignInService', () => {
     });
 
     it('never attempts a staff lookup once a Users row has already matched', async () => {
-      users.findByEmail.mockResolvedValue(activeUser);
       users.findAllByEmail.mockResolvedValue([activeUser]);
       passwordHash.compareHash.mockResolvedValue(true);
 
@@ -295,7 +292,6 @@ describe('SignInService', () => {
     });
 
     it('rejects a staff account with no password set yet (not yet activated)', async () => {
-      users.findByEmail.mockResolvedValue(null);
       users.findAllByEmail.mockResolvedValue([]);
       academiaStaff.findByEmail.mockResolvedValue({
         ...activeStaff,
@@ -313,7 +309,6 @@ describe('SignInService', () => {
     });
 
     it('rejects a removed (inactive) staff account even with the correct password', async () => {
-      users.findByEmail.mockResolvedValue(null);
       users.findAllByEmail.mockResolvedValue([]);
       academiaStaff.findByEmail.mockResolvedValue({
         ...activeStaff,

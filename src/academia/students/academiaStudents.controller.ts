@@ -29,15 +29,6 @@ import { ListAcademiaStudentsQueryDTO } from './dto/listAcademiaStudents.Dto';
 @UseGuards(AuthGuard, AcademiaOwnerGuard)
 @Controller('academia/students')
 export class AcademiaStudentsController {
-  constructor(private readonly students: AcademiaStudentsService) {}
-
-  @ApiOperation({
-    summary:
-      'Every gym student of this academia (minimal list — see gym-students for the full screen)',
-  })
-  @Get()
-  async list(@Request() req: AcademiaOwnerRequest) {
-    return await this.students.list(req.user.academiaId);
   constructor(
     private readonly students: AcademiaStudentsService,
     private readonly studentsService: StudentsService,
