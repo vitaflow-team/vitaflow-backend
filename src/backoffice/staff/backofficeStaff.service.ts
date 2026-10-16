@@ -146,7 +146,9 @@ export class BackofficeStaffService {
     email: string,
   ): Promise<void> {
     const token = await this.userToken.issue(userId, TokenType.ACTIVATION);
-    const activationLink = `${process.env.APP_URL}/signin/activate-staff?token=${token}`;
+    // Distinct from `/signin/activate-staff`, already used by gym-foundation's
+    // unrelated AcademiaStaffMember (receptionist) activation flow.
+    const activationLink = `${process.env.APP_URL}/signin/activate-backoffice-staff?token=${token}`;
 
     await this.mailService.sendEmailPassword(
       name,
