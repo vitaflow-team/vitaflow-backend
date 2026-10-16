@@ -1,6 +1,7 @@
 import { AcademiaOwnerGuard } from '@/common/guards/academiaOwner.guard';
 import { AuthGuard } from '@/auth/auth.guard';
 import type { AcademiaOwnerRequest } from '@/common/types/academiaOwnerRequest';
+import { StudentsService } from '@/educator-students/students/students.service';
 import {
   Body,
   Controller,
@@ -8,6 +9,7 @@ import {
   HttpCode,
   Param,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -19,6 +21,8 @@ import {
 } from '@nestjs/swagger';
 import { AcademiaStudentsService } from './academiaStudents.service';
 import { AssignEducatorDTO } from './dto/assignEducator.Dto';
+import { CreateAcademiaStudentDTO } from './dto/createAcademiaStudent.Dto';
+import { ListAcademiaStudentsQueryDTO } from './dto/listAcademiaStudents.Dto';
 
 @ApiTags('Academia — Students')
 @ApiBearerAuth('jwt')
@@ -34,6 +38,37 @@ export class AcademiaStudentsController {
   @Get()
   async list(@Request() req: AcademiaOwnerRequest) {
     return await this.students.list(req.user.academiaId);
+  constructor(
+    private readonly students: AcademiaStudentsService,
+    private readonly studentsService: StudentsService,
+  ) {}
+
+  @ApiOperation({
+    summary:
+      'Every gym student of this academia: search, horário filter, pagination',
+  })
+  @Get()
+  async list(
+    @Query() query: ListAcademiaStudentsQueryDTO,
+    @Request() req: AcademiaOwnerRequest,
+  ) {
+    return await this.students.list(req.user.academiaId, query);
+  }
+
+  @ApiOperation({
+    summary:
+      'Register a new gym student directly, with or without an immediate educator assignment',
+  })
+  @Post()
+  async create(
+    @Body() dto: CreateAcademiaStudentDTO,
+    @Request() req: AcademiaOwnerRequest,
+  ) {
+    return await this.studentsService.createForAcademia(
+      req.user.academiaId,
+      dto.professionalId ?? null,
+      dto,
+    );
   }
 
   @ApiOperation({

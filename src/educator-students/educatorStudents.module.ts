@@ -67,5 +67,6 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     StudentWorkoutsService,
     Clock,
   ],
+  exports: [StudentsService],
 })
 export class EducatorStudentsModule {}

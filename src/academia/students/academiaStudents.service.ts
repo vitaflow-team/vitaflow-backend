@@ -1,12 +1,22 @@
+import { Clock } from '@/scheduling/clock.service';
+import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { CodedError } from '@/common/errors/codedError';
 import { Injectable } from '@nestjs/common';
 import { Client } from '@prisma/client';
+import {
+  buildAcademiaStudentsList,
+  buildNextSessionMap,
+  type AcademiaStudentRecord,
+  type AcademiaStudentsListResult,
+} from './academiaStudentsMerge.util';
+import { ListAcademiaStudentsQueryDTO } from './dto/listAcademiaStudents.Dto';
 
 const STUDENT_NOT_FOUND = 'Aluno não encontrado nesta academia.';
 const EDUCATOR_NOT_EMPLOYED =
   'Este educador não está mais empregado por esta academia.';
+export const ACADEMIA_STUDENTS_PAGE_SIZE = 50;
 
 @Injectable()
 export class AcademiaStudentsService {
@@ -17,6 +27,47 @@ export class AcademiaStudentsService {
 
   async list(academiaId: string): Promise<Client[]> {
     return await this.clients.findAllByAcademiaId(academiaId);
+    private readonly fixedSessions: FixedSessionsService,
+    private readonly clock: Clock,
+  ) {}
+
+  async list(
+    academiaId: string,
+    query: ListAcademiaStudentsQueryDTO,
+  ): Promise<AcademiaStudentsListResult> {
+    const rows = await this.clients.findAllByAcademiaId(academiaId);
+
+    const assigned = rows
+      .filter((row) => row.professionalId !== null)
+      .map((row) => ({
+        clientId: row.id,
+        userId: row.userId,
+        professionalId: row.professionalId!,
+      }));
+    const nextSessionByClientId = await buildNextSessionMap(
+      assigned,
+      this.clock.now(),
+      (professionalId, records, now) =>
+        this.fixedSessions.nextForRecords(professionalId, records, now),
+    );
+
+    const records: AcademiaStudentRecord[] = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      professionalId: row.professionalId,
+      professionalName: row.professional?.name ?? null,
+      userId: row.userId,
+    }));
+
+    return buildAcademiaStudentsList({
+      records,
+      nextSessionByClientId,
+      search: query.search,
+      horario: query.horario,
+      page: query.page ?? 1,
+      pageSize: ACADEMIA_STUDENTS_PAGE_SIZE,
+    });
   }
 
   async assignEducator(

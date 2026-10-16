@@ -41,6 +41,8 @@ const NO_ACTIVE_EMPLOYMENT =
 const ACADEMIA_AMBIGUOUS =
   'Você está empregado por mais de uma academia — especifique para qual este aluno pertence.';
 const NOT_EMPLOYED_HERE = 'Você não está empregado por esta academia.';
+const EDUCATOR_NOT_EMPLOYED_HERE =
+  'Este educador não está mais empregado por esta academia.';
 const ACCOUNT_EXISTS =
   'Já existe uma conta Vita Flow confirmada com este e-mail. Confirme a conta encontrada para vincular o aluno.';
 const ACCOUNT_NOT_FOUND = 'Não existe uma conta confirmada com este e-mail.';
@@ -159,6 +161,98 @@ export class StudentsService {
     return this.toStudentResponse(
       created,
       await this.buildOverview(educatorId, created),
+    );
+  }
+
+  private async resolveAcademiaId(
+    educatorId: string,
+    requested: string | undefined,
+  ): Promise<string> {
+    const active = await this.employments.listActiveByEducator(educatorId);
+    if (active.length === 0) {
+      throw new CodedError(NO_ACTIVE_EMPLOYMENT, 400, 'no_active_employment');
+    }
+
+    if (!requested) {
+      if (active.length > 1) {
+        throw new CodedError(ACADEMIA_AMBIGUOUS, 400, 'academia_ambiguous');
+      }
+      return active[0].academiaId;
+    }
+
+    if (!active.some((employment) => employment.academiaId === requested)) {
+      throw new CodedError(NOT_EMPLOYED_HERE, 400, 'not_employed_here');
+    }
+    return requested;
+  }
+
+  private async assertNotRegisteredForAcademia(
+    email: string,
+    academiaId: string,
+  ): Promise<void> {
+    const existing = await this.clients.findByEmailAndAcademiaId(
+      email,
+      academiaId,
+    );
+    );
+  }
+
+  async createForAcademia(
+    academiaId: string,
+    professionalId: string | null,
+    dto: CreateStudentDTO,
+  ): Promise<StudentResponseDTO> {
+    if (professionalId) {
+      await this.assertNotSelf(professionalId, dto.email);
+      const active = await this.employments.findActive(
+        academiaId,
+        professionalId,
+      );
+      if (!active) {
+        throw new CodedError(
+          EDUCATOR_NOT_EMPLOYED_HERE,
+          400,
+          'not_employed_here',
+        );
+      }
+    }
+
+    await this.assertNotRegisteredForAcademia(dto.email, academiaId);
+
+    const account = await this.findConfirmedAccount(dto.email);
+    const data = this.resolveCreationData(dto, account);
+
+    let created: Client;
+    try {
+      created = await this.clients.create({
+        ...data,
+        academia: { connect: { id: academiaId } },
+        ...(professionalId
+          ? { professional: { connect: { id: professionalId } } }
+          : {}),
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new CodedError(
+          ALREADY_REGISTERED_ACADEMIA,
+          409,
+          'student_already_registered',
+        );
+      }
+      throw error;
+    }
+
+    this.logger.log(
+      `student_registered_by_academia academiaId=${academiaId} linked=${created.userId !== null} assigned=${professionalId !== null}`,
+    );
+    await this.activity.recordActivity(
+      academiaId,
+      `Novo aluno da academia cadastrado: ${created.name}.`,
+    );
+
+    return this.toStudentResponse(
+      created,
+      await this.buildOverview(professionalId, created),
     );
   }
 
@@ -355,6 +449,7 @@ export class StudentsService {
 
   private async buildOverview(
     educatorId: string,
+    educatorId: string | null,
     student: Client,
   ): Promise<StudentOverviewDTO> {
     const clientId = student.id;
@@ -367,6 +462,13 @@ export class StudentsService {
         [{ clientId, userId: student.userId }],
         this.clock.now(),
       ),
+      educatorId
+        ? this.fixedSessions.nextForRecords(
+            educatorId,
+            [{ clientId, userId: student.userId }],
+            this.clock.now(),
+          )
+        : Promise.resolve(new Map<string, NextSession>()),
     ]);
 
     return {

@@ -7,6 +7,10 @@ export type ClientWithLatestAssessment = Client & {
   assessments: { assessedOn: Date }[];
 };
 
+export type ClientWithEducator = Client & {
+  professional: { id: string; name: string } | null;
+};
+
 @Injectable()
 export class ClientsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -61,6 +65,10 @@ export class ClientsRepository {
   async findAllByAcademiaId(academiaId: string): Promise<Client[]> {
     return await this.prisma.client.findMany({
       where: { academiaId },
+  async findAllByAcademiaId(academiaId: string): Promise<ClientWithEducator[]> {
+    return await this.prisma.client.findMany({
+      where: { academiaId },
+      include: { professional: { select: { id: true, name: true } } },
       orderBy: { name: 'asc' },
     });
   }
@@ -174,6 +182,35 @@ export class ClientsRepository {
           take: 1,
         },
       },
+    });
+  }
+
+  /** Minimal fields only (US-003.AC-2): every gym student of this academia,
+   * for the receptionist's in-app accent/case-insensitive search. */
+  async findAllGymStudentNames(
+    academiaId: string,
+  ): Promise<{ id: string; name: string }[]> {
+    return await this.prisma.client.findMany({
+      where: { academiaId },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /** Every gym-student Client row this user holds, across every academia. */
+  async findAcademiaOwnedByUserId(userId: string): Promise<Client[]> {
+    return await this.prisma.client.findMany({
+      where: { userId, academiaId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async findByUserAndAcademiaId(
+    userId: string,
+    academiaId: string,
+  ): Promise<Client | null> {
+    return await this.prisma.client.findFirst({
+      where: { userId, academiaId },
     });
   }
 

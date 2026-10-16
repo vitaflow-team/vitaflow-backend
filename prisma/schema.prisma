@@ -56,6 +56,12 @@ model Users {
   // explicitly, never inferred from email domain or product type.
   isBackoffice Boolean @default(false)
 
+  // Set only for isBackoffice rows, at invitation time (platform-admin-access
+  // ADR-005). Null for every non-staff row. Left as-is on removal (isBackoffice
+  // set back to false) — irrelevant once the row isn't staff, and preserves
+  // the historical fact of what tier they held.
+  backofficeTier BackofficeTier?
+
   // Set only on the Users row of an Academia's owner/manager, the moment
   // their subscription becomes an ACADEMIA product (AcademiaProvisioningService).
   // The Academia itself, not this row, is the stable identity every other
@@ -93,8 +99,21 @@ model Users {
   fixedTimesAsProfessional    FixedTime[]              @relation("FixedTimeProfessional")
   fixedSessionsAsProfessional FixedSession[]           @relation("FixedSessionProfessional")
   employments                 Employment[]             @relation("EmploymentEducator")
+  turmasAsProfessional        Turma[]                  @relation("TurmaProfessional")
+  viewAsSessionsAsStaff       BackofficeViewAsSession[] @relation("BackofficeViewAsStaff")
 
-  @@unique([email])
+  // No longer a plain @@unique: a staff invitation must be able to coexist
+  // with a pre-existing customer account on the same email, as two entirely
+  // separate rows (platform-admin-access ADR-005, task_02). Replaced by two
+  // hand-authored partial unique indexes, scoped by isBackoffice, in this
+  // feature's migration — Prisma's schema DSL cannot express a partial
+  // index, so there is no attribute-level equivalent here (same pattern as
+  // Client's email scoping, gym-foundation ADR-009).
+}
+
+enum BackofficeTier {
+  EQUIPE
+  ADMIN
 }
 
 model MeasurementRecord {
@@ -154,6 +173,9 @@ model Client {
   educatorWorkouts EducatorWorkout[]
   fixedTimes       FixedTime[]
   fixedSessions    FixedSession[]
+  checkIns         CheckIn[]
+  accessPlans      StudentAccessPlan[]
+  turmaEnrollments TurmaEnrollment[]
 
   @@index([email])
   @@index([academiaId])
@@ -221,6 +243,7 @@ model Academia {
   students    Client[]
   staff       AcademiaStaffMember[]
   accessPlans AcademiaAccessPlan[]
+  turmas      Turma[]
   createdAt   DateTime             @default(now())
 }
 
@@ -246,6 +269,8 @@ model AcademiaAccessPlan {
   active         Boolean                @default(true)
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
+
+  studentAssignments StudentAccessPlan[]
 
   @@index([academiaId])
 }
@@ -866,4 +891,131 @@ model EducatorWorkoutExercise {
   videoUrl    String?
 
   @@index([sessionId])
+}
+
+enum CheckInSource {
+  SELF
+  RECEPTIONIST
+}
+
+// One row per tap, self-service or receptionist-assisted (gym-checkin
+// ADR-001/ADR-003). planValidAtCheckIn is a write-time snapshot (ADR-006),
+// never recomputed — a later plan change never alters a past check-in.
+model CheckIn {
+  id                  String        @id @default(uuid(7))
+  client              Client        @relation(fields: [clientId], references: [id])
+  clientId            String
+  source              CheckInSource
+  registeredByStaffId String?
+  planValidAtCheckIn  Boolean
+  createdAt           DateTime      @default(now())
+
+  @@index([clientId, createdAt])
+}
+
+enum StudentAccessPlanStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// A gym student's access-plan assignment: at most one ACTIVE per client
+// (gym-checkin ADR-007, enforced by a hand-authored partial unique index —
+// see the migration). Snapshots the catalog entry's validity terms at
+// assignment time, never live-referencing it.
+model StudentAccessPlan {
+  id             String                  @id @default(uuid(7))
+  client         Client                  @relation(fields: [clientId], references: [id])
+  clientId       String
+  accessPlan     AcademiaAccessPlan      @relation(fields: [accessPlanId], references: [id])
+  accessPlanId   String
+  validityType   AccessPlanValidityType
+  validityValue  Int
+  referencePrice Decimal                 @db.Decimal(10, 2)
+  status         StudentAccessPlanStatus @default(ACTIVE)
+  assignedAt     DateTime                @default(now())
+  expiresAt      DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@index([clientId])
+}
+
+// A weekly recurring group class owned by an academia (gym-classes
+// ADR-001): no conflict detection against the responsible educator's own
+// agenda or against any other turma. Mirrors FixedTime's shape.
+model Turma {
+  id              String            @id @default(uuid(7))
+  academia        Academia          @relation(fields: [academiaId], references: [id])
+  academiaId      String
+  name            String
+  professional    Users?            @relation("TurmaProfessional", fields: [professionalId], references: [id])
+  professionalId  String?
+  weekday         Int
+  startMinute     Int
+  durationMinutes Int
+  capacity        Int
+  // Soft-delete (gym-classes ADR-005): set on removal, the turma and its
+  // enrollments are never destroyed.
+  removedAt       DateTime?
+  enrollments     TurmaEnrollment[]
+  sessions        TurmaSession[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([academiaId])
+}
+
+// The codebase's first many-to-many join table. A cancelled enrollment is
+// hard-deleted (nothing worth preserving); a removed turma's enrollment
+// rows are left as-is (gym-classes ADR-005).
+model TurmaEnrollment {
+  id        String   @id @default(uuid(7))
+  turma     Turma    @relation(fields: [turmaId], references: [id])
+  turmaId   String
+  client    Client   @relation(fields: [clientId], references: [id])
+  clientId  String
+  createdAt DateTime @default(now())
+
+  @@unique([turmaId, clientId])
+}
+
+// One materialized occurrence of a turma (mirrors FixedSession), renewed by
+// a daily job (gym-classes ADR-006).
+model TurmaSession {
+  id        String   @id @default(uuid(7))
+  turma     Turma    @relation(fields: [turmaId], references: [id])
+  turmaId   String
+  startAt   DateTime
+  endAt     DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([turmaId, startAt])
+  @@index([turmaId, startAt])
+}
+
+enum ViewAsTargetKind {
+  USER
+  ACADEMIA_STAFF
+}
+
+// A "ver como" session: a staff member viewing the platform as another
+// account, read-only (platform-admin-access ADR-001/ADR-004). Doubles as
+// the session's own audit record — exactly one of targetUserId/targetStaffId
+// is set, matching targetKind. endedAt null means still open (either genuinely
+// active or abandoned past expiresAt, until the expiry-sweep cron closes it).
+model BackofficeViewAsSession {
+  id            String           @id @default(uuid(7))
+  staff         Users            @relation("BackofficeViewAsStaff", fields: [staffUserId], references: [id])
+  staffUserId   String
+  targetKind    ViewAsTargetKind
+  targetUserId  String?
+  targetStaffId String?
+  reason        String
+  startedAt     DateTime         @default(now())
+  expiresAt     DateTime
+  endedAt       DateTime?
+  createdAt     DateTime         @default(now())
+
+  @@index([staffUserId, startedAt])
+  @@index([endedAt, expiresAt])
 }

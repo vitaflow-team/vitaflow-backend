@@ -78,6 +78,10 @@ describe('StudentsService', () => {
   };
   const workouts = { findActiveByClient: jest.fn() };
   const employments = { listActiveByEducator: jest.fn() };
+  const employments = {
+    listActiveByEducator: jest.fn(),
+    findActive: jest.fn(),
+  };
   const activity = { recordActivity: jest.fn() };
   let service: StudentsService;
 
@@ -86,6 +90,7 @@ describe('StudentsService', () => {
     clients.findByEmailAndProfessionalId.mockResolvedValue(null);
     clients.findByEmailAndAcademiaId.mockResolvedValue(null);
     employments.listActiveByEducator.mockResolvedValue([]);
+    employments.findActive.mockResolvedValue({ id: 'employment-1' });
     activity.recordActivity.mockResolvedValue(undefined);
     clients.create.mockImplementation((data: Record<string, unknown>) =>
       Promise.resolve(client({ ...data, birthDate: data.birthDate ?? null })),
@@ -452,6 +457,97 @@ describe('StudentsService', () => {
         expect(clients.findByEmailAndAcademiaId).not.toHaveBeenCalled();
         expect(clients.findByEmailAndProfessionalId).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('createForAcademia', () => {
+    const register: CreateStudentDTO = {
+      name: 'Diego Martins',
+      email: 'diego@exemplo.com',
+      linkExistingAccount: false,
+    };
+
+    it('UT-010 creates a Client with academiaId set and professionalId null when no educator is given', async () => {
+      await service.createForAcademia('academia-1', null, register);
+
+      expect(clients.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          academia: { connect: { id: 'academia-1' } },
+        }),
+      );
+      expect(clients.create.mock.calls[0][0].professional).toBeUndefined();
+      expect(employments.findActive).not.toHaveBeenCalled();
+    });
+
+    it('UT-011 creates a Client with both academiaId and professionalId set for a currently ACTIVE-employed educator', async () => {
+      await service.createForAcademia('academia-1', EDUCATOR, register);
+
+      expect(employments.findActive).toHaveBeenCalledWith(
+        'academia-1',
+        EDUCATOR,
+      );
+      expect(clients.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          academia: { connect: { id: 'academia-1' } },
+          professional: { connect: { id: EDUCATOR } },
+        }),
+      );
+    });
+
+    it('rejects a professionalId not currently ACTIVE-employed by this academia', async () => {
+      employments.findActive.mockResolvedValue(null);
+
+      const result = await codeOf(
+        service.createForAcademia('academia-1', EDUCATOR, register),
+      );
+
+      expect(result).toEqual({ status: 400, code: 'not_employed_here' });
+      expect(clients.create).not.toHaveBeenCalled();
+    });
+
+    it("UT-012 a second, distinct record is created when the email already belongs to a particular client of one of this academia's educators", async () => {
+      clients.findByEmailAndAcademiaId.mockResolvedValue(null);
+
+      await service.createForAcademia('academia-1', null, register);
+
+      expect(clients.findByEmailAndAcademiaId).toHaveBeenCalledWith(
+        register.email,
+        'academia-1',
+      );
+      expect(clients.findByEmailAndProfessionalId).not.toHaveBeenCalled();
+      expect(clients.create).toHaveBeenCalled();
+    });
+
+    it('UT-013 rejects as duplicate when the email is already a gym student of this same academia', async () => {
+      clients.findByEmailAndAcademiaId.mockResolvedValue(client());
+
+      const result = await codeOf(
+        service.createForAcademia('academia-1', null, register),
+      );
+
+      expect(result).toEqual({
+        status: 409,
+        code: 'student_already_registered',
+      });
+      expect(clients.create).not.toHaveBeenCalled();
+    });
+
+    it('UT-014 rejects an empty/invalid name with no account to fill it from', async () => {
+      const result = await codeOf(
+        service.createForAcademia('academia-1', null, {
+          email: 'novo@exemplo.com',
+          linkExistingAccount: false,
+        }),
+      );
+
+      expect(result).toEqual({ status: 400, code: 'student_invalid' });
+      expect(clients.create).not.toHaveBeenCalled();
+    });
+
+    it("never calls assertNotSelf's educator lookup when no professionalId is given", async () => {
+      await service.createForAcademia('academia-1', null, register);
+
+      expect(users.findUnique).not.toHaveBeenCalled();
     });
   });
 

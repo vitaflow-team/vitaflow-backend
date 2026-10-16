@@ -42,6 +42,10 @@ export class SignInService {
       if (user) {
         const authenticated = await this.authenticateUser(
           user,
+      const candidates = await this.user.findAllByEmail(email);
+      if (candidates.length > 0) {
+        const authenticated = await this.authenticateUser(
+          candidates,
           password,
           attempt,
         );
@@ -88,18 +92,70 @@ export class SignInService {
 
     const validPassword = await this.hash.compareHash(password, user.password);
     if (!validPassword) {
+  //
+  // `candidates` holds every Users row at this email (platform-admin-access
+  // ADR-005 lets a staff row and a customer row coexist on one email), in
+  // `createdAt asc` order. Each has an independent password, so trying the
+  // submitted password against each in turn is unambiguous: at most one can
+  // match. The common, single-row case tries exactly one hash, same as
+  // before this method accepted a list.
+  private async authenticateUser(
+    candidates: UserWithProduct[],
+    password: string,
+    attempt: SignInAttempt,
+  ): Promise<UserWithProduct> {
+    const matched = await this.matchCandidate(candidates, password);
+    attempt.userId = matched?.id ?? candidates[0]?.id;
+
+    if (!matched) {
       attempt.failureReason = 'invalid_credentials';
       throw new AppError(UNAUTHORIZED_USER, 401);
     }
 
     // Checked only after the password matched, so the inactive-account
     // message never tells a caller without the password that it exists.
-    if (!user.active) {
+    if (!matched.active) {
       attempt.failureReason = 'inactive_account';
       throw new AppError(ACCOUNT_INACTIVE, 401);
     }
 
-    return user;
+    return matched;
+  }
+
+  private async matchCandidate(
+    candidates: UserWithProduct[],
+    password: string,
+  ): Promise<UserWithProduct | undefined> {
+    for (const candidate of candidates) {
+      if (await this.hash.compareHash(password, candidate.password)) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
+  private async authenticateStaff(
+    staff: AcademiaStaffMember | null,
+    password: string,
+    attempt: SignInAttempt,
+  ): Promise<AcademiaStaffMember> {
+    attempt.userId = staff?.id;
+
+    const validPassword = await this.hash.compareHash(
+      password,
+      staff?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+    if (!staff || !staff.passwordHash || !validPassword) {
+      attempt.failureReason = 'invalid_credentials';
+      throw new AppError(UNAUTHORIZED_USER, 401);
+    }
+
+    if (!staff.active) {
+      attempt.failureReason = 'inactive_account';
+      throw new AppError(ACCOUNT_INACTIVE, 401);
+    }
+
+    return staff;
   }
 
   private async authenticateStaff(

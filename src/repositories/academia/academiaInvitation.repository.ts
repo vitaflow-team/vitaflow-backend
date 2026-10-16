@@ -53,6 +53,9 @@ export class AcademiaInvitationRepository {
     return await this.prisma.academiaInvitation.findMany({
       where: { academiaId },
       include: { academia: { select: { id: true, name: true } } },
+  async listSentByAcademia(academiaId: string): Promise<AcademiaInvitation[]> {
+    return await this.prisma.academiaInvitation.findMany({
+      where: { academiaId },
       orderBy: { createdAt: 'desc' },
     });
   }
