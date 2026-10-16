@@ -101,6 +101,7 @@ model Users {
   employments                 Employment[]             @relation("EmploymentEducator")
   turmasAsProfessional        Turma[]                  @relation("TurmaProfessional")
   viewAsSessionsAsStaff       BackofficeViewAsSession[] @relation("BackofficeViewAsStaff")
+  assessmentTemplates         AssessmentTemplate[]
 
   // No longer a plain @@unique: a staff invitation must be able to coexist
   // with a pre-existing customer account on the same email, as two entirely
@@ -169,13 +170,14 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assessments      PhysicalAssessment[]
   educatorWorkouts EducatorWorkout[]
   fixedTimes       FixedTime[]
   fixedSessions    FixedSession[]
   checkIns         CheckIn[]
   accessPlans      StudentAccessPlan[]
   turmaEnrollments TurmaEnrollment[]
+  formRecords      FormRecord[]
+  mealPlans        MealPlan[]
 
   @@index([email])
   @@index([academiaId])
@@ -245,6 +247,8 @@ model Academia {
   accessPlans AcademiaAccessPlan[]
   turmas      Turma[]
   createdAt   DateTime             @default(now())
+
+  assessmentTemplates AssessmentTemplate[]
 }
 
 enum AccessPlanValidityType {
@@ -547,7 +551,10 @@ model WaterLog {
 
 enum ConsentFeature {
   PROGRESS_PHOTOS
-  PHYSICAL_ASSESSMENT_RECORDING
+  // Generalized from PHYSICAL_ASSESSMENT_RECORDING (nutritionist-module
+  // ADR-011): gates filling any FormRecord (anamnese or avaliação), for any
+  // professional type, not just the physical educator's old fixed-field flow.
+  HEALTH_RECORD_FILLING
 }
 
 // Generic, reusable LGPD consent gate (ADR-006): the first feature in the
@@ -638,6 +645,10 @@ model ProfessionalProfile {
   specialty     String?
   priceFrom     Decimal?
   attendsOnline Boolean  @default(false)
+  // CRN (NUTRITIONIST) or CREF (PHYSICAL_EDUCATOR), label driven by
+  // ProductType in the UI — one shared free-text field, no format
+  // validation (PRD ADR-009).
+  registrationNumber String?
   updatedAt     DateTime @updatedAt
 }
 
@@ -804,30 +815,163 @@ model Slot {
   @@index([status, startAt])
 }
 
-// A physical educator's assessment of one of their students (Client). It is
-// attached to the student record, never to a user, so it exists before the
-// student has an account and is removed with the record (cascade).
-model PhysicalAssessment {
-  id               String   @id @default(uuid(7))
-  clientId         String
-  client           Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  assessedOn       DateTime @db.Date
-  weightKg         Float
-  heightCm         Float
-  bodyFatPercent   Float?
-  restingHeartRate Int?
-  flexibilityCm    Float?
-  armCm            Float?
-  chestCm          Float?
-  waistCm          Float?
-  abdomenCm        Float?
-  hipCm            Float?
-  thighCm          Float?
-  calfCm           Float?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+// PhysicalAssessment (a physical educator's fixed-field assessment of a
+// Client) is replaced outright by the generic form-template/record engine
+// below (nutritionist-module PRD ADR-003) — pre-production, so no migration
+// script or backward-compatible read path: the model and its rows are simply
+// dropped.
 
-  @@index([clientId, assessedOn])
+enum TemplatePurpose {
+  ANAMNESE
+  ASSESSMENT
+}
+
+enum FormFieldType {
+  SHORT_TEXT
+  LONG_TEXT
+  NUMBER
+  YES_NO
+  MULTIPLE_CHOICE
+}
+
+// Relational child tables, no Json column — this schema never uses one
+// (nutritionist-module ADR-010). Owner is exactly one of
+// professionalId/academiaId (hand-authored CHECK constraint in the
+// migration, same pattern as Client's own ownership split above).
+model AssessmentTemplate {
+  id             String           @id @default(uuid(7))
+  professional   Users?           @relation(fields: [professionalId], references: [id])
+  professionalId String?
+  academia       Academia?        @relation(fields: [academiaId], references: [id])
+  academiaId     String?
+  name           String
+  purpose        TemplatePurpose
+  active         Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  fields         TemplateField[]
+  records        FormRecord[]
+
+  @@index([professionalId])
+  @@index([academiaId])
+}
+
+model TemplateField {
+  id         String             @id @default(uuid(7))
+  template   AssessmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateId String
+  position   Int
+  label      String
+  fieldType  FormFieldType
+  // Only populated for MULTIPLE_CHOICE; empty for every other field type.
+  options    String[]           @default([])
+  required   Boolean            @default(false)
+  // Only meaningful on a NUMBER field in an ASSESSMENT-purpose template
+  // (nutritionist-module ADR-002): tags which answered values feed BMI,
+  // computed at read time, never stored.
+  weightRole Boolean            @default(false)
+  heightRole Boolean            @default(false)
+
+  @@index([templateId, position])
+}
+
+// One filled instance; FormRecordValue rows are a frozen snapshot of the
+// field's shape at write time (nutritionist-module ADR-010) — rendering a
+// record never joins back to TemplateField, so a later template edit never
+// invalidates a historical answer.
+model FormRecord {
+  id               String             @id @default(uuid(7))
+  client           Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId         String
+  template         AssessmentTemplate @relation(fields: [templateId], references: [id])
+  templateId       String
+  recordedByUserId String
+  recordedAt       DateTime           @default(now())
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  values           FormRecordValue[]
+
+  @@index([clientId, recordedAt])
+}
+
+model FormRecordValue {
+  id         String        @id @default(uuid(7))
+  record     FormRecord    @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  recordId   String
+  position   Int
+  fieldLabel String
+  fieldType  FormFieldType
+  weightRole Boolean       @default(false)
+  heightRole Boolean       @default(false)
+  // Exactly one of the four is populated, matching fieldType. MULTIPLE_CHOICE
+  // stores the chosen option's literal text in selectedOption (not an
+  // index), so a later edit to the template's option list never invalidates
+  // a historical answer.
+  textValue      String?
+  numberValue    Float?
+  boolValue      Boolean?
+  selectedOption String?
+
+  @@index([recordId])
+}
+
+enum MealPlanStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+// Persisted draft with lock-swap publish (nutritionist-module ADR-013),
+// following EducatorWorkout.activate()'s exact pattern: publishing locks the
+// Client row, assigns the next sequential version, sets status/publishedAt —
+// irreversible from that point. Unlike EducatorWorkout, no prior PUBLISHED
+// version is ever archived; they all persist forever.
+//
+// A hand-authored partial unique index (schema DSL can't declare one) caps
+// this at one DRAFT per clientId — see MealPlan_one_draft_per_client in this
+// feature's migration, mirroring EducatorWorkout_one_active_per_client.
+model MealPlan {
+  id          String         @id @default(uuid(7))
+  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId    String
+  status      MealPlanStatus @default(DRAFT)
+  version     Int?
+  publishedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  days        MealPlanDay[]
+
+  @@index([clientId, version])
+}
+
+model MealPlanDay {
+  id         String         @id @default(uuid(7))
+  mealPlan   MealPlan       @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  mealPlanId String
+  weekday    Weekday
+  meals      MealPlanMeal[]
+
+  @@unique([mealPlanId, weekday])
+}
+
+model MealPlanMeal {
+  id       String      @id @default(uuid(7))
+  day      MealPlanDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  dayId    String
+  position Int
+  label    String
+  text     String
+
+  @@index([dayId, position])
 }
 
 // Workouts an educator builds for a student record (E2). They live in their
