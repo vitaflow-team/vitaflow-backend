@@ -40,17 +40,34 @@ export class NutritionistMirrorEntity {
   billingStatus: null;
 }
 
-// One of the educator's latest physical assessments as the student sees it.
+export class MirrorAssessmentValueEntity {
+  @ApiProperty() fieldLabel: string;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'string | number | boolean | null',
+  })
+  value: string | number | boolean | null;
+}
+
+export class MirrorBmiEntity {
+  @ApiProperty() value: number;
+  @ApiProperty() classification: string;
+}
+
+// One of the educator's latest assessments (clinical-records engine) as the
+// student sees it — each one's own frozen field values, newest first.
 export class MirrorAssessmentEntity {
   @ApiProperty() id: string;
 
-  @ApiProperty({ example: '2026-09-15', description: 'Calendar date.' })
-  assessedOn: string;
+  @ApiProperty({ example: '2026-09-15T00:00:00.000Z' })
+  recordedAt: string;
 
-  @ApiProperty({ example: 78.2 }) weightKg: number;
+  @ApiProperty({ type: [MirrorAssessmentValueEntity] })
+  values: MirrorAssessmentValueEntity[];
 
-  @ApiProperty({ example: 18.4, nullable: true, type: Number })
-  bodyFatPercent: number | null;
+  @ApiProperty({ type: MirrorBmiEntity, nullable: true })
+  bmi: MirrorBmiEntity | null;
 }
 
 export class MirrorWorkoutSessionEntity {

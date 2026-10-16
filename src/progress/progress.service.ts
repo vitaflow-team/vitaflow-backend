@@ -1,5 +1,5 @@
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { AppError } from '@/utils/app.erro';
 import { Injectable } from '@nestjs/common';
 import { MeasurementRecord } from '@prisma/client';
@@ -33,39 +33,36 @@ function educatorLabel(point: MergedPoint): { educatorName?: string } {
 export class ProgressService {
   constructor(
     private readonly measurementRecords: MeasurementRecordsRepository,
-    private readonly assessments: PhysicalAssessmentsRepository,
+    private readonly formRecords: FormRecordsRepository,
   ) {}
 
-  // The student's own records and the points of every linked educator,
-  // merged on read: one source of truth, nothing copied (educator points
-  // always reflect the educator's current assessment).
+  // The student's own records and the weight-tagged points of every linked
+  // professional (any type, ADR-011), merged on read: one source of truth,
+  // nothing copied.
   async getDashboard(
     userId: string,
     weeks: DashboardWeeks = DEFAULT_DASHBOARD_WEEKS,
   ): Promise<DashboardResponseDTO> {
     const now = new Date(Date.now());
     const since = new Date(now.getTime() - weeks * 7 * DAY_IN_MS);
-    // Assessments are date-only: read one day earlier, then filter by the
-    // exact instant each point takes.
-    const assessmentsSince = new Date(since.getTime() - DAY_IN_MS);
 
-    const [ownRecent, ownPeriod, assessmentsRecent, assessmentsPeriod] =
+    const [ownRecent, ownPeriod, professionalRecent, professionalPeriod] =
       await Promise.all([
         this.measurementRecords.findRecentByUser(userId, RECENT_LIMIT),
         this.measurementRecords.findByUserSince(userId, since),
-        this.assessments.findRecentByLinkedUser(userId, RECENT_LIMIT),
-        this.assessments.findRecentByLinkedUser(
+        this.formRecords.findWeightPointsByLinkedUser(userId, RECENT_LIMIT),
+        this.formRecords.findWeightPointsByLinkedUser(
           userId,
           PERIOD_LIMIT,
-          assessmentsSince,
+          since,
         ),
       ]);
 
-    const recent = mergeMeasurementPoints(ownRecent, assessmentsRecent).slice(
+    const recent = mergeMeasurementPoints(ownRecent, professionalRecent).slice(
       0,
       RECENT_LIMIT,
     );
-    const withinPeriod = mergeMeasurementPoints(ownPeriod, assessmentsPeriod)
+    const withinPeriod = mergeMeasurementPoints(ownPeriod, professionalPeriod)
       .filter((point) => point.recordedAt >= since)
       .reverse();
 
@@ -80,11 +77,20 @@ export class ProgressService {
         weightKg: point.weightKg,
         ...educatorLabel(point),
       })),
-      bmiSeries: withinPeriod.map((point) => ({
-        recordedAt: point.recordedAt.toISOString(),
-        bmi: calculateBmi(point.weightKg, point.heightCm),
-        ...educatorLabel(point),
-      })),
+      // A point with no height-tagged value alongside its weight has no
+      // computable BMI (ADR-002) — it is simply absent from this series.
+      bmiSeries: withinPeriod.flatMap((point) => {
+        const bmi = calculateBmi(point.weightKg, point.heightCm);
+        return bmi === null
+          ? []
+          : [
+              {
+                recordedAt: point.recordedAt.toISOString(),
+                bmi,
+                ...educatorLabel(point),
+              },
+            ];
+      }),
       history: recent.map((point) => this.toResponse(point)),
       period: {
         weeks,
@@ -95,11 +101,14 @@ export class ProgressService {
   }
 
   async getLatest(userId: string): Promise<LatestRecordResponseDTO> {
-    const [own, assessments] = await Promise.all([
+    const [own, professionalRecords] = await Promise.all([
       this.measurementRecords.findLatestByUser(userId),
-      this.assessments.findRecentByLinkedUser(userId, 1),
+      this.formRecords.findWeightPointsByLinkedUser(userId, 1),
     ]);
-    const [latest] = mergeMeasurementPoints(own ? [own] : [], assessments);
+    const [latest] = mergeMeasurementPoints(
+      own ? [own] : [],
+      professionalRecords,
+    );
 
     return { latest: latest ? this.toResponse(latest) : null };
   }

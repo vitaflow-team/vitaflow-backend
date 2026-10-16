@@ -3,7 +3,7 @@ import { PrismaService } from '@/database/prisma.service';
 import { ProfessionalDiscoveryModule } from '@/professional-discovery/professionalDiscovery.module';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Module } from '@nestjs/common';
 import { FixedTimesModule } from '@/scheduling/fixed-times/fixedTimes.module';
@@ -18,7 +18,7 @@ import { ProfessionalMirrorService } from './professionalMirror.service';
     PrismaService,
     UserRepository,
     ClientsRepository,
-    PhysicalAssessmentsRepository,
+    FormRecordsRepository,
     EducatorWorkoutsRepository,
     Clock,
     ProfessionalMirrorService,

@@ -1,4 +1,5 @@
 import { AuthModule } from '@/auth/auth.module';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { PrismaService } from '@/database/prisma.service';
 import { EducatorStudentsModule } from '@/educator-students/educatorStudents.module';
 import { MailModule } from '@/mail/mail.module';
@@ -16,6 +17,7 @@ import { CheckInRepository } from '@/repositories/academia/checkIn.repository';
 import { StudentAccessPlanRepository } from '@/repositories/academia/studentAccessPlan.repository';
 import { TurmasRepository } from '@/repositories/academia/turmas.repository';
 import { TurmaEnrollmentRepository } from '@/repositories/academia/turmaEnrollment.repository';
+import { AssessmentTemplatesRepository } from '@/repositories/clinical-records/assessmentTemplates.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -86,6 +88,8 @@ import { TurmasService } from './turmas/turmas.service';
     ClientsRepository,
     NotificationsRepository,
     PasswordHash,
+    AssessmentTemplatesRepository,
+    TemplatesService,
     AcademiaProvisioningService,
     AcademiaInvitationRepository,
     EmploymentRepository,

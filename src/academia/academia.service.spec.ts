@@ -1,3 +1,4 @@
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { PrismaService } from '@/database/prisma.service';
 import { AcademiaProvisioningService } from './academia.service';
 
@@ -23,6 +24,9 @@ function makeTx(userOverrides: Record<string, unknown> = {}) {
 
 describe('AcademiaProvisioningService', () => {
   const prisma = { $transaction: jest.fn() };
+  const templates = {
+    ensureStarterTemplates: jest.fn().mockResolvedValue(undefined),
+  };
   let service: AcademiaProvisioningService;
   let tx: ReturnType<typeof makeTx>;
 
@@ -36,8 +40,10 @@ describe('AcademiaProvisioningService', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     withTx();
+    templates.ensureStarterTemplates.mockResolvedValue(undefined);
     service = new AcademiaProvisioningService(
       prisma as unknown as PrismaService,
+      templates as unknown as TemplatesService,
     );
   });
 
@@ -52,6 +58,19 @@ describe('AcademiaProvisioningService', () => {
       data: { academiaId: 'academia-new' },
     });
     expect(result).toEqual({ id: 'academia-new' });
+  });
+
+  it('seeds starter templates only for a newly provisioned academia, not an already-existing one', async () => {
+    await service.provisionForOwner('owner-1');
+    expect(templates.ensureStarterTemplates).toHaveBeenCalledWith(
+      { academiaId: 'academia-new' },
+      'ACADEMIA',
+    );
+
+    jest.clearAllMocks();
+    withTx({ academiaId: 'academia-existing' });
+    await service.provisionForOwner('owner-1');
+    expect(templates.ensureStarterTemplates).not.toHaveBeenCalled();
   });
 
   it('UT-002 is idempotent: an already-provisioned owner gets no second Academia row', async () => {

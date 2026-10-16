@@ -1,7 +1,7 @@
 import { CodedError } from '@/common/errors/codedError';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Prisma } from '@prisma/client';
 import { CreateStudentDTO } from './dto/createStudent.Dto';
@@ -30,9 +30,25 @@ function client(overrides: Record<string, unknown> = {}) {
 function row(name: string, email: string, last?: string, userId = null) {
   return {
     ...client({ id: `id-${name}`, name, email, userId }),
-    assessments: last
-      ? [{ assessedOn: new Date(`${last}T00:00:00.000Z`) }]
+    formRecords: last
+      ? [{ recordedAt: new Date(`${last}T00:00:00.000Z`) }]
       : [],
+  };
+}
+
+function weightValue(numberValue: number | null) {
+  return {
+    id: 'value-1',
+    recordId: 'record-1',
+    position: 0,
+    fieldLabel: 'Peso (kg)',
+    fieldType: 'NUMBER',
+    weightRole: true,
+    heightRole: false,
+    textValue: null,
+    numberValue,
+    boolValue: null,
+    selectedOption: null,
   };
 }
 
@@ -72,9 +88,9 @@ describe('StudentsService', () => {
     delete: jest.fn(),
   };
   const users = { findByEmailInsensitive: jest.fn(), findUnique: jest.fn() };
-  const assessments = {
+  const formRecords = {
     findLatestByClient: jest.fn(),
-    findAllForVariation: jest.fn(),
+    findHistory: jest.fn(),
   };
   const workouts = { findActiveByClient: jest.fn() };
   const employments = {
@@ -99,13 +115,13 @@ describe('StudentsService', () => {
     );
     users.findUnique.mockResolvedValue({ email: 'thiago@exemplo.com' });
     users.findByEmailInsensitive.mockResolvedValue(null);
-    assessments.findLatestByClient.mockResolvedValue([]);
-    assessments.findAllForVariation.mockResolvedValue([]);
+    formRecords.findLatestByClient.mockResolvedValue([]);
+    formRecords.findHistory.mockResolvedValue([]);
     workouts.findActiveByClient.mockResolvedValue(null);
     service = new StudentsService(
       clients as unknown as ClientsRepository,
       users as unknown as UserRepository,
-      assessments as unknown as PhysicalAssessmentsRepository,
+      formRecords as unknown as FormRecordsRepository,
       workouts as unknown as EducatorWorkoutsRepository,
       {
         nextForRecords: jest.fn().mockResolvedValue(new Map()),
@@ -578,39 +594,26 @@ describe('StudentsService', () => {
 
     it('UT-064 returns the header and the overview', async () => {
       clients.findOwnedById.mockResolvedValue(client({ userId: 'u1' }));
-      assessments.findLatestByClient.mockResolvedValue([
+      formRecords.findLatestByClient.mockResolvedValue([
         {
           id: 'a2',
           clientId: STUDENT_ID,
-          assessedOn: new Date('2026-09-15T00:00:00.000Z'),
-          weightKg: 78.2,
-          heightCm: 179,
-          bodyFatPercent: 18.4,
-          restingHeartRate: null,
-          flexibilityCm: null,
-          armCm: null,
-          chestCm: null,
-          waistCm: null,
-          abdomenCm: null,
-          hipCm: null,
-          thighCm: null,
-          calfCm: null,
+          templateId: 'template-1',
+          recordedByUserId: EDUCATOR,
+          recordedAt: new Date('2026-09-15T00:00:00.000Z'),
           createdAt: new Date('2026-09-15T12:00:00.000Z'),
           updatedAt: new Date('2026-09-15T12:00:00.000Z'),
+          values: [weightValue(78.2)],
         },
       ]);
-      assessments.findAllForVariation.mockResolvedValue([
+      formRecords.findHistory.mockResolvedValue([
         {
-          assessedOn: new Date('2026-07-21T00:00:00.000Z'),
-          createdAt: new Date('2026-07-21T12:00:00.000Z'),
-          weightKg: 80.3,
-          bodyFatPercent: null,
+          recordedAt: new Date('2026-07-21T00:00:00.000Z'),
+          values: [weightValue(80.3)],
         },
         {
-          assessedOn: new Date('2026-09-15T00:00:00.000Z'),
-          createdAt: new Date('2026-09-15T12:00:00.000Z'),
-          weightKg: 78.2,
-          bodyFatPercent: 18.4,
+          recordedAt: new Date('2026-09-15T00:00:00.000Z'),
+          values: [weightValue(78.2)],
         },
       ]);
 
@@ -622,8 +625,11 @@ describe('StudentsService', () => {
         userId: 'u1',
         birthDate: '1995-03-10',
         overview: {
-          latest: { assessedOn: '2026-09-15', weightKg: 78.2 },
-          variation: { weightKg: -2.1, bodyFatPoints: null },
+          latest: {
+            recordedAt: '2026-09-15T00:00:00.000Z',
+            values: [{ fieldLabel: 'Peso (kg)', value: 78.2 }],
+          },
+          variation: { weightKg: -2.1 },
         },
       });
     });
@@ -777,11 +783,11 @@ describe('StudentsService', () => {
       await service.remove(EDUCATOR, STUDENT_ID);
 
       expect(clients.delete).toHaveBeenCalledTimes(1);
-      expect(Object.keys(assessments)).toEqual([
+      expect(Object.keys(formRecords)).toEqual([
         'findLatestByClient',
-        'findAllForVariation',
+        'findHistory',
       ]);
-      expect(assessments.findLatestByClient).not.toHaveBeenCalled();
+      expect(formRecords.findLatestByClient).not.toHaveBeenCalled();
     });
   });
 });

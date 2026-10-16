@@ -3,7 +3,7 @@ import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.ser
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Client } from '@prisma/client';
 import { ProfessionalMirrorService } from './professionalMirror.service';
@@ -51,7 +51,7 @@ describe('ProfessionalMirrorService', () => {
           useValue: { findActiveByClient },
         },
         {
-          provide: PhysicalAssessmentsRepository,
+          provide: FormRecordsRepository,
           useValue: { findLatestByClient },
         },
         {

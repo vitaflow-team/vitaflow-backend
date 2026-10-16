@@ -1,7 +1,7 @@
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { ProfessionalMirrorService } from './professionalMirror.service';
 
 const active = {
@@ -38,7 +38,7 @@ describe('ProfessionalMirrorService — current workout', () => {
     service = new ProfessionalMirrorService(
       clients as unknown as ClientsRepository,
       discovery as unknown as ProfessionalDiscoveryService,
-      assessments as unknown as PhysicalAssessmentsRepository,
+      assessments as unknown as FormRecordsRepository,
       workouts as unknown as EducatorWorkoutsRepository,
       {
         nextForRecords: jest.fn().mockResolvedValue(new Map()),

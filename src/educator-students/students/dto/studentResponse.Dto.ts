@@ -1,7 +1,5 @@
-import type {
-  AssessmentResponseDTO,
-  AssessmentVariationDTO,
-} from '../../assessments/dto/assessmentResponse.Dto';
+import type { FormRecordResponseDTO } from '@/clinical-records/records/dto/formRecordResponse.Dto';
+import type { StudentWeightVariation } from '../studentWeightVariation.util';
 
 // Response shapes only: plain interfaces, never validated at runtime.
 export interface NextSessionDTO {
@@ -37,8 +35,8 @@ export interface CurrentWorkoutDTO {
 export interface StudentOverviewDTO {
   /** The next scheduled fixed session or booking with this educator, or null. */
   nextSession: NextSessionDTO | null;
-  latest: AssessmentResponseDTO | null;
-  variation: AssessmentVariationDTO | null;
+  latest: FormRecordResponseDTO | null;
+  variation: StudentWeightVariation | null;
   /** The educator's active workout for this student, or null. */
   currentWorkout: CurrentWorkoutDTO | null;
 }

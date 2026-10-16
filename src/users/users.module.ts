@@ -3,6 +3,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
 import { MailModule } from '@/mail/mail.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
+import { AssessmentTemplatesRepository } from '@/repositories/clinical-records/assessmentTemplates.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { ProgressPhotosRepository } from '@/repositories/progress-photos/progressPhotos.repository';
@@ -12,6 +13,7 @@ import { PasswordHash } from '@/utils/password.hash';
 import { StripeVerification } from '@/utils/stripeVerification';
 import { UploadService } from '@/utils/upload.service';
 import { Module } from '@nestjs/common';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { ProfileController } from './profile/profile.controller';
 import { ProfileService } from './profile/profile.service';
 import { RecoverpassController } from './recoverpass/recoverpass.controller';
@@ -45,6 +47,8 @@ import { UserTokenService } from './token/userToken.service';
     ClientsRepository,
     ProductsRepository,
     ProgressPhotosRepository,
+    AssessmentTemplatesRepository,
+    TemplatesService,
     StripeVerification,
     SignUpService,
     SignInService,

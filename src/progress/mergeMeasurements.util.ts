@@ -1,15 +1,18 @@
-import { assessedOnToInstant } from '@/educator-students/assessments/assessedOnTimestamp.util';
-import type { AssessmentWithEducator } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import type { FormRecordWithRecorder } from '@/repositories/clinical-records/formRecords.repository';
 import type { MeasurementRecord } from '@prisma/client';
 
 export type MeasurementSource = 'SELF' | 'EDUCATOR';
 
-// One point of the student's evolution, whatever its origin. Educator points
-// are read-only and always carry the educator who measured them.
+// One point of the student's evolution, whatever its origin. A professional
+// point ("EDUCATOR", generalized by ADR-011 to any linked professional type —
+// nutritionist, physical educator, or academia) is read-only and always
+// carries the name of whoever recorded it. heightCm is nullable because a
+// generic FormRecord is not guaranteed to carry a height-tagged value
+// alongside its weight-tagged one.
 export interface MergedPoint {
   id: string;
   weightKg: number;
-  heightCm: number;
+  heightCm: number | null;
   waistCm: number | null;
   hipCm: number | null;
   recordedAt: Date;
@@ -34,20 +37,28 @@ export function ownRecordToPoint(record: MeasurementRecord): MergedPoint {
   };
 }
 
-export function assessmentToPoint(
-  assessment: AssessmentWithEducator,
-): MergedPoint {
+// The first weight-tagged value (by position) is the point's weight; a
+// height-tagged value alongside it (same record) is carried too, null when
+// the professional's template didn't also tag one (ADR-002/ADR-011).
+export function formRecordToPoint(record: FormRecordWithRecorder): MergedPoint {
+  const weight = record.values.find(
+    (value) => value.weightRole && value.numberValue !== null,
+  );
+  const height = record.values.find(
+    (value) => value.heightRole && value.numberValue !== null,
+  );
+
   return {
-    id: assessment.id,
-    weightKg: assessment.weightKg,
-    heightCm: assessment.heightCm,
-    waistCm: assessment.waistCm,
-    hipCm: assessment.hipCm,
-    recordedAt: assessedOnToInstant(assessment.assessedOn),
-    createdAt: assessment.createdAt,
+    id: record.id,
+    weightKg: weight!.numberValue!,
+    heightCm: height?.numberValue ?? null,
+    waistCm: null,
+    hipCm: null,
+    recordedAt: record.recordedAt,
+    createdAt: record.createdAt,
     source: 'EDUCATOR',
     readOnly: true,
-    educatorName: assessment.client.professional?.name ?? null,
+    educatorName: record.client.professional?.name ?? null,
   };
 }
 
@@ -58,15 +69,15 @@ function newestFirst(a: MergedPoint, b: MergedPoint): number {
   );
 }
 
-// The student's own records and the points of every linked educator in one
-// list, newest first by date and then by order of entry. The single ordering
-// used by the dashboard, the latest record and the prefill.
+// The student's own records and the points of every linked professional in
+// one list, newest first by date and then by order of entry. The single
+// ordering used by the dashboard, the latest record and the prefill.
 export function mergeMeasurementPoints(
   own: MeasurementRecord[],
-  assessments: AssessmentWithEducator[],
+  professionalRecords: FormRecordWithRecorder[],
 ): MergedPoint[] {
   return [
     ...own.map(ownRecordToPoint),
-    ...assessments.map(assessmentToPoint),
+    ...professionalRecords.map(formRecordToPoint),
   ].sort(newestFirst);
 }

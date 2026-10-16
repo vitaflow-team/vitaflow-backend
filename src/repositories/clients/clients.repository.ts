@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { Client, Prisma, ProductType } from '@prisma/client';
 
 export type ClientWithLatestAssessment = Client & {
-  assessments: { assessedOn: Date }[];
+  formRecords: { recordedAt: Date }[];
 };
 
 export type ClientWithEducator = Client & {
@@ -165,17 +165,19 @@ export class ClientsRepository {
     });
   }
 
-  // Every student of the professional with the date of the latest assessment,
-  // in one query. Search, ordering and paging run over this whole list.
+  // Every student of the professional with the date of the latest assessment
+  // (clinical-records engine, ASSESSMENT purpose), in one query. Search,
+  // ordering and paging run over this whole list.
   async findAllWithLatestAssessment(
     professionalId: string,
   ): Promise<ClientWithLatestAssessment[]> {
     return await this.prisma.client.findMany({
       where: { professionalId },
       include: {
-        assessments: {
-          select: { assessedOn: true },
-          orderBy: { assessedOn: 'desc' },
+        formRecords: {
+          where: { template: { purpose: 'ASSESSMENT' } },
+          select: { recordedAt: true },
+          orderBy: { recordedAt: 'desc' },
           take: 1,
         },
       },

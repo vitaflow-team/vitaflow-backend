@@ -1,4 +1,4 @@
-import type { AssessmentWithEducator } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import type { FormRecordWithRecorder } from '@/repositories/clinical-records/formRecords.repository';
 import { MeasurementRecord } from '@prisma/client';
 import { mergeMeasurementPoints } from './mergeMeasurements.util';
 
@@ -21,36 +21,63 @@ function own(
   };
 }
 
-function assessment(
+function professionalRecord(
   id: string,
   day: string,
-  extra: Partial<AssessmentWithEducator> = {},
-): AssessmentWithEducator {
+  extra: {
+    weightKg?: number;
+    heightCm?: number | null;
+    professionalName?: string | null;
+  } = {},
+): FormRecordWithRecorder {
+  const recordedAt = new Date(`${day}T15:00:00.000Z`);
   return {
     id,
     clientId: 'client-1',
-    assessedOn: new Date(`${day}T00:00:00.000Z`),
-    weightKg: 78.2,
-    heightCm: 179,
-    bodyFatPercent: null,
-    restingHeartRate: null,
-    flexibilityCm: null,
-    armCm: null,
-    chestCm: null,
-    waistCm: 82,
-    abdomenCm: null,
-    hipCm: 97,
-    thighCm: null,
-    calfCm: null,
+    templateId: 'template-1',
+    recordedByUserId: 'edu-1',
+    recordedAt,
     createdAt: new Date(`${day}T20:00:00.000Z`),
     updatedAt: new Date(`${day}T20:00:00.000Z`),
-    client: { professional: { id: 'edu-1', name: 'Thiago Ramos' } },
-    ...extra,
+    client: {
+      professional:
+        extra.professionalName === null
+          ? null
+          : { id: 'edu-1', name: extra.professionalName ?? 'Thiago Ramos' },
+    },
+    values: [
+      {
+        id: `${id}-weight`,
+        recordId: id,
+        position: 0,
+        fieldLabel: 'Peso (kg)',
+        fieldType: 'NUMBER',
+        weightRole: true,
+        heightRole: false,
+        textValue: null,
+        numberValue: extra.weightKg ?? 78.2,
+        boolValue: null,
+        selectedOption: null,
+      },
+      {
+        id: `${id}-height`,
+        recordId: id,
+        position: 1,
+        fieldLabel: 'Altura (cm)',
+        fieldType: 'NUMBER',
+        weightRole: false,
+        heightRole: true,
+        textValue: null,
+        numberValue: extra.heightCm === undefined ? 179 : extra.heightCm,
+        boolValue: null,
+        selectedOption: null,
+      },
+    ] as any,
   };
 }
 
 describe('mergeMeasurementPoints', () => {
-  it('UT-022 with no assessments keeps the own order and the SELF defaults', () => {
+  it('with no professional records keeps the own order and the SELF defaults', () => {
     const merged = mergeMeasurementPoints(
       [own('a', '2026-09-10T09:00:00Z'), own('b', '2026-09-15T09:00:00Z')],
       [],
@@ -63,10 +90,13 @@ describe('mergeMeasurementPoints', () => {
     );
   });
 
-  it('UT-023 with only assessments returns read-only educator points', () => {
+  it('with only professional records returns read-only points', () => {
     const merged = mergeMeasurementPoints(
       [],
-      [assessment('x', '2026-09-10'), assessment('y', '2026-09-15')],
+      [
+        professionalRecord('x', '2026-09-10'),
+        professionalRecord('y', '2026-09-15'),
+      ],
     );
 
     expect(merged.map((p) => p.id)).toEqual(['y', 'x']);
@@ -75,37 +105,39 @@ describe('mergeMeasurementPoints', () => {
     );
     expect(merged[0]).toMatchObject({
       educatorName: 'Thiago Ramos',
-      waistCm: 82,
-      hipCm: 97,
+      heightCm: 179,
       recordedAt: new Date('2026-09-15T15:00:00.000Z'),
     });
   });
 
-  it('UT-024 breaks a same-day tie by creation time, newest first', () => {
+  it('breaks a same-day tie by creation time, newest first', () => {
     const merged = mergeMeasurementPoints(
       [own('mine', '2026-09-15T15:00:00.000Z', 70, '2026-09-15T21:00:00.000Z')],
-      [assessment('theirs', '2026-09-15')],
+      [professionalRecord('theirs', '2026-09-15')],
     );
 
     expect(merged.map((p) => p.id)).toEqual(['mine', 'theirs']);
   });
 
-  it('UT-025 puts an assessment first when it is the newest point', () => {
+  it('puts a professional record first when it is the newest point', () => {
     const merged = mergeMeasurementPoints(
       [own('a', '2026-09-10T09:00:00Z')],
-      [assessment('x', '2026-09-15')],
+      [professionalRecord('x', '2026-09-15')],
     );
 
     expect(merged[0].id).toBe('x');
   });
 
-  it('UT-026 returns every point ordered (the caller caps the list)', () => {
+  it('returns every point ordered (the caller caps the list)', () => {
     const merged = mergeMeasurementPoints(
       Array.from({ length: 8 }, (_, i) =>
         own(`o${i}`, `2026-09-${String(i + 1).padStart(2, '0')}T09:00:00Z`),
       ),
       Array.from({ length: 8 }, (_, i) =>
-        assessment(`a${i}`, `2026-08-${String(i + 1).padStart(2, '0')}`),
+        professionalRecord(
+          `a${i}`,
+          `2026-08-${String(i + 1).padStart(2, '0')}`,
+        ),
       ),
     );
 
@@ -117,15 +149,36 @@ describe('mergeMeasurementPoints', () => {
     ]);
   });
 
-  it('UT-027 gives the instants the window comparison needs', () => {
+  it('gives the instants the window comparison needs', () => {
     const since = new Date('2026-09-01T00:00:00.000Z');
     const merged = mergeMeasurementPoints(
       [],
-      [assessment('old', '2026-08-31'), assessment('edge', '2026-09-01')],
+      [
+        professionalRecord('old', '2026-08-31'),
+        professionalRecord('edge', '2026-09-01'),
+      ],
     );
 
     expect(
       merged.filter((p) => p.recordedAt >= since).map((p) => p.id),
     ).toEqual(['edge']);
+  });
+
+  it('carries a null heightCm when the record has no height-tagged value', () => {
+    const merged = mergeMeasurementPoints(
+      [],
+      [professionalRecord('weight-only', '2026-09-15', { heightCm: null })],
+    );
+
+    expect(merged[0]).toMatchObject({ weightKg: 78.2, heightCm: null });
+  });
+
+  it('attributes the point to null when the record has no linked professional', () => {
+    const merged = mergeMeasurementPoints(
+      [],
+      [professionalRecord('orphan', '2026-09-15', { professionalName: null })],
+    );
+
+    expect(merged[0].educatorName).toBeNull();
   });
 });

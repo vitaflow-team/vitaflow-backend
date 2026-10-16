@@ -8,6 +8,7 @@
  *
  * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
  */
+import { AcademiaActivityService } from '@/academia/activity/academiaActivity.service';
 import { AuthGuard } from '@/auth/auth.guard';
 import { PhysicalEducatorGuard } from '@/common/guards/physicalEducator.guard';
 import { ProfessionalGuard } from '@/common/guards/professional.guard';
@@ -19,11 +20,12 @@ import { StudentsController } from '@/educator-students/students/students.contro
 import { StudentsService } from '@/educator-students/students/students.service';
 import { MailService } from '@/mail/mail.service';
 import { NotificationsService } from '@/notifications/notifications.service';
+import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { FixedTimesRepository } from '@/repositories/fixed-times/fixedTimes.repository';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { SchedulingRepository } from '@/repositories/scheduling/scheduling.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { BookingController } from '@/scheduling/booking.controller';
@@ -93,7 +95,9 @@ describe('Fixed sessions in the Agenda (integration)', () => {
         SchedulingRepository,
         FixedTimesRepository,
         EducatorWorkoutsRepository,
-        PhysicalAssessmentsRepository,
+        FormRecordsRepository,
+        EmploymentRepository,
+        AcademiaActivityService,
         NotificationsRepository,
         NotificationsService,
         FixedTimeNotificationsService,

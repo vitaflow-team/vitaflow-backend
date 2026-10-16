@@ -5,14 +5,14 @@ import {
   NextSession,
 } from '@/scheduling/fixed-times/fixedSessions.service';
 import { resolveLetter } from '@/scheduling/fixed-times/fixedTime.util';
-import { toIsoDay } from '@/educator-students/assessments/assessmentFormat.util';
+import { toFormRecordResponse } from '@/clinical-records/records/formRecords.service';
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { sessionLabel } from '@/educator-students/workouts/workoutTree.util';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { Injectable } from '@nestjs/common';
-import { Client, ProductType } from '@prisma/client';
+import { Client, ProductType, TemplatePurpose } from '@prisma/client';
 import {
   EducatorMirrorEntity,
   MirrorAssessmentEntity,
@@ -29,7 +29,7 @@ export class ProfessionalMirrorService {
   constructor(
     private readonly clients: ClientsRepository,
     private readonly professionalDiscovery: ProfessionalDiscoveryService,
-    private readonly assessments: PhysicalAssessmentsRepository,
+    private readonly formRecords: FormRecordsRepository,
     private readonly workouts: EducatorWorkoutsRepository,
     private readonly fixedSessions: FixedSessionsService,
     private readonly clock: Clock,
@@ -119,22 +119,31 @@ export class ProfessionalMirrorService {
   }
 
   // The educator's latest assessments of this student, newest first, or null
-  // when there are none: an honest empty state, never a placeholder.
+  // when there are none: an honest empty state, never a placeholder. Reads
+  // the generic clinical-records engine now (PhysicalAssessment is gone) —
+  // each entry carries its own frozen field values and derived BMI.
   private async latestAssessments(
     clientId: string,
   ): Promise<MirrorAssessmentEntity[] | null> {
-    const latest = await this.assessments.findLatestByClient(
+    const latest = await this.formRecords.findLatestByClient(
       clientId,
+      TemplatePurpose.ASSESSMENT,
       MIRROR_ASSESSMENTS,
     );
     if (latest.length === 0) return null;
 
-    return latest.map((assessment) => ({
-      id: assessment.id,
-      assessedOn: toIsoDay(assessment.assessedOn),
-      weightKg: assessment.weightKg,
-      bodyFatPercent: assessment.bodyFatPercent,
-    }));
+    return latest.map((record) => {
+      const response = toFormRecordResponse(record);
+      return {
+        id: response.id,
+        recordedAt: response.recordedAt,
+        values: response.values.map((value) => ({
+          fieldLabel: value.fieldLabel,
+          value: value.value,
+        })),
+        bmi: response.bmi,
+      };
+    });
   }
 
   // A PENDING-only ConnectionRequest never reaches here: only a real Client

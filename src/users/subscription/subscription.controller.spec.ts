@@ -1,4 +1,5 @@
 import { AuthGuard } from '@/auth/auth.guard';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import { academiaProvisioningServiceMock } from 'mock/academiaProvisioning.service.mock';
@@ -23,6 +24,10 @@ describe('SubscriptionController Tests', () => {
         stripeVerificationMock,
         notificationsServiceMock,
         academiaProvisioningServiceMock,
+        {
+          provide: TemplatesService,
+          useValue: { ensureStarterTemplates: jest.fn() },
+        },
         SubscriptionService,
       ],
     }).compile();

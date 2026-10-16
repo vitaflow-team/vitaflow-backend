@@ -7,16 +7,18 @@
  *
  * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
  */
+import { AcademiaActivityService } from '@/academia/activity/academiaActivity.service';
 import { AuthGuard } from '@/auth/auth.guard';
 import { PhysicalEducatorGuard } from '@/common/guards/physicalEducator.guard';
 import { createValidationPipe } from '@/config/validationPipe';
 import { PrismaService } from '@/database/prisma.service';
+import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { AccountLookupThrottlerGuard } from '@/educator-students/students/accountLookupThrottler.guard';
 import { StudentsController } from '@/educator-students/students/students.controller';
 import { StudentsService } from '@/educator-students/students/students.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -80,8 +82,10 @@ describe('Educator students integration', () => {
         PrismaService,
         UserRepository,
         ClientsRepository,
-        PhysicalAssessmentsRepository,
+        FormRecordsRepository,
         EducatorWorkoutsRepository,
+        EmploymentRepository,
+        AcademiaActivityService,
         StudentsService,
         AuthGuard,
         PhysicalEducatorGuard,
@@ -121,6 +125,9 @@ describe('Educator students integration', () => {
     ].filter(Boolean);
     const ids = users.map((u) => u.id);
     await prisma.featureConsent.deleteMany({ where: { userId: { in: ids } } });
+    await prisma.assessmentTemplate.deleteMany({
+      where: { professionalId: { in: ids } },
+    });
     await prisma.users.deleteMany({ where: { id: { in: ids } } });
     await prisma.product.deleteMany({ where: { groupId } });
     await prisma.productGroup.deleteMany({ where: { id: groupId } });
@@ -456,55 +463,78 @@ describe('Educator students integration', () => {
     expect(other.status).toBe(200);
   });
 
-  it('IT-019 deleting a student removes its assessments, and the consent enum value exists', async () => {
+  it('IT-019 deleting a student removes its clinical records, and the consent enum value exists', async () => {
     const a = await as(educatorA);
     const created = await a.post(
       '/educator/students',
       register(`${RUN_TAG}-cascade@integration.test`),
     );
     const clientId = created.body.id as string;
-    await prisma.physicalAssessment.createMany({
-      data: [
-        {
-          clientId,
-          assessedOn: new Date('2026-08-18'),
-          weightKg: 79,
-          heightCm: 179,
+
+    const template = await prisma.assessmentTemplate.create({
+      data: {
+        professionalId: educatorA.id,
+        name: `${RUN_TAG} avaliação`,
+        purpose: 'ASSESSMENT',
+        fields: {
+          create: [
+            {
+              position: 0,
+              label: 'Peso (kg)',
+              fieldType: 'NUMBER',
+              weightRole: true,
+            },
+          ],
         },
-        {
-          clientId,
-          assessedOn: new Date('2026-09-15'),
-          weightKg: 78.2,
-          heightCm: 179,
-        },
-      ],
+      },
     });
+    for (const [day, weightKg] of [
+      ['2026-08-18', 79],
+      ['2026-09-15', 78.2],
+    ] as const) {
+      await prisma.formRecord.create({
+        data: {
+          clientId,
+          templateId: template.id,
+          recordedByUserId: educatorA.id,
+          recordedAt: new Date(`${day}T00:00:00.000Z`),
+          values: {
+            create: [
+              {
+                position: 0,
+                fieldLabel: 'Peso (kg)',
+                fieldType: 'NUMBER',
+                weightRole: true,
+                numberValue: weightKg,
+              },
+            ],
+          },
+        },
+      });
+    }
 
     const detail = await a.get(`/educator/students/${clientId}`);
     expect(detail.body.overview.latest).toMatchObject({
-      assessedOn: '2026-09-15',
-      weightKg: 78.2,
+      recordedAt: '2026-09-15T00:00:00.000Z',
+      values: [
+        expect.objectContaining({ fieldLabel: 'Peso (kg)', value: 78.2 }),
+      ],
     });
-    expect(detail.body.overview.variation).toEqual({
-      weightKg: -0.8,
-      bodyFatPoints: null,
-    });
+    expect(detail.body.overview.variation).toEqual({ weightKg: -0.8 });
     const listed = await a.get('/educator/students');
     expect(listed.body.items[0].lastAssessedOn).toBe('2026-09-15');
 
     expect((await a.del(`/educator/students/${clientId}`)).status).toBe(204);
-    expect(await prisma.physicalAssessment.count({ where: { clientId } })).toBe(
-      0,
-    );
+    expect(await prisma.formRecord.count({ where: { clientId } })).toBe(0);
     expect((await a.del(`/educator/students/${clientId}`)).status).toBe(404);
 
     const consent = await prisma.featureConsent.create({
       data: {
         userId: educatorA.id,
-        feature: 'PHYSICAL_ASSESSMENT_RECORDING',
+        feature: 'HEALTH_RECORD_FILLING',
       },
     });
-    expect(consent.feature).toBe('PHYSICAL_ASSESSMENT_RECORDING');
+    expect(consent.feature).toBe('HEALTH_RECORD_FILLING');
   });
 
   it('refuses other professions and anonymous callers on every route', async () => {

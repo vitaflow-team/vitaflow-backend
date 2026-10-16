@@ -1,24 +1,22 @@
 import type { NextSession } from '@/scheduling/fixed-times/fixedSessions.service';
 import type { NextSessionDTO } from './dto/studentResponse.Dto';
 import { AcademiaActivityService } from '@/academia/activity/academiaActivity.service';
+import { toFormRecordResponse } from '@/clinical-records/records/formRecords.service';
 import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import { Clock } from '@/scheduling/clock.service';
 import { CodedError } from '@/common/errors/codedError';
+import { toIsoDay } from '@/common/dateFormat.util';
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import {
   ClientsRepository,
   ClientWithLatestAssessment,
 } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Injectable, Logger } from '@nestjs/common';
-import { Client, Prisma } from '@prisma/client';
-import {
-  toAssessmentResponse,
-  toIsoDay,
-} from '../assessments/assessmentFormat.util';
-import { computeVariation } from '../assessments/assessmentVariation.util';
+import { Client, Prisma, TemplatePurpose } from '@prisma/client';
+import { computeWeightVariation } from './studentWeightVariation.util';
 import { CreateStudentDTO } from './dto/createStudent.Dto';
 import { ListStudentsQueryDTO } from './dto/listStudentsQuery.Dto';
 import {
@@ -64,7 +62,7 @@ export class StudentsService {
   constructor(
     private readonly clients: ClientsRepository,
     private readonly users: UserRepository,
-    private readonly assessments: PhysicalAssessmentsRepository,
+    private readonly formRecords: FormRecordsRepository,
     private readonly workouts: EducatorWorkoutsRepository,
     private readonly fixedSessions: FixedSessionsService,
     private readonly clock: Clock,
@@ -419,9 +417,13 @@ export class StudentsService {
     student: Client,
   ): Promise<StudentOverviewDTO> {
     const clientId = student.id;
-    const [latest, all, active, next] = await Promise.all([
-      this.assessments.findLatestByClient(clientId, 1),
-      this.assessments.findAllForVariation(clientId),
+    const [latest, history, active, next] = await Promise.all([
+      this.formRecords.findLatestByClient(
+        clientId,
+        TemplatePurpose.ASSESSMENT,
+        1,
+      ),
+      this.formRecords.findHistory(clientId, TemplatePurpose.ASSESSMENT),
       this.workouts.findActiveByClient(clientId),
       educatorId
         ? this.fixedSessions.nextForRecords(
@@ -434,8 +436,15 @@ export class StudentsService {
 
     return {
       nextSession: toNextSessionDTO(next.get(clientId) ?? null),
-      latest: latest[0] ? toAssessmentResponse(latest[0]) : null,
-      variation: computeVariation(all),
+      latest: latest[0] ? toFormRecordResponse(latest[0]) : null,
+      variation: computeWeightVariation(
+        history.map((record) => ({
+          recordedAt: record.recordedAt,
+          weightKg:
+            record.values.find((v) => v.weightRole && v.numberValue !== null)
+              ?.numberValue ?? null,
+        })),
+      ),
       currentWorkout: active
         ? {
             id: active.id,
@@ -457,8 +466,8 @@ export class StudentsService {
       name: row.name,
       email: row.email,
       hasAccount: row.userId !== null,
-      lastAssessedOn: row.assessments[0]
-        ? toIsoDay(row.assessments[0].assessedOn)
+      lastAssessedOn: row.formRecords[0]
+        ? toIsoDay(row.formRecords[0].recordedAt)
         : null,
     };
   }

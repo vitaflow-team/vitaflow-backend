@@ -1,4 +1,5 @@
 import { AcademiaProvisioningService } from '@/academia/academia.service';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -36,6 +37,7 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
   let stripeVerification: { verifySubscriptionWithStripe: jest.Mock };
   let notifications: { create: jest.Mock };
   let academiaProvisioning: { provisionForOwner: jest.Mock };
+  let templates: { ensureStarterTemplates: jest.Mock };
 
   /** The `data` object the service handed to `updateSubscription`. */
   const updateData = () =>
@@ -70,6 +72,9 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
     academiaProvisioning = {
       provisionForOwner: jest.fn().mockResolvedValue(null),
     };
+    templates = {
+      ensureStarterTemplates: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -82,6 +87,7 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
           provide: AcademiaProvisioningService,
           useValue: academiaProvisioning,
         },
+        { provide: TemplatesService, useValue: templates },
       ],
     }).compile();
 
@@ -670,6 +676,47 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
         service.syncFromWebhook({ ...newCustomerDto, userId: undefined }),
       ).resolves.toBeNull();
       expect(users.updateSubscription).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('starter-template seeding on activation (nutritionist-module)', () => {
+    it('seeds starter templates when the claimed product is NUTRITIONIST or PHYSICAL_EDUCATOR', async () => {
+      products.getProductById.mockResolvedValue({
+        id: 'product-1',
+        name: 'Nutricionista Premium',
+        stripeId: 'price_premium',
+        type: 'NUTRITIONIST',
+      });
+
+      await service.updateForUser('user-1', {
+        productId: 'product-1',
+        stripeCustomerId: 'cus_123',
+        stripeSubscriptionId: 'sub_123',
+        subscriptionStatus: 'active',
+      });
+
+      expect(templates.ensureStarterTemplates).toHaveBeenCalledWith(
+        { professionalId: 'user-1' },
+        'NUTRITIONIST',
+      );
+    });
+
+    it('does not seed for a USER or ACADEMIA product change', async () => {
+      products.getProductById.mockResolvedValue({
+        id: 'product-1',
+        name: 'Academia',
+        stripeId: 'price_premium',
+        type: 'ACADEMIA',
+      });
+
+      await service.updateForUser('user-1', {
+        productId: 'product-1',
+        stripeCustomerId: 'cus_123',
+        stripeSubscriptionId: 'sub_123',
+        subscriptionStatus: 'active',
+      });
+
+      expect(templates.ensureStarterTemplates).not.toHaveBeenCalled();
     });
   });
 });

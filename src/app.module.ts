@@ -6,6 +6,7 @@ import { AcademiaModule } from './academia/academia.module';
 import { AuthModule } from './auth/auth.module';
 import { BackofficeModule } from './backoffice/backoffice.module';
 import { ClientsModule } from './clients/clients.module';
+import { ClinicalRecordsModule } from './clinical-records/clinicalRecords.module';
 import { ApiKeyGuard } from './common/guards/apiKey.guard';
 import { ViewAsWriteBlockGuard } from './common/guards/viewAsWriteBlock.guard';
 import { PrismaService } from './database/prisma.service';
@@ -53,6 +54,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     EducatorStudentsModule,
     AcademiaModule,
     BackofficeModule,
+    ClinicalRecordsModule,
   ],
   controllers: [],
   providers: [

@@ -1,5 +1,5 @@
 import { AuthGuard } from '@/auth/auth.guard';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
@@ -24,8 +24,10 @@ describe('ProgressController', () => {
         ProgressService,
         MeasurementRecordsRepositoryMock,
         {
-          provide: PhysicalAssessmentsRepository,
-          useValue: { findRecentByLinkedUser: jest.fn().mockResolvedValue([]) },
+          provide: FormRecordsRepository,
+          useValue: {
+            findWeightPointsByLinkedUser: jest.fn().mockResolvedValue([]),
+          },
         },
       ],
     })
