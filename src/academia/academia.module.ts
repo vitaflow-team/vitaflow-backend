@@ -1,5 +1,8 @@
 import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
+import { MailModule } from '@/mail/mail.module';
+import { NotificationsModule } from '@/notifications/notifications.module';
+import { ReceptionistAuthGuard } from '@/common/guards/receptionistAuth.guard';
 import { EducatorStudentsModule } from '@/educator-students/educatorStudents.module';
 import { MailModule } from '@/mail/mail.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
@@ -42,6 +45,9 @@ import {
 import { AcademiaStaffAuthService } from './staff/academiaStaffAuth.service';
 import { AcademiaStudentsController } from './students/academiaStudents.controller';
 import { AcademiaStudentsService } from './students/academiaStudents.service';
+
+@Module({
+  imports: [AuthModule, MailModule, NotificationsModule],
 import { CheckInController } from './checkin/checkin.controller';
 import { CheckInService } from './checkin/checkin.service';
 import { ReceptionistCheckInController } from './checkin/receptionistCheckin.controller';
@@ -99,6 +105,7 @@ import { TurmasService } from './turmas/turmas.service';
     AcademiaAccessPlanRepository,
     AcademiaAccessPlanService,
     PainelService,
+    ReceptionistAuthGuard,
     ProfessoresRepository,
     ProfessoresService,
     ReceptionistAuthGuard,

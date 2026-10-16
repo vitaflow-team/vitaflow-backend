@@ -4,6 +4,7 @@ import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { CodedError } from '@/common/errors/codedError';
 import { Injectable } from '@nestjs/common';
+import { Client } from '@prisma/client';
 import {
   buildAcademiaStudentsList,
   buildNextSessionMap,
@@ -22,6 +23,10 @@ export class AcademiaStudentsService {
   constructor(
     private readonly clients: ClientsRepository,
     private readonly employments: EmploymentRepository,
+  ) {}
+
+  async list(academiaId: string): Promise<Client[]> {
+    return await this.clients.findAllByAcademiaId(academiaId);
     private readonly fixedSessions: FixedSessionsService,
     private readonly clock: Clock,
   ) {}

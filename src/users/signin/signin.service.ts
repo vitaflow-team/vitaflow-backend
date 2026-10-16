@@ -38,6 +38,10 @@ export class SignInService {
     const attempt: SignInAttempt = { failureReason: 'internal_error' };
 
     try {
+      const user = await this.user.findByEmail(email);
+      if (user) {
+        const authenticated = await this.authenticateUser(
+          user,
       const candidates = await this.user.findAllByEmail(email);
       if (candidates.length > 0) {
         const authenticated = await this.authenticateUser(
@@ -79,6 +83,15 @@ export class SignInService {
 
   // Records on `attempt` why and for whom it failed, so the caller's failure
   // audit line carries the same reason and user id as before the split.
+  private async authenticateUser(
+    user: UserWithProduct,
+    password: string,
+    attempt: SignInAttempt,
+  ): Promise<UserWithProduct> {
+    attempt.userId = user.id;
+
+    const validPassword = await this.hash.compareHash(password, user.password);
+    if (!validPassword) {
   //
   // `candidates` holds every Users row at this email (platform-admin-access
   // ADR-005 lets a staff row and a customer row coexist on one email), in
@@ -119,6 +132,30 @@ export class SignInService {
       }
     }
     return undefined;
+  }
+
+  private async authenticateStaff(
+    staff: AcademiaStaffMember | null,
+    password: string,
+    attempt: SignInAttempt,
+  ): Promise<AcademiaStaffMember> {
+    attempt.userId = staff?.id;
+
+    const validPassword = await this.hash.compareHash(
+      password,
+      staff?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+    if (!staff || !staff.passwordHash || !validPassword) {
+      attempt.failureReason = 'invalid_credentials';
+      throw new AppError(UNAUTHORIZED_USER, 401);
+    }
+
+    if (!staff.active) {
+      attempt.failureReason = 'inactive_account';
+      throw new AppError(ACCOUNT_INACTIVE, 401);
+    }
+
+    return staff;
   }
 
   private async authenticateStaff(

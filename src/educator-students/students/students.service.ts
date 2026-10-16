@@ -164,6 +164,39 @@ export class StudentsService {
     );
   }
 
+  private async resolveAcademiaId(
+    educatorId: string,
+    requested: string | undefined,
+  ): Promise<string> {
+    const active = await this.employments.listActiveByEducator(educatorId);
+    if (active.length === 0) {
+      throw new CodedError(NO_ACTIVE_EMPLOYMENT, 400, 'no_active_employment');
+    }
+
+    if (!requested) {
+      if (active.length > 1) {
+        throw new CodedError(ACADEMIA_AMBIGUOUS, 400, 'academia_ambiguous');
+      }
+      return active[0].academiaId;
+    }
+
+    if (!active.some((employment) => employment.academiaId === requested)) {
+      throw new CodedError(NOT_EMPLOYED_HERE, 400, 'not_employed_here');
+    }
+    return requested;
+  }
+
+  private async assertNotRegisteredForAcademia(
+    email: string,
+    academiaId: string,
+  ): Promise<void> {
+    const existing = await this.clients.findByEmailAndAcademiaId(
+      email,
+      academiaId,
+    );
+    );
+  }
+
   async createForAcademia(
     academiaId: string,
     professionalId: string | null,
@@ -415,6 +448,7 @@ export class StudentsService {
   }
 
   private async buildOverview(
+    educatorId: string,
     educatorId: string | null,
     student: Client,
   ): Promise<StudentOverviewDTO> {
@@ -423,6 +457,11 @@ export class StudentsService {
       this.assessments.findLatestByClient(clientId, 1),
       this.assessments.findAllForVariation(clientId),
       this.workouts.findActiveByClient(clientId),
+      this.fixedSessions.nextForRecords(
+        educatorId,
+        [{ clientId, userId: student.userId }],
+        this.clock.now(),
+      ),
       educatorId
         ? this.fixedSessions.nextForRecords(
             educatorId,

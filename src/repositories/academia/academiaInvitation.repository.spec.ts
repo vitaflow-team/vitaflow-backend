@@ -66,6 +66,24 @@ describe('AcademiaInvitationRepository', () => {
     expect(count).toBe(0);
   });
 
+  it('listSentByAcademia returns every invitation for the academia with the academia relation included', async () => {
+    const prisma = makePrisma();
+    const repository = new AcademiaInvitationRepository(
+      prisma as unknown as PrismaService,
+    );
+    const rows = [{ id: 'invite-1' }];
+    prisma.academiaInvitation.findMany.mockResolvedValue(rows);
+
+    const result = await repository.listSentByAcademia('academia-1');
+
+    expect(prisma.academiaInvitation.findMany).toHaveBeenCalledWith({
+      where: { academiaId: 'academia-1' },
+      include: { academia: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(result).toBe(rows);
+  });
+
   it('cancelIfPending only matches a PENDING row owned by this academia', async () => {
     const prisma = makePrisma();
     const repository = new AcademiaInvitationRepository(

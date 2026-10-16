@@ -77,6 +77,7 @@ describe('StudentsService', () => {
     findAllForVariation: jest.fn(),
   };
   const workouts = { findActiveByClient: jest.fn() };
+  const employments = { listActiveByEducator: jest.fn() };
   const employments = {
     listActiveByEducator: jest.fn(),
     findActive: jest.fn(),

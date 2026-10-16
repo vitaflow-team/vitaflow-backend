@@ -56,6 +56,12 @@ export class AcademiaEmploymentController {
     );
   }
 
+  @ApiOperation({ summary: 'List sent invitations with status' })
+  @Get('invitations')
+  async listInvitations(@Request() req: AcademiaOwnerRequest) {
+    return await this.invitations.listSentByAcademia(req.user.academiaId);
+  }
+
   @ApiOperation({ summary: 'Cancel a pending invitation this academia sent' })
   @ApiResponse({ status: 204, description: 'Sem corpo de resposta.' })
   @ApiResponse({

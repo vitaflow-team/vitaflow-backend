@@ -62,6 +62,9 @@ export class ClientsRepository {
     });
   }
 
+  async findAllByAcademiaId(academiaId: string): Promise<Client[]> {
+    return await this.prisma.client.findMany({
+      where: { academiaId },
   async findAllByAcademiaId(academiaId: string): Promise<ClientWithEducator[]> {
     return await this.prisma.client.findMany({
       where: { academiaId },
