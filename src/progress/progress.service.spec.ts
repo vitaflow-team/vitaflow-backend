@@ -1,4 +1,4 @@
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
 import { AppError } from '@/utils/app.erro';
 import { MeasurementRecord } from '@prisma/client';
@@ -37,16 +37,16 @@ describe('ProgressService', () => {
     update: jest.fn(),
     delete: jest.fn(),
   };
-  const assessmentsRepository = { findRecentByLinkedUser: jest.fn() };
+  const formRecordsRepository = { findWeightPointsByLinkedUser: jest.fn() };
   let service: ProgressService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    assessmentsRepository.findRecentByLinkedUser.mockResolvedValue([]);
+    formRecordsRepository.findWeightPointsByLinkedUser.mockResolvedValue([]);
     jest.useFakeTimers().setSystemTime(FIXED_NOW);
     service = new ProgressService(
       repository as unknown as MeasurementRecordsRepository,
-      assessmentsRepository as unknown as PhysicalAssessmentsRepository,
+      formRecordsRepository as unknown as FormRecordsRepository,
     );
   });
 

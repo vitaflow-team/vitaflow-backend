@@ -69,6 +69,7 @@ function makeProfile(
     specialty: 'Nutrição esportiva',
     priceFrom: null,
     attendsOnline: false,
+    registrationNumber: null,
     updatedAt: new Date('2026-10-01T09:00:00.000Z'),
     ...overrides,
   };
@@ -239,6 +240,53 @@ describe('ProfessionalDiscoveryService', () => {
 
       await expect(service.getProfile('missing')).rejects.toThrow(AppError);
     });
+
+    it('UT-051 labels a NUTRITIONIST registrationNumber as CRN', async () => {
+      repoFindProfessionalById.mockResolvedValue(
+        makeProfessional({
+          product: makeProduct({ type: 'NUTRITIONIST' }),
+          professionalProfile: makeProfile({ registrationNumber: '12345/P' }),
+        }),
+      );
+
+      const result = await service.getProfile('professional-1');
+
+      expect(result).toMatchObject({
+        registrationNumber: '12345/P',
+        registrationLabel: 'CRN',
+      });
+    });
+
+    it('UT-052 labels a PHYSICAL_EDUCATOR registrationNumber as CREF', async () => {
+      repoFindProfessionalById.mockResolvedValue(
+        makeProfessional({
+          product: makeProduct({ type: 'PHYSICAL_EDUCATOR' }),
+          professionalProfile: makeProfile({
+            registrationNumber: '67890-G/SP',
+          }),
+        }),
+      );
+
+      const result = await service.getProfile('professional-1');
+
+      expect(result).toMatchObject({
+        registrationNumber: '67890-G/SP',
+        registrationLabel: 'CREF',
+      });
+    });
+
+    it('UT-053 omits registrationNumber/registrationLabel entirely when never set, no error', async () => {
+      repoFindProfessionalById.mockResolvedValue(
+        makeProfessional({
+          professionalProfile: makeProfile({ registrationNumber: null }),
+        }),
+      );
+
+      const result = await service.getProfile('professional-1');
+
+      expect(result).not.toHaveProperty('registrationNumber');
+      expect(result).not.toHaveProperty('registrationLabel');
+    });
   });
 
   describe('updateOwnProfile', () => {
@@ -260,6 +308,29 @@ describe('ProfessionalDiscoveryService', () => {
         }),
       ).rejects.toThrow(AppError);
       expect(repoUpsertProfile).not.toHaveBeenCalled();
+    });
+
+    it('persists registrationNumber and returns it labeled', async () => {
+      repoUpsertProfile.mockResolvedValue(
+        makeProfile({ registrationNumber: '12345/P' }),
+      );
+      repoFindProfessionalById.mockResolvedValue(
+        makeProfessional({
+          professionalProfile: makeProfile({ registrationNumber: '12345/P' }),
+        }),
+      );
+
+      const result = await service.updateOwnProfile('professional-1', {
+        registrationNumber: '12345/P',
+      });
+
+      expect(repoUpsertProfile).toHaveBeenCalledWith('professional-1', {
+        registrationNumber: '12345/P',
+      });
+      expect(result).toMatchObject({
+        registrationNumber: '12345/P',
+        registrationLabel: 'CRN',
+      });
     });
   });
 

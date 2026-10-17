@@ -1,6 +1,6 @@
 import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Module } from '@nestjs/common';
@@ -14,7 +14,7 @@ import { ProgressService } from './progress.service';
     PrismaService,
     UserRepository,
     MeasurementRecordsRepository,
-    PhysicalAssessmentsRepository,
+    FormRecordsRepository,
     ProgressService,
   ],
 })

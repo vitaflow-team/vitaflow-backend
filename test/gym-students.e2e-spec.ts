@@ -9,7 +9,7 @@ import { StudentsService } from '@/educator-students/students/students.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
 import { NotificationsService } from '@/notifications/notifications.service';
@@ -61,7 +61,7 @@ describe('Gym students integration', () => {
         UserRepository,
         ClientsRepository,
         EmploymentRepository,
-        PhysicalAssessmentsRepository,
+        FormRecordsRepository,
         EducatorWorkoutsRepository,
         NotificationsRepository,
         NotificationsService,
@@ -98,6 +98,9 @@ describe('Gym students integration', () => {
     });
     await prisma.academia.deleteMany({
       where: { id: { in: [academiaA.id, academiaB.id] } },
+    });
+    await prisma.notification.deleteMany({
+      where: { userId: { in: [ownerA.id, ownerB.id, educatorShared.id] } },
     });
     await prisma.users.deleteMany({
       where: { id: { in: [ownerA.id, ownerB.id, educatorShared.id] } },

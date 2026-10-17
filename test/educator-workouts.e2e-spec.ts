@@ -10,10 +10,12 @@
  *
  * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
  */
+import { AcademiaActivityService } from '@/academia/activity/academiaActivity.service';
 import { AuthGuard } from '@/auth/auth.guard';
 import { PhysicalEducatorGuard } from '@/common/guards/physicalEducator.guard';
 import { createValidationPipe } from '@/config/validationPipe';
 import { PrismaService } from '@/database/prisma.service';
+import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { AccountLookupThrottlerGuard } from '@/educator-students/students/accountLookupThrottler.guard';
 import { StudentsController } from '@/educator-students/students/students.controller';
 import { StudentsService } from '@/educator-students/students/students.service';
@@ -33,7 +35,7 @@ import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/edu
 import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
 import { FitnessProfileRepository } from '@/repositories/fitness-profile/fitnessProfile.repository';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -100,10 +102,12 @@ describe('Educator workouts integration', () => {
         PrismaService,
         UserRepository,
         ClientsRepository,
-        PhysicalAssessmentsRepository,
+        FormRecordsRepository,
         EducatorWorkoutsRepository,
         ExercisesRepository,
         FitnessProfileRepository,
+        EmploymentRepository,
+        AcademiaActivityService,
         NotificationsRepository,
         NotificationsService,
         WorkoutNotificationsService,

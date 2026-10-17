@@ -1,4 +1,5 @@
 import { AcademiaProvisioningService } from '@/academia/academia.service';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -6,7 +7,7 @@ import { AppError } from '@/utils/app.erro';
 import { StripeVerification } from '@/utils/stripeVerification';
 import { VerifiedSubscription } from '@/utils/verifiedSubscription';
 import { Injectable, Logger } from '@nestjs/common';
-import { Product, Users } from '@prisma/client';
+import { Product, ProductType, Users } from '@prisma/client';
 import { SyncSubscriptionDTO } from './dto/syncSubscription.Dto';
 import { SubscriptionResponseDTO } from './dto/subscriptionResponse.Dto';
 import { SubscriptionStateResponseDTO } from './dto/subscriptionStateResponse.Dto';
@@ -33,7 +34,29 @@ export class SubscriptionService {
     private readonly stripeVerification: StripeVerification,
     private readonly notifications: NotificationsService,
     private readonly academiaProvisioning: AcademiaProvisioningService,
+    private readonly templates: TemplatesService,
   ) {}
+
+  // Starter templates (PRD ADR-004) for every new nutritionist or physical
+  // educator — the only way an account becomes one of these types is a
+  // product change through this service, so this is "account activation"
+  // for the clinical-records engine's purposes. Idempotent: a no-op once the
+  // professional already has templates of both purposes.
+  private async ensureStarterTemplatesForProfessional(
+    userId: string,
+    type: ProductType | undefined,
+  ): Promise<void> {
+    if (
+      type !== ProductType.NUTRITIONIST &&
+      type !== ProductType.PHYSICAL_EDUCATOR
+    ) {
+      return;
+    }
+    await this.templates.ensureStarterTemplates(
+      { professionalId: userId },
+      type,
+    );
+  }
 
   async getForUser(userId: string): Promise<SubscriptionStateResponseDTO> {
     const user = await this.users.findUnique({ id: userId });
@@ -105,6 +128,7 @@ export class SubscriptionService {
     });
 
     await this.academiaProvisioning.provisionForOwner(userId);
+    await this.ensureStarterTemplatesForProfessional(userId, product.type);
 
     return this.toResponse(user);
   }
@@ -180,6 +204,10 @@ export class SubscriptionService {
     await this.notifyBillingEvent(user.id, user.subscriptionStatus, newStatus);
 
     await this.academiaProvisioning.provisionForOwner(user.id);
+    await this.ensureStarterTemplatesForProfessional(
+      user.id,
+      updated.product?.type,
+    );
 
     return this.toResponse(updated);
   }

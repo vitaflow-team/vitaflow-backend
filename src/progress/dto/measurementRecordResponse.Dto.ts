@@ -9,8 +9,8 @@ export class MeasurementRecordResponseDTO {
   @ApiProperty({ example: 70.5 })
   weightKg: number;
 
-  @ApiProperty({ example: 175 })
-  heightCm: number;
+  @ApiProperty({ example: 175, nullable: true, type: Number })
+  heightCm: number | null;
 
   @ApiProperty({ example: 80, nullable: true, type: Number })
   waistCm: number | null;
@@ -21,11 +21,11 @@ export class MeasurementRecordResponseDTO {
   @ApiProperty({ example: '2026-01-15T10:00:00.000Z' })
   recordedAt: string;
 
-  @ApiProperty({ example: 23 })
-  bmi: number;
+  @ApiProperty({ example: 23, nullable: true, type: Number })
+  bmi: number | null;
 
-  @ApiProperty({ example: 'PESO_NORMAL' })
-  bmiClassification: BmiClassification;
+  @ApiProperty({ example: 'PESO_NORMAL', nullable: true, type: String })
+  bmiClassification: BmiClassification | null;
 
   @ApiProperty({
     enum: ['SELF', 'EDUCATOR'],

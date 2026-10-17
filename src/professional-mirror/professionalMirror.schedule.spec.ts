@@ -2,7 +2,7 @@ import { Clock } from '@/scheduling/clock.service';
 import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { SessionType } from '@prisma/client';
 import { ProfessionalMirrorService } from './professionalMirror.service';
@@ -47,12 +47,16 @@ describe('ProfessionalMirrorService schedule (UT-080 to UT-082)', () => {
     service = new ProfessionalMirrorService(
       clients as unknown as ClientsRepository,
       discovery as unknown as ProfessionalDiscoveryService,
-      assessments as unknown as PhysicalAssessmentsRepository,
+      assessments as unknown as FormRecordsRepository,
       workouts as unknown as EducatorWorkoutsRepository,
       {
         nextForRecords: jest.fn(() => next),
         todaySessionId,
       } as unknown as FixedSessionsService,
+      {
+        listVersions: jest.fn().mockResolvedValue([]),
+        getVersion: jest.fn(),
+      } as any,
       { now: () => NOW } as Clock,
     );
   });

@@ -36,9 +36,10 @@ describe('ClientsRepository (educator student queries)', () => {
     expect(client.findMany).toHaveBeenCalledWith({
       where: { professionalId: 'educator-1' },
       include: {
-        assessments: {
-          select: { assessedOn: true },
-          orderBy: { assessedOn: 'desc' },
+        formRecords: {
+          where: { template: { purpose: 'ASSESSMENT' } },
+          select: { recordedAt: true },
+          orderBy: { recordedAt: 'desc' },
           take: 1,
         },
       },

@@ -1,9 +1,10 @@
 import { Clock } from '@/scheduling/clock.service';
 import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
+import { MealPlansService } from '@/meal-plans/mealPlans.service';
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Client } from '@prisma/client';
 import { ProfessionalMirrorService } from './professionalMirror.service';
@@ -29,14 +30,20 @@ describe('ProfessionalMirrorService', () => {
   const clientsFindByUserAndProfessionalType = jest.fn();
   const professionalDiscoveryGetProfile = jest.fn();
   const findLatestByClient = jest.fn();
+  const findHistory = jest.fn();
   const findActiveByClient = jest.fn();
+  const listVersions = jest.fn();
+  const getVersion = jest.fn();
+  const getPublishedVersion = jest.fn();
 
   let service: ProfessionalMirrorService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     findLatestByClient.mockResolvedValue([]);
+    findHistory.mockResolvedValue([]);
     findActiveByClient.mockResolvedValue(null);
+    listVersions.mockResolvedValue([]);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfessionalMirrorService,
@@ -51,8 +58,8 @@ describe('ProfessionalMirrorService', () => {
           useValue: { findActiveByClient },
         },
         {
-          provide: PhysicalAssessmentsRepository,
-          useValue: { findLatestByClient },
+          provide: FormRecordsRepository,
+          useValue: { findLatestByClient, findHistory },
         },
         {
           provide: ProfessionalDiscoveryService,
@@ -64,6 +71,10 @@ describe('ProfessionalMirrorService', () => {
             nextForRecords: jest.fn().mockResolvedValue(new Map()),
             todaySessionId: jest.fn().mockResolvedValue(null),
           },
+        },
+        {
+          provide: MealPlansService,
+          useValue: { listVersions, getVersion, getPublishedVersion },
         },
         {
           provide: Clock,
@@ -157,6 +168,8 @@ describe('ProfessionalMirrorService', () => {
           name: 'Dra. Ana',
           specialty: 'Nutrição esportiva',
         },
+        anamnese: null,
+        assessmentHistory: [],
         mealPlan: null,
         nextConsultation: null,
         billingStatus: null,
@@ -204,6 +217,282 @@ describe('ProfessionalMirrorService', () => {
       const result = await service.getNutritionistMirror('user-1');
 
       expect(result).toEqual({ hasProfessional: false });
+    });
+
+    function formRecord(
+      id: string,
+      overrides: Partial<{
+        numberValue: number;
+        weightRole: boolean;
+        heightRole: boolean;
+      }> = {},
+    ) {
+      return {
+        id,
+        clientId: 'client-1',
+        templateId: 'template-1',
+        recordedByUserId: 'professional-1',
+        recordedAt: new Date('2026-09-15T00:00:00.000Z'),
+        createdAt: new Date('2026-09-15T00:00:00.000Z'),
+        updatedAt: new Date('2026-09-15T00:00:00.000Z'),
+        values: [
+          {
+            id: `${id}-v`,
+            recordId: id,
+            position: 0,
+            fieldLabel: 'Objetivo',
+            fieldType: 'SHORT_TEXT',
+            weightRole: false,
+            heightRole: false,
+            textValue: 'Emagrecimento',
+            numberValue: null,
+            boolValue: null,
+            selectedOption: null,
+          },
+        ],
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(makeClient());
+      professionalDiscoveryGetProfile.mockResolvedValue({
+        id: 'professional-1',
+        name: 'Dra. Ana',
+        type: 'NUTRITIONIST',
+        specialty: null,
+        priceFrom: null,
+        attendsOnline: false,
+        bio: null,
+      });
+    });
+
+    it('UT-054 includes the anamnese current values when one exists', async () => {
+      findLatestByClient.mockImplementation((_id: string, purpose: string) =>
+        Promise.resolve(purpose === 'ANAMNESE' ? [formRecord('a1')] : []),
+      );
+
+      const result = await service.getNutritionistMirror('user-1');
+
+      expect(findLatestByClient).toHaveBeenCalledWith(
+        'client-1',
+        'ANAMNESE',
+        1,
+      );
+      expect(result).toMatchObject({
+        anamnese: {
+          id: 'a1',
+          values: [{ fieldLabel: 'Objetivo', value: 'Emagrecimento' }],
+        },
+      });
+    });
+
+    it('UT-055 anamnese is null, not an error, when none exists yet', async () => {
+      findLatestByClient.mockResolvedValue([]);
+
+      const result = await service.getNutritionistMirror('user-1');
+
+      expect(result).toMatchObject({ anamnese: null });
+    });
+
+    it('UT-056 includes the full assessment history with derived BMI where applicable', async () => {
+      findHistory.mockResolvedValue([
+        formRecord('h1'),
+        {
+          ...formRecord('h2'),
+          values: [
+            {
+              id: 'h2-w',
+              recordId: 'h2',
+              position: 0,
+              fieldLabel: 'Peso (kg)',
+              fieldType: 'NUMBER',
+              weightRole: true,
+              heightRole: false,
+              textValue: null,
+              numberValue: 70,
+              boolValue: null,
+              selectedOption: null,
+            },
+            {
+              id: 'h2-h',
+              recordId: 'h2',
+              position: 1,
+              fieldLabel: 'Altura (cm)',
+              fieldType: 'NUMBER',
+              weightRole: false,
+              heightRole: true,
+              textValue: null,
+              numberValue: 175,
+              boolValue: null,
+              selectedOption: null,
+            },
+          ],
+        },
+      ]);
+
+      const result = await service.getNutritionistMirror('user-1');
+
+      expect(findHistory).toHaveBeenCalledWith('client-1', 'ASSESSMENT');
+      expect(result).toMatchObject({
+        assessmentHistory: [
+          { id: 'h1', bmi: null },
+          { id: 'h2', bmi: { value: 22.9, classification: 'PESO_NORMAL' } },
+        ],
+      });
+    });
+
+    it('UT-057 assessmentHistory is an empty array, not null and not an error, when none exist yet', async () => {
+      findHistory.mockResolvedValue([]);
+
+      const result = await service.getNutritionistMirror('user-1');
+
+      expect(result).toMatchObject({ assessmentHistory: [] });
+    });
+
+    it('UT-058 includes the current published meal plan and its version history', async () => {
+      listVersions.mockResolvedValue([
+        { version: 2, publishedAt: '2026-10-10T00:00:00.000Z' },
+        { version: 1, publishedAt: '2026-10-01T00:00:00.000Z' },
+      ]);
+      getVersion.mockResolvedValue({
+        id: 'plan-2',
+        days: [
+          {
+            weekday: 'MONDAY',
+            meals: [{ id: 'm1', label: 'Almoço', text: 'Arroz' }],
+          },
+        ],
+      });
+
+      const result = await service.getNutritionistMirror('user-1');
+
+      expect(getVersion).toHaveBeenCalledWith('client-1', 2);
+      expect(result).toMatchObject({
+        mealPlan: {
+          currentVersion: 2,
+          publishedAt: '2026-10-10T00:00:00.000Z',
+          days: [
+            {
+              weekday: 'MONDAY',
+              meals: [{ id: 'm1', label: 'Almoço', text: 'Arroz' }],
+            },
+          ],
+          versions: [
+            { version: 2, publishedAt: '2026-10-10T00:00:00.000Z' },
+            { version: 1, publishedAt: '2026-10-01T00:00:00.000Z' },
+          ],
+        },
+      });
+    });
+
+    it('UT-059 mealPlan is null when no version has been published yet', async () => {
+      listVersions.mockResolvedValue([]);
+
+      const result = await service.getNutritionistMirror('user-1');
+
+      expect(result).toMatchObject({ mealPlan: null });
+      expect(getVersion).not.toHaveBeenCalled();
+    });
+
+    it('UT-060 the professional-identity section includes registrationNumber/label when set', async () => {
+      professionalDiscoveryGetProfile.mockResolvedValue({
+        id: 'professional-1',
+        name: 'Dra. Ana',
+        type: 'NUTRITIONIST',
+        specialty: null,
+        priceFrom: null,
+        attendsOnline: false,
+        bio: null,
+        registrationNumber: '12345/P',
+        registrationLabel: 'CRN',
+      });
+
+      const result = await service.getNutritionistMirror('user-1');
+
+      expect(result).toMatchObject({
+        professional: {
+          registrationNumber: '12345/P',
+          registrationLabel: 'CRN',
+        },
+      });
+    });
+  });
+
+  describe('getNutritionistMealPlanVersion', () => {
+    it('returns a past version’s full content, fetched on demand (ADR-008)', async () => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(makeClient());
+      professionalDiscoveryGetProfile.mockResolvedValue({
+        id: 'professional-1',
+        name: 'Dra. Ana',
+        type: 'NUTRITIONIST',
+        specialty: null,
+        priceFrom: null,
+        attendsOnline: false,
+        bio: null,
+      });
+      getPublishedVersion.mockResolvedValue({
+        publishedAt: '2026-10-01T00:00:00.000Z',
+        days: [
+          {
+            id: 'day-1',
+            weekday: 'MONDAY',
+            meals: [{ id: 'm1', label: 'Almoço', text: 'Arroz' }],
+          },
+        ],
+      });
+
+      const result = await service.getNutritionistMealPlanVersion('user-1', 1);
+
+      expect(getPublishedVersion).toHaveBeenCalledWith('client-1', 1);
+      expect(result).toEqual({
+        version: 1,
+        publishedAt: '2026-10-01T00:00:00.000Z',
+        days: [
+          {
+            weekday: 'MONDAY',
+            meals: [{ id: 'm1', label: 'Almoço', text: 'Arroz' }],
+          },
+        ],
+      });
+    });
+
+    it('throws meal_plan_version_not_found (404) when there is no linked nutritionist, without ever querying a plan', async () => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(null);
+
+      await expect(
+        service.getNutritionistMealPlanVersion('user-1', 1),
+      ).rejects.toMatchObject({
+        code: 'meal_plan_version_not_found',
+        status: 404,
+      });
+      expect(getPublishedVersion).not.toHaveBeenCalled();
+    });
+
+    it('propagates meal_plan_version_not_found (404) when linked but that version does not exist', async () => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(makeClient());
+      professionalDiscoveryGetProfile.mockResolvedValue({
+        id: 'professional-1',
+        name: 'Dra. Ana',
+        type: 'NUTRITIONIST',
+        specialty: null,
+        priceFrom: null,
+        attendsOnline: false,
+        bio: null,
+      });
+      getPublishedVersion.mockRejectedValue(
+        Object.assign(new Error('not found'), {
+          status: 404,
+          code: 'meal_plan_version_not_found',
+        }),
+      );
+
+      await expect(
+        service.getNutritionistMealPlanVersion('user-1', 99),
+      ).rejects.toMatchObject({
+        code: 'meal_plan_version_not_found',
+        status: 404,
+      });
     });
   });
 

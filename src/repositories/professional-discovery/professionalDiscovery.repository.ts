@@ -36,6 +36,7 @@ export interface UpdateProfileInput {
   specialty?: string;
   priceFrom?: number;
   attendsOnline?: boolean;
+  registrationNumber?: string;
 }
 
 const PROFESSIONAL_TYPES: ProductType[] = [

@@ -1,24 +1,71 @@
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
-import { PhysicalAssessmentsRepository } from '@/repositories/physical-assessments/physicalAssessments.repository';
+import { FormRecordWithValues } from '@/repositories/clinical-records/formRecords.repository';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { ProfessionalMirrorService } from './professionalMirror.service';
 
-function stored(id: string, day: string, bodyFat: number | null = 18.4) {
+function stored(
+  id: string,
+  day: string,
+  bodyFat: number | null = 18.4,
+): FormRecordWithValues {
   return {
     id,
     clientId: 'client-1',
-    assessedOn: new Date(`${day}T00:00:00.000Z`),
-    weightKg: 78.2,
-    heightCm: 179,
-    bodyFatPercent: bodyFat,
+    templateId: 'template-1',
+    recordedByUserId: 'edu-1',
+    recordedAt: new Date(`${day}T00:00:00.000Z`),
+    createdAt: new Date(`${day}T00:00:00.000Z`),
+    updatedAt: new Date(`${day}T00:00:00.000Z`),
+    values: [
+      {
+        id: `${id}-weight`,
+        recordId: id,
+        position: 0,
+        fieldLabel: 'Peso (kg)',
+        fieldType: 'NUMBER',
+        weightRole: true,
+        heightRole: false,
+        textValue: null,
+        numberValue: 78.2,
+        boolValue: null,
+        selectedOption: null,
+      },
+      {
+        id: `${id}-height`,
+        recordId: id,
+        position: 1,
+        fieldLabel: 'Altura (cm)',
+        fieldType: 'NUMBER',
+        weightRole: false,
+        heightRole: true,
+        textValue: null,
+        numberValue: 179,
+        boolValue: null,
+        selectedOption: null,
+      },
+      {
+        id: `${id}-bodyfat`,
+        recordId: id,
+        position: 2,
+        fieldLabel: 'Percentual de gordura corporal (%)',
+        fieldType: 'NUMBER',
+        weightRole: false,
+        heightRole: false,
+        textValue: null,
+        numberValue: bodyFat,
+        boolValue: null,
+        selectedOption: null,
+      },
+    ] as any,
   };
 }
 
-describe('ProfessionalMirrorService — physical assessment', () => {
+describe('ProfessionalMirrorService — assessment (clinical-records)', () => {
   const clients = { findByUserAndProfessionalType: jest.fn() };
   const discovery = { getProfile: jest.fn() };
-  const assessments = { findLatestByClient: jest.fn() };
+  const formRecords = { findLatestByClient: jest.fn(), findHistory: jest.fn() };
   const workouts = { findActiveByClient: jest.fn() };
   let service: ProfessionalMirrorService;
 
@@ -34,64 +81,82 @@ describe('ProfessionalMirrorService — physical assessment', () => {
       name: 'Thiago Ramos',
       specialty: 'Hipertrofia',
     });
-    assessments.findLatestByClient.mockResolvedValue([]);
+    formRecords.findLatestByClient.mockResolvedValue([]);
+    formRecords.findHistory.mockResolvedValue([]);
     workouts.findActiveByClient.mockResolvedValue(null);
     service = new ProfessionalMirrorService(
       clients as unknown as ClientsRepository,
       discovery as unknown as ProfessionalDiscoveryService,
-      assessments as unknown as PhysicalAssessmentsRepository,
+      formRecords as unknown as FormRecordsRepository,
       workouts as unknown as EducatorWorkoutsRepository,
       {
         nextForRecords: jest.fn().mockResolvedValue(new Map()),
         todaySessionId: jest.fn().mockResolvedValue(null),
       } as any,
+      {
+        listVersions: jest.fn().mockResolvedValue([]),
+        getVersion: jest.fn(),
+      } as any,
       { now: () => new Date('2026-10-01T12:00:00Z') } as any,
     );
   });
 
-  it('UT-091 returns the three newest assessments of the linked record', async () => {
-    assessments.findLatestByClient.mockResolvedValue([
+  it('returns the three newest assessments of the linked record', async () => {
+    formRecords.findLatestByClient.mockResolvedValue([
       stored('a4', '2026-09-15'),
       stored('a3', '2026-08-18'),
       stored('a2', '2026-07-21'),
     ]);
 
-    const result = await service.getEducatorMirror('user-1');
+    const result = (await service.getEducatorMirror('user-1')) as any;
 
-    expect(assessments.findLatestByClient).toHaveBeenCalledWith('client-1', 3);
-    expect(result).toMatchObject({
-      physicalAssessment: [
-        {
-          id: 'a4',
-          assessedOn: '2026-09-15',
-          weightKg: 78.2,
-          bodyFatPercent: 18.4,
-        },
-        { id: 'a3', assessedOn: '2026-08-18' },
-        { id: 'a2', assessedOn: '2026-07-21' },
-      ],
+    expect(formRecords.findLatestByClient).toHaveBeenCalledWith(
+      'client-1',
+      'ASSESSMENT',
+      3,
+    );
+    expect(result.physicalAssessment).toHaveLength(3);
+    expect(result.physicalAssessment[0]).toMatchObject({
+      id: 'a4',
+      recordedAt: '2026-09-15T00:00:00.000Z',
+      bmi: { value: 24.4, classification: 'PESO_NORMAL' },
     });
   });
 
-  it('UT-092 returns null when there are no assessments', async () => {
+  it('returns null when there are no assessments', async () => {
     const result = await service.getEducatorMirror('user-1');
 
     expect(result).toMatchObject({ physicalAssessment: null });
   });
 
-  it('UT-093 returns a null body fat when it was not recorded', async () => {
-    assessments.findLatestByClient.mockResolvedValue([
-      stored('a1', '2026-09-15', null),
+  it('derives a null bmi when a tagged value is missing', async () => {
+    formRecords.findLatestByClient.mockResolvedValue([
+      {
+        ...stored('a1', '2026-09-15', null),
+        values: [
+          {
+            id: 'a1-weight',
+            recordId: 'a1',
+            position: 0,
+            fieldLabel: 'Peso (kg)',
+            fieldType: 'NUMBER',
+            weightRole: true,
+            heightRole: false,
+            textValue: null,
+            numberValue: 78.2,
+            boolValue: null,
+            selectedOption: null,
+          } as any,
+        ],
+      },
     ]);
 
-    const result = (await service.getEducatorMirror('user-1')) as {
-      physicalAssessment: Array<{ bodyFatPercent: number | null }>;
-    };
+    const result = (await service.getEducatorMirror('user-1')) as any;
 
-    expect(result.physicalAssessment[0].bodyFatPercent).toBeNull();
+    expect(result.physicalAssessment[0].bmi).toBeNull();
   });
 
-  it('UT-094 leaves the nutritionist mirror unchanged', async () => {
+  it("the nutritionist mirror reads its own anamnese/assessment/meal-plan data, independent of this suite's educator-assessment mocks", async () => {
     const result = await service.getNutritionistMirror('user-1');
 
     expect(result).toEqual({
@@ -100,14 +165,20 @@ describe('ProfessionalMirrorService — physical assessment', () => {
         name: 'Thiago Ramos',
         specialty: 'Hipertrofia',
       },
+      anamnese: null,
+      assessmentHistory: [],
       mealPlan: null,
       nextConsultation: null,
       billingStatus: null,
     });
-    expect(assessments.findLatestByClient).not.toHaveBeenCalled();
+    expect(formRecords.findLatestByClient).toHaveBeenCalledWith(
+      'client-1',
+      'ANAMNESE',
+      1,
+    );
   });
 
-  it('UT-095 reads the assessments of the record the mirror resolved', async () => {
+  it('reads the assessments of the record the mirror resolved', async () => {
     clients.findByUserAndProfessionalType.mockResolvedValue({
       id: 'client-recent',
       professionalId: 'edu-2',
@@ -119,8 +190,9 @@ describe('ProfessionalMirrorService — physical assessment', () => {
       'user-1',
       'PHYSICAL_EDUCATOR',
     );
-    expect(assessments.findLatestByClient).toHaveBeenCalledWith(
+    expect(formRecords.findLatestByClient).toHaveBeenCalledWith(
       'client-recent',
+      'ASSESSMENT',
       3,
     );
   });
@@ -131,6 +203,6 @@ describe('ProfessionalMirrorService — physical assessment', () => {
     expect(await service.getEducatorMirror('user-1')).toEqual({
       hasProfessional: false,
     });
-    expect(assessments.findLatestByClient).not.toHaveBeenCalled();
+    expect(formRecords.findLatestByClient).not.toHaveBeenCalled();
   });
 });
