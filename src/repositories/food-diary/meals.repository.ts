@@ -34,6 +34,16 @@ export class MealsRepository {
     });
   }
 
+  // The linked patient's full history, newest first — for a professional's
+  // read-only view (ADR-014). Authorization is resolved by the caller
+  // before this is ever reached; this method trusts the userId it is given.
+  async findByUserForProfessional(userId: string): Promise<Meal[]> {
+    return await this.prisma.meal.findMany({
+      where: { userId },
+      orderBy: { loggedAt: 'desc' },
+    });
+  }
+
   async update(id: string, data: MealUpdateInput): Promise<Meal> {
     return await this.prisma.meal.update({ where: { id }, data });
   }

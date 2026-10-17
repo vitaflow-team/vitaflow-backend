@@ -1,6 +1,7 @@
 import { ClientRegisterDTO } from '@/clients/register/client.register.Dto';
 import { ClientRegisterService } from '@/clients/register/client.register.service';
 import { NotificationsService } from '@/notifications/notifications.service';
+import { registrationLabelFor } from '@/common/registrationLabel.util';
 import {
   ProfessionalDiscoveryRepository,
   ProfessionalWithProfile,
@@ -199,9 +200,18 @@ export class ProfessionalDiscoveryService {
   }
 
   private toProfile(row: ProfessionalWithProfile): ProfessionalProfileEntity {
+    const registrationNumber = row.professionalProfile?.registrationNumber;
     return {
       ...this.toSummary(row),
       bio: row.professionalProfile?.bio ?? null,
+      ...(registrationNumber
+        ? {
+            registrationNumber,
+            registrationLabel:
+              registrationLabelFor(row.product?.type ?? ProductType.USER) ??
+              undefined,
+          }
+        : {}),
     };
   }
 

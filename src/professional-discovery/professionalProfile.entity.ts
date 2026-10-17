@@ -35,4 +35,18 @@ export class ProfessionalProfileEntity extends ProfessionalSummaryEntity {
     nullable: true,
   })
   bio: string | null;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'CRN/CREF registration number. Omitted entirely when never set — never sent as null (PRD ADR-009).',
+  })
+  registrationNumber?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: ['CRN', 'CREF'],
+    description: 'Present only alongside registrationNumber.',
+  })
+  registrationLabel?: 'CRN' | 'CREF';
 }

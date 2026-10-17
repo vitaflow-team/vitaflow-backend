@@ -15,6 +15,16 @@ export class WaterLogRepository {
     });
   }
 
+  // The linked patient's full history, newest first — for a professional's
+  // read-only view (ADR-014). Authorization is resolved by the caller
+  // before this is ever reached; this method trusts the userId it is given.
+  async findByUserForProfessional(userId: string): Promise<WaterLog[]> {
+    return await this.prisma.waterLog.findMany({
+      where: { userId },
+      orderBy: { date: 'desc' },
+    });
+  }
+
   async increment(userId: string, date: Date): Promise<WaterLog> {
     return await this.prisma.waterLog.upsert({
       where: { userId_date: { userId, date } },

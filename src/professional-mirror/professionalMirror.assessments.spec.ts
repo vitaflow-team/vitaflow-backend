@@ -65,7 +65,7 @@ function stored(
 describe('ProfessionalMirrorService — assessment (clinical-records)', () => {
   const clients = { findByUserAndProfessionalType: jest.fn() };
   const discovery = { getProfile: jest.fn() };
-  const formRecords = { findLatestByClient: jest.fn() };
+  const formRecords = { findLatestByClient: jest.fn(), findHistory: jest.fn() };
   const workouts = { findActiveByClient: jest.fn() };
   let service: ProfessionalMirrorService;
 
@@ -82,6 +82,7 @@ describe('ProfessionalMirrorService — assessment (clinical-records)', () => {
       specialty: 'Hipertrofia',
     });
     formRecords.findLatestByClient.mockResolvedValue([]);
+    formRecords.findHistory.mockResolvedValue([]);
     workouts.findActiveByClient.mockResolvedValue(null);
     service = new ProfessionalMirrorService(
       clients as unknown as ClientsRepository,
@@ -91,6 +92,10 @@ describe('ProfessionalMirrorService — assessment (clinical-records)', () => {
       {
         nextForRecords: jest.fn().mockResolvedValue(new Map()),
         todaySessionId: jest.fn().mockResolvedValue(null),
+      } as any,
+      {
+        listVersions: jest.fn().mockResolvedValue([]),
+        getVersion: jest.fn(),
       } as any,
       { now: () => new Date('2026-10-01T12:00:00Z') } as any,
     );
@@ -151,7 +156,7 @@ describe('ProfessionalMirrorService — assessment (clinical-records)', () => {
     expect(result.physicalAssessment[0].bmi).toBeNull();
   });
 
-  it('leaves the nutritionist mirror unchanged', async () => {
+  it("the nutritionist mirror reads its own anamnese/assessment/meal-plan data, independent of this suite's educator-assessment mocks", async () => {
     const result = await service.getNutritionistMirror('user-1');
 
     expect(result).toEqual({
@@ -160,11 +165,17 @@ describe('ProfessionalMirrorService — assessment (clinical-records)', () => {
         name: 'Thiago Ramos',
         specialty: 'Hipertrofia',
       },
+      anamnese: null,
+      assessmentHistory: [],
       mealPlan: null,
       nextConsultation: null,
       billingStatus: null,
     });
-    expect(formRecords.findLatestByClient).not.toHaveBeenCalled();
+    expect(formRecords.findLatestByClient).toHaveBeenCalledWith(
+      'client-1',
+      'ANAMNESE',
+      1,
+    );
   });
 
   it('reads the assessments of the record the mirror resolved', async () => {

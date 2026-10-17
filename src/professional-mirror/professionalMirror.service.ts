@@ -6,16 +6,22 @@ import {
 } from '@/scheduling/fixed-times/fixedSessions.service';
 import { resolveLetter } from '@/scheduling/fixed-times/fixedTime.util';
 import { toFormRecordResponse } from '@/clinical-records/records/formRecords.service';
+import { MealPlansService } from '@/meal-plans/mealPlans.service';
+import { registrationLabelFor } from '@/common/registrationLabel.util';
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { sessionLabel } from '@/educator-students/workouts/workoutTree.util';
-import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
+import {
+  FormRecordsRepository,
+  FormRecordWithValues,
+} from '@/repositories/clinical-records/formRecords.repository';
 import { Injectable } from '@nestjs/common';
 import { Client, ProductType, TemplatePurpose } from '@prisma/client';
 import {
   EducatorMirrorEntity,
   MirrorAssessmentEntity,
+  MirrorMealPlanEntity,
   MirrorProfessionalEntity,
   MirrorWorkoutEntity,
   NoProfessionalEntity,
@@ -23,6 +29,21 @@ import {
 } from './professionalMirror.entity';
 
 const MIRROR_ASSESSMENTS = 3;
+
+function toMirrorAssessment(
+  record: FormRecordWithValues,
+): MirrorAssessmentEntity {
+  const response = toFormRecordResponse(record);
+  return {
+    id: response.id,
+    recordedAt: response.recordedAt,
+    values: response.values.map((value) => ({
+      fieldLabel: value.fieldLabel,
+      value: value.value,
+    })),
+    bmi: response.bmi,
+  };
+}
 
 @Injectable()
 export class ProfessionalMirrorService {
@@ -32,6 +53,7 @@ export class ProfessionalMirrorService {
     private readonly formRecords: FormRecordsRepository,
     private readonly workouts: EducatorWorkoutsRepository,
     private readonly fixedSessions: FixedSessionsService,
+    private readonly mealPlans: MealPlansService,
     private readonly clock: Clock,
   ) {}
 
@@ -41,11 +63,67 @@ export class ProfessionalMirrorService {
     const link = await this.resolveLink(userId, ProductType.NUTRITIONIST);
     if (!link) return { hasProfessional: false };
 
+    const [anamnese, assessmentHistory, mealPlan] = await Promise.all([
+      this.currentAnamnese(link.client.id),
+      this.fullAssessmentHistory(link.client.id),
+      this.currentMealPlan(link.client.id),
+    ]);
+
     return {
       professional: link.professional,
-      mealPlan: null,
+      anamnese,
+      assessmentHistory,
+      mealPlan,
       nextConsultation: null,
       billingStatus: null,
+    };
+  }
+
+  // The patient's current anamnese (expected once, the most recent record of
+  // that purpose), or null when none exists yet.
+  private async currentAnamnese(
+    clientId: string,
+  ): Promise<MirrorAssessmentEntity | null> {
+    const [latest] = await this.formRecords.findLatestByClient(
+      clientId,
+      TemplatePurpose.ANAMNESE,
+      1,
+    );
+    return latest ? toMirrorAssessment(latest) : null;
+  }
+
+  // Every assessment ever recorded for this patient, newest first — full
+  // transparency (PRD ADR-008), never capped like the educator mirror's
+  // latest-3 summary.
+  private async fullAssessmentHistory(
+    clientId: string,
+  ): Promise<MirrorAssessmentEntity[]> {
+    const history = await this.formRecords.findHistory(
+      clientId,
+      TemplatePurpose.ASSESSMENT,
+    );
+    return history.map(toMirrorAssessment);
+  }
+
+  // The current published version plus access to the full version history
+  // (ADR-008/ADR-013) — null until the nutritionist has published at least
+  // one version.
+  private async currentMealPlan(
+    clientId: string,
+  ): Promise<MirrorMealPlanEntity | null> {
+    const versions = await this.mealPlans.listVersions(clientId);
+    const [latest] = versions;
+    if (!latest) return null;
+
+    const current = await this.mealPlans.getVersion(clientId, latest.version);
+    return {
+      currentVersion: latest.version,
+      publishedAt: latest.publishedAt,
+      days: current.days.map((day) => ({
+        weekday: day.weekday,
+        meals: day.meals,
+      })),
+      versions,
     };
   }
 
@@ -132,18 +210,7 @@ export class ProfessionalMirrorService {
     );
     if (latest.length === 0) return null;
 
-    return latest.map((record) => {
-      const response = toFormRecordResponse(record);
-      return {
-        id: response.id,
-        recordedAt: response.recordedAt,
-        values: response.values.map((value) => ({
-          fieldLabel: value.fieldLabel,
-          value: value.value,
-        })),
-        bmi: response.bmi,
-      };
-    });
+    return latest.map(toMirrorAssessment);
   }
 
   // A PENDING-only ConnectionRequest never reaches here: only a real Client
@@ -172,6 +239,13 @@ export class ProfessionalMirrorService {
         id: profile.id,
         name: profile.name,
         specialty: profile.specialty,
+        ...(profile.registrationNumber
+          ? {
+              registrationNumber: profile.registrationNumber,
+              registrationLabel:
+                registrationLabelFor(profile.type) ?? undefined,
+            }
+          : {}),
       },
     };
   }

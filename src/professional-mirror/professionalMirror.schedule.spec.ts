@@ -53,6 +53,10 @@ describe('ProfessionalMirrorService schedule (UT-080 to UT-082)', () => {
         nextForRecords: jest.fn(() => next),
         todaySessionId,
       } as unknown as FixedSessionsService,
+      {
+        listVersions: jest.fn().mockResolvedValue([]),
+        getVersion: jest.fn(),
+      } as any,
       { now: () => NOW } as Clock,
     );
   });

@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Weekday } from '@prisma/client';
 
 export class MirrorProfessionalEntity {
   @ApiProperty({ description: "The linked professional's user id." })
@@ -12,32 +13,52 @@ export class MirrorProfessionalEntity {
     nullable: true,
   })
   specialty: string | null;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'CRN/CREF registration number. Omitted entirely when never set — never sent as null (PRD ADR-009).',
+  })
+  registrationNumber?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: ['CRN', 'CREF'],
+    description: 'Present only alongside registrationNumber.',
+  })
+  registrationLabel?: 'CRN' | 'CREF';
 }
 
-// The binding read contract (TechSpec § Core Interfaces): every field below
-// that isn't `professional` is explicitly null until a future professional-
-// side PRD populates it — never omitted, never a fabricated placeholder.
-export class NutritionistMirrorEntity {
-  @ApiProperty({ type: MirrorProfessionalEntity })
-  professional: MirrorProfessionalEntity;
+export class MirrorMealPlanMealEntity {
+  @ApiProperty() id: string;
+  @ApiProperty() label: string;
+  @ApiProperty() text: string;
+}
 
-  @ApiProperty({
-    nullable: true,
-    description: 'Populated by a future Nutricionista-module PRD.',
-  })
-  mealPlan: null;
+export class MirrorMealPlanDayEntity {
+  @ApiProperty({ enum: Weekday }) weekday: Weekday;
 
-  @ApiProperty({
-    nullable: true,
-    description: 'Populated by the Scheduling PRD.',
-  })
-  nextConsultation: null;
+  @ApiProperty({ type: [MirrorMealPlanMealEntity] })
+  meals: MirrorMealPlanMealEntity[];
+}
 
-  @ApiProperty({
-    nullable: true,
-    description: 'Populated by a future per-client-billing PRD.',
-  })
-  billingStatus: null;
+export class MirrorMealPlanVersionEntity {
+  @ApiProperty() version: number;
+  @ApiProperty() publishedAt: string;
+}
+
+// The patient's current published meal plan, with access to its full
+// version history (ADR-008) — null until the nutritionist has published at
+// least one version.
+export class MirrorMealPlanEntity {
+  @ApiProperty() currentVersion: number;
+  @ApiProperty() publishedAt: string;
+
+  @ApiProperty({ type: [MirrorMealPlanDayEntity] })
+  days: MirrorMealPlanDayEntity[];
+
+  @ApiProperty({ type: [MirrorMealPlanVersionEntity] })
+  versions: MirrorMealPlanVersionEntity[];
 }
 
 export class MirrorAssessmentValueEntity {
@@ -55,8 +76,9 @@ export class MirrorBmiEntity {
   @ApiProperty() classification: string;
 }
 
-// One of the educator's latest assessments (clinical-records engine) as the
-// student sees it — each one's own frozen field values, newest first.
+// One filled clinical-records FormRecord (anamnese or assessment) as the
+// patient/student sees it — its own frozen field values, plus derived BMI
+// where applicable.
 export class MirrorAssessmentEntity {
   @ApiProperty() id: string;
 
@@ -68,6 +90,49 @@ export class MirrorAssessmentEntity {
 
   @ApiProperty({ type: MirrorBmiEntity, nullable: true })
   bmi: MirrorBmiEntity | null;
+}
+
+// The binding read contract (TechSpec § Core Interfaces): every field below
+// that isn't `professional` is explicitly null/empty until real data exists
+// — never omitted, never a fabricated placeholder.
+export class NutritionistMirrorEntity {
+  @ApiProperty({ type: MirrorProfessionalEntity })
+  professional: MirrorProfessionalEntity;
+
+  @ApiProperty({
+    type: MirrorAssessmentEntity,
+    nullable: true,
+    description:
+      "The patient's current anamnese answers, or null when none exist yet.",
+  })
+  anamnese: MirrorAssessmentEntity | null;
+
+  @ApiProperty({
+    type: [MirrorAssessmentEntity],
+    description:
+      "The patient's full assessment history, newest first; an empty array when none exist yet (never null, per US-020.EC-1).",
+  })
+  assessmentHistory: MirrorAssessmentEntity[];
+
+  @ApiProperty({
+    type: MirrorMealPlanEntity,
+    nullable: true,
+    description:
+      'The current published meal plan, or null when none exists yet.',
+  })
+  mealPlan: MirrorMealPlanEntity | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Populated by the Scheduling PRD.',
+  })
+  nextConsultation: null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Populated by a future per-client-billing PRD.',
+  })
+  billingStatus: null;
 }
 
 export class MirrorWorkoutSessionEntity {

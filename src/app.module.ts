@@ -9,6 +9,7 @@ import { ClientsModule } from './clients/clients.module';
 import { ClinicalRecordsModule } from './clinical-records/clinicalRecords.module';
 import { MealPlansModule } from './meal-plans/mealPlans.module';
 import { NutritionistPatientsModule } from './nutritionist-patients/nutritionistPatients.module';
+import { ProfessionalFoodDiaryModule } from './professional-food-diary/professionalFoodDiary.module';
 import { ApiKeyGuard } from './common/guards/apiKey.guard';
 import { ViewAsWriteBlockGuard } from './common/guards/viewAsWriteBlock.guard';
 import { PrismaService } from './database/prisma.service';
@@ -59,6 +60,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ClinicalRecordsModule,
     NutritionistPatientsModule,
     MealPlansModule,
+    ProfessionalFoodDiaryModule,
   ],
   controllers: [],
   providers: [

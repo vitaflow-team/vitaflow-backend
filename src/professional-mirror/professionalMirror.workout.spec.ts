@@ -17,7 +17,7 @@ const active = {
 describe('ProfessionalMirrorService — current workout', () => {
   const clients = { findByUserAndProfessionalType: jest.fn() };
   const discovery = { getProfile: jest.fn() };
-  const assessments = { findLatestByClient: jest.fn() };
+  const assessments = { findLatestByClient: jest.fn(), findHistory: jest.fn() };
   const workouts = { findActiveByClient: jest.fn() };
   let service: ProfessionalMirrorService;
 
@@ -34,6 +34,7 @@ describe('ProfessionalMirrorService — current workout', () => {
       specialty: null,
     });
     assessments.findLatestByClient.mockResolvedValue([]);
+    assessments.findHistory.mockResolvedValue([]);
     workouts.findActiveByClient.mockResolvedValue(active);
     service = new ProfessionalMirrorService(
       clients as unknown as ClientsRepository,
@@ -43,6 +44,10 @@ describe('ProfessionalMirrorService — current workout', () => {
       {
         nextForRecords: jest.fn().mockResolvedValue(new Map()),
         todaySessionId: jest.fn().mockResolvedValue(null),
+      } as any,
+      {
+        listVersions: jest.fn().mockResolvedValue([]),
+        getVersion: jest.fn(),
       } as any,
       { now: () => new Date('2026-10-01T12:00:00Z') } as any,
     );
@@ -91,6 +96,8 @@ describe('ProfessionalMirrorService — current workout', () => {
 
     expect(result).toEqual({
       professional: { id: 'edu-1', name: 'Thiago Ramos', specialty: null },
+      anamnese: null,
+      assessmentHistory: [],
       mealPlan: null,
       nextConsultation: null,
       billingStatus: null,

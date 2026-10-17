@@ -45,4 +45,14 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsBoolean()
   attendsOnline?: boolean;
+
+  @ApiProperty({
+    description:
+      'CRN (nutritionist) or CREF (physical educator) registration number — free text, no format validation (PRD ADR-009).',
+    required: false,
+    example: '12345/P',
+  })
+  @IsOptional()
+  @IsString()
+  registrationNumber?: string;
 }
