@@ -50,6 +50,12 @@ import { WorkoutsModule } from './workouts/workouts.module';
     FoodDiaryModule,
     ProgressPhotosModule,
     NotificationsModule,
+    // Registered before ProfessionalDiscoveryModule: its
+    // GET /professionals/templates would otherwise be shadowed by
+    // ProfessionalSearchController's unconstrained GET /professionals/:id,
+    // registered first and matching "templates" as an id (discovered via
+    // nutritionist-module task_06's end-to-end frontend verification).
+    ClinicalRecordsModule,
     ProfessionalDiscoveryModule,
     ProfessionalMirrorModule,
     MessagesModule,
@@ -57,7 +63,6 @@ import { WorkoutsModule } from './workouts/workouts.module';
     EducatorStudentsModule,
     AcademiaModule,
     BackofficeModule,
-    ClinicalRecordsModule,
     NutritionistPatientsModule,
     MealPlansModule,
     ProfessionalFoodDiaryModule,
