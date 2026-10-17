@@ -47,6 +47,17 @@ export class MirrorMealPlanVersionEntity {
   @ApiProperty() publishedAt: string;
 }
 
+// One past published version's full content, fetched on demand
+// (ADR-008: "access to prior versions' history") — distinct from
+// MirrorMealPlanVersionEntity, which only lists version/date pairs.
+export class MirrorMealPlanVersionContentEntity {
+  @ApiProperty() version: number;
+  @ApiProperty() publishedAt: string;
+
+  @ApiProperty({ type: [MirrorMealPlanDayEntity] })
+  days: MirrorMealPlanDayEntity[];
+}
+
 // The patient's current published meal plan, with access to its full
 // version history (ADR-008) — null until the nutritionist has published at
 // least one version.

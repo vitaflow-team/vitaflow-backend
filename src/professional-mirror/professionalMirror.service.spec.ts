@@ -34,6 +34,7 @@ describe('ProfessionalMirrorService', () => {
   const findActiveByClient = jest.fn();
   const listVersions = jest.fn();
   const getVersion = jest.fn();
+  const getPublishedVersion = jest.fn();
 
   let service: ProfessionalMirrorService;
 
@@ -73,7 +74,7 @@ describe('ProfessionalMirrorService', () => {
         },
         {
           provide: MealPlansService,
-          useValue: { listVersions, getVersion },
+          useValue: { listVersions, getVersion, getPublishedVersion },
         },
         {
           provide: Clock,
@@ -414,6 +415,83 @@ describe('ProfessionalMirrorService', () => {
           registrationNumber: '12345/P',
           registrationLabel: 'CRN',
         },
+      });
+    });
+  });
+
+  describe('getNutritionistMealPlanVersion', () => {
+    it('returns a past version’s full content, fetched on demand (ADR-008)', async () => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(makeClient());
+      professionalDiscoveryGetProfile.mockResolvedValue({
+        id: 'professional-1',
+        name: 'Dra. Ana',
+        type: 'NUTRITIONIST',
+        specialty: null,
+        priceFrom: null,
+        attendsOnline: false,
+        bio: null,
+      });
+      getPublishedVersion.mockResolvedValue({
+        publishedAt: '2026-10-01T00:00:00.000Z',
+        days: [
+          {
+            id: 'day-1',
+            weekday: 'MONDAY',
+            meals: [{ id: 'm1', label: 'Almoço', text: 'Arroz' }],
+          },
+        ],
+      });
+
+      const result = await service.getNutritionistMealPlanVersion('user-1', 1);
+
+      expect(getPublishedVersion).toHaveBeenCalledWith('client-1', 1);
+      expect(result).toEqual({
+        version: 1,
+        publishedAt: '2026-10-01T00:00:00.000Z',
+        days: [
+          {
+            weekday: 'MONDAY',
+            meals: [{ id: 'm1', label: 'Almoço', text: 'Arroz' }],
+          },
+        ],
+      });
+    });
+
+    it('throws meal_plan_version_not_found (404) when there is no linked nutritionist, without ever querying a plan', async () => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(null);
+
+      await expect(
+        service.getNutritionistMealPlanVersion('user-1', 1),
+      ).rejects.toMatchObject({
+        code: 'meal_plan_version_not_found',
+        status: 404,
+      });
+      expect(getPublishedVersion).not.toHaveBeenCalled();
+    });
+
+    it('propagates meal_plan_version_not_found (404) when linked but that version does not exist', async () => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(makeClient());
+      professionalDiscoveryGetProfile.mockResolvedValue({
+        id: 'professional-1',
+        name: 'Dra. Ana',
+        type: 'NUTRITIONIST',
+        specialty: null,
+        priceFrom: null,
+        attendsOnline: false,
+        bio: null,
+      });
+      getPublishedVersion.mockRejectedValue(
+        Object.assign(new Error('not found'), {
+          status: 404,
+          code: 'meal_plan_version_not_found',
+        }),
+      );
+
+      await expect(
+        service.getNutritionistMealPlanVersion('user-1', 99),
+      ).rejects.toMatchObject({
+        code: 'meal_plan_version_not_found',
+        status: 404,
       });
     });
   });

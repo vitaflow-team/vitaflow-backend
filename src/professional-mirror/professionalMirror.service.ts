@@ -1,3 +1,4 @@
+import { CodedError } from '@/common/errors/codedError';
 import { Clock } from '@/scheduling/clock.service';
 import type { NextScheduleEntity } from './professionalMirror.entity';
 import {
@@ -22,6 +23,7 @@ import {
   EducatorMirrorEntity,
   MirrorAssessmentEntity,
   MirrorMealPlanEntity,
+  MirrorMealPlanVersionContentEntity,
   MirrorProfessionalEntity,
   MirrorWorkoutEntity,
   NoProfessionalEntity,
@@ -29,6 +31,7 @@ import {
 } from './professionalMirror.entity';
 
 const MIRROR_ASSESSMENTS = 3;
+const MEAL_PLAN_VERSION_NOT_FOUND = 'Versão do plano alimentar não encontrada.';
 
 function toMirrorAssessment(
   record: FormRecordWithValues,
@@ -124,6 +127,38 @@ export class ProfessionalMirrorService {
         meals: day.meals,
       })),
       versions,
+    };
+  }
+
+  // One past published version's full content, fetched on demand from the
+  // patient's own mirror (ADR-008). Collapses "not linked to any
+  // nutritionist" and "version doesn't exist" into the same 404 — a patient
+  // account must never learn whether a given version number exists for a
+  // plan they have no link to.
+  async getNutritionistMealPlanVersion(
+    userId: string,
+    version: number,
+  ): Promise<MirrorMealPlanVersionContentEntity> {
+    const link = await this.resolveLink(userId, ProductType.NUTRITIONIST);
+    if (!link) {
+      throw new CodedError(
+        MEAL_PLAN_VERSION_NOT_FOUND,
+        404,
+        'meal_plan_version_not_found',
+      );
+    }
+
+    const content = await this.mealPlans.getPublishedVersion(
+      link.client.id,
+      version,
+    );
+    return {
+      version,
+      publishedAt: content.publishedAt,
+      days: content.days.map((day) => ({
+        weekday: day.weekday,
+        meals: day.meals,
+      })),
     };
   }
 

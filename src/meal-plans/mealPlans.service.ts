@@ -144,6 +144,28 @@ export class MealPlansService {
     clientId: string,
     version: number,
   ): Promise<MealPlanDraftResponseDTO> {
+    const plan = await this.requirePublishedVersion(clientId, version);
+    return toMealPlanDraftView(plan);
+  }
+
+  // Same lookup as getVersion(), but keeps publishedAt — needed by callers
+  // (e.g. the patient mirror) that display a single version's publish date
+  // without a second round trip through listVersions().
+  async getPublishedVersion(
+    clientId: string,
+    version: number,
+  ): Promise<{ publishedAt: string; days: MealPlanDraftResponseDTO['days'] }> {
+    const plan = await this.requirePublishedVersion(clientId, version);
+    return {
+      publishedAt: plan.publishedAt!.toISOString(),
+      days: toMealPlanDraftView(plan).days,
+    };
+  }
+
+  private async requirePublishedVersion(
+    clientId: string,
+    version: number,
+  ): Promise<MealPlanWithDays> {
     const plan = await this.mealPlans.findPublishedByVersion(clientId, version);
     if (!plan) {
       throw new CodedError(
@@ -152,7 +174,7 @@ export class MealPlansService {
         'meal_plan_version_not_found',
       );
     }
-    return toMealPlanDraftView(plan);
+    return plan;
   }
 
   private assertValidMeals(meals: MealInput[]): void {

@@ -421,10 +421,38 @@ describe('Professional food-diary reads and nutritionist mirror integration', ()
       mirror.body.mealPlan.versions.map((v: { version: number }) => v.version),
     ).toEqual([2, 1]);
 
+    const pastVersion = await patientSession.get(
+      '/me/nutritionist/meal-plan/versions/1',
+    );
+    expect(pastVersion.status).toBe(200);
+    expect(pastVersion.body.version).toBe(1);
+    expect(pastVersion.body.days[0].meals[0]).toMatchObject({
+      text: 'Arroz e feijão',
+    });
+
+    const missingVersion = await patientSession.get(
+      '/me/nutritionist/meal-plan/versions/99',
+    );
+    expect(missingVersion.status).toBe(404);
+    expect(missingVersion.body.code).toBe('meal_plan_version_not_found');
+
     await prisma.client.delete({ where: { id: client.id } });
     await prisma.assessmentTemplate.deleteMany({
       where: { professionalId: nutritionistA.id },
     });
+    await prisma.users.delete({ where: { id: patient.id } });
+  });
+
+  it('getNutritionistMealPlanVersion answers 404 for a patient with no linked nutritionist', async () => {
+    const patient = await makePatientUser('noLink');
+
+    const response = await (
+      await as(patient)
+    ).get('/me/nutritionist/meal-plan/versions/1');
+
+    expect(response.status).toBe(404);
+    expect(response.body.code).toBe('meal_plan_version_not_found');
+
     await prisma.users.delete({ where: { id: patient.id } });
   });
 });

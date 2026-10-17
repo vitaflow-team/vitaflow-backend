@@ -374,5 +374,39 @@ describe('MealPlansService', () => {
         text: 'Arroz',
       });
     });
+
+    it('getPublishedVersion returns the version content plus its publish date', async () => {
+      repo.findPublishedByVersion.mockResolvedValue(
+        plan({
+          status: MealPlanStatus.PUBLISHED,
+          version: 1,
+          publishedAt: new Date('2026-10-01T00:00:00.000Z'),
+          days: [day(Weekday.MONDAY, [{ label: 'Almoço', text: 'Arroz' }])],
+        }),
+      );
+
+      const result = await service.getPublishedVersion('client-1', 1);
+
+      expect(result).toMatchObject({
+        publishedAt: '2026-10-01T00:00:00.000Z',
+        days: [
+          {
+            weekday: Weekday.MONDAY,
+            meals: [{ label: 'Almoço', text: 'Arroz' }],
+          },
+        ],
+      });
+    });
+
+    it('getPublishedVersion answers 404 for a version that does not exist', async () => {
+      repo.findPublishedByVersion.mockResolvedValue(null);
+
+      await expect(
+        service.getPublishedVersion('client-1', 99),
+      ).rejects.toMatchObject({
+        code: 'meal_plan_version_not_found',
+        status: 404,
+      });
+    });
   });
 });

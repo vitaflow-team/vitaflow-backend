@@ -1,6 +1,13 @@
 import { AuthGuard } from '@/auth/auth.guard';
 import type { AuthenticatedRequest } from '@/common/types/authenticatedRequest';
-import { Controller, Get, Request, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -9,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 import {
   EducatorMirrorEntity,
+  MirrorMealPlanVersionContentEntity,
   NoProfessionalEntity,
   NutritionistMirrorEntity,
 } from './professionalMirror.entity';
@@ -51,5 +59,26 @@ export class ProfessionalMirrorController {
     @Request() req: AuthenticatedRequest,
   ): Promise<EducatorMirrorEntity | NoProfessionalEntity> {
     return await this.service.getEducatorMirror(req.user.id);
+  }
+
+  @ApiOperation({
+    summary:
+      "One past published meal-plan version's full content, fetched on demand (ADR-008).",
+  })
+  @ApiResponse({ status: 200, type: MirrorMealPlanVersionContentEntity })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No linked nutritionist, or that version does not exist — the same code either way.',
+  })
+  @Get('nutritionist/meal-plan/versions/:version')
+  async getNutritionistMealPlanVersion(
+    @Request() req: AuthenticatedRequest,
+    @Param('version', ParseIntPipe) version: number,
+  ): Promise<MirrorMealPlanVersionContentEntity> {
+    return await this.service.getNutritionistMealPlanVersion(
+      req.user.id,
+      version,
+    );
   }
 }
