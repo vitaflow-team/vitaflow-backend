@@ -11,9 +11,13 @@ export interface OrchestrationState {
   weightKg?: number;
   heightCm?: number;
   sessionDurationMin?: number;
-  // `undefined` = not yet asked; `null` = asked and explicitly skipped; a
-  // string = provided — the three-state distinction `weightKg`/etc. above
-  // don't need, since this field alone is optional (ADR-009/ADR-015).
+  // `undefined` = not yet asked this conversation; `null` = asked and
+  // explicitly skipped; a string = provided (ADR-009/ADR-015). This
+  // three-state distinction lives only within one conversation's state —
+  // `WorkoutsService.startConversation` collapses a stored `null` back to
+  // `undefined` when pre-filling from `FitnessProfile`, the same as
+  // `weightKg`/etc., since the column itself can't tell "never asked"
+  // apart from "asked and skipped" across conversations.
   restrictionDetail?: string | null;
   // The field the most recently returned question was about; the next
   // `answer()` call's raw text is interpreted as a reply to this field.

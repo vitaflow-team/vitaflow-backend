@@ -37,29 +37,60 @@ const CONTRAINDICATED = 'Este exercício é contraindicado para suas restriçõe
 const MISSING_DAYS_PER_WEEK = 'Informe quantos dias por semana você treina.';
 
 const AGE_QUESTION = 'Qual é a sua idade?';
-const WEIGHT_QUESTION = 'Qual é o seu peso, em kg?';
-const HEIGHT_QUESTION = 'Qual é a sua altura, em cm?';
-const SESSION_DURATION_QUESTION =
-  'Quantos minutos você tem disponível por sessão de treino?';
 const RESTRICTION_DETAIL_QUESTION =
   'Quer contar mais detalhes sobre alguma lesão ou restrição? (opcional — pode deixar em branco)';
 
 const MIN_AGE = 10;
 const MAX_AGE = 100;
-const MIN_WEIGHT_KG = 20;
-const MAX_WEIGHT_KG = 300;
-const MIN_HEIGHT_CM = 100;
-const MAX_HEIGHT_CM = 250;
-const MIN_SESSION_DURATION_MIN = 10;
-const MAX_SESSION_DURATION_MIN = 180;
 const MAX_RESTRICTION_DETAIL_LENGTH = 500;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+type NumericStateKey = 'weightKg' | 'heightCm' | 'sessionDurationMin';
+
+interface NumericFieldStep {
+  field: 'weight' | 'height' | 'sessionDuration';
+  question: string;
+  stateKey: NumericStateKey;
+  parse: (rawAnswer: string) => number | null;
+}
+
+// Ordered, data-driven list of the ranged-numeric deterministic steps that
+// follow `age` — one place that defines both the question order (`advance`
+// walks this array) and each field's parsing rule (ADR-015), instead of a
+// hand-written method and if-branch per field.
+const NUMERIC_FIELD_STEPS: readonly NumericFieldStep[] = [
+  {
+    field: 'weight',
+    question: 'Qual é o seu peso, em kg?',
+    stateKey: 'weightKg',
+    parse: (rawAnswer) => parseRangedFloat(rawAnswer, 20, 300),
+  },
+  {
+    field: 'height',
+    question: 'Qual é a sua altura, em cm?',
+    stateKey: 'heightCm',
+    parse: (rawAnswer) => parseRangedFloat(rawAnswer, 100, 250),
+  },
+  {
+    field: 'sessionDuration',
+    question: 'Quantos minutos você tem disponível por sessão de treino?',
+    stateKey: 'sessionDurationMin',
+    parse: (rawAnswer) => parseRangedInt(rawAnswer, 10, 180),
+  },
+];
 
 export interface UpdateWorkoutExerciseInput {
   exerciseId?: string;
   sets?: number;
   reps?: number;
   remove?: boolean;
+}
+
+interface ConversationStepInput {
+  userId: string;
+  conversationId: string;
+  state: OrchestrationState;
+  rawAnswer: string;
 }
 
 @Injectable()
@@ -92,12 +123,16 @@ export class WorkoutsService {
       weightKg: profile?.weightKg ?? undefined,
       heightCm: profile?.heightCm ?? undefined,
       sessionDurationMin: profile?.sessionDurationMin ?? undefined,
-      restrictionDetail: profile?.restrictionDetail,
+      // A stored `null` means either "never asked" or "asked and skipped"
+      // (the column can't distinguish them — same accepted collapse as
+      // MuscleFocusAnswer's 'NONE'); both re-ask, matching the three
+      // fields above, so a DB `null` is never silently permanent.
+      restrictionDetail: profile?.restrictionDetail ?? undefined,
       pendingField: null,
     };
     const conversationId = this.conversations.create(userId, state);
 
-    return await this.advance(userId, conversationId, state);
+    return await this.advance({ userId, conversationId, state });
   }
 
   async answer(
@@ -108,37 +143,20 @@ export class WorkoutsService {
     const state = this.conversations.get(userId, conversationId);
     if (!state) throw new AppError(CONVERSATION_NOT_FOUND, 404);
 
-    switch (state.pendingField) {
-      case 'age':
-        return await this.answerAge(userId, conversationId, state, rawAnswer);
-      case 'weight':
-        return await this.answerWeight(
-          userId,
-          conversationId,
-          state,
-          rawAnswer,
-        );
-      case 'height':
-        return await this.answerHeight(
-          userId,
-          conversationId,
-          state,
-          rawAnswer,
-        );
-      case 'sessionDuration':
-        return await this.answerSessionDuration(
-          userId,
-          conversationId,
-          state,
-          rawAnswer,
-        );
-      case 'restrictionDetail':
-        return await this.answerRestrictionDetail(
-          userId,
-          conversationId,
-          state,
-          rawAnswer,
-        );
+    const input: ConversationStepInput = {
+      userId,
+      conversationId,
+      state,
+      rawAnswer,
+    };
+
+    if (state.pendingField === 'age') return await this.answerAge(input);
+    const numericStep = NUMERIC_FIELD_STEPS.find(
+      (step) => step.field === state.pendingField,
+    );
+    if (numericStep) return await this.answerNumericField(input, numericStep);
+    if (state.pendingField === 'restrictionDetail') {
+      return await this.answerRestrictionDetail(input);
     }
 
     const turn = await this.llm.nextQuestion({
@@ -263,101 +281,62 @@ export class WorkoutsService {
   }
 
   private async answerAge(
-    userId: string,
-    conversationId: string,
-    state: OrchestrationState,
-    rawAnswer: string,
+    input: ConversationStepInput,
   ): Promise<ConversationTurnResult | WorkoutWithDetails> {
+    const { userId, conversationId, state, rawAnswer } = input;
     const age = parseRangedInt(rawAnswer, MIN_AGE, MAX_AGE);
     if (age === null) {
-      return this.repromptTurn(conversationId, 'age', AGE_QUESTION);
+      return this.repromptTurn({
+        conversationId,
+        field: 'age',
+        question: AGE_QUESTION,
+      });
     }
 
     await this.users.updateUserProfile(userId, {
       birthDate: ageToBirthDate(age),
     });
-    return await this.advance(userId, conversationId, {
-      ...state,
-      ageKnown: true,
-      pendingField: null,
+    return await this.advance({
+      userId,
+      conversationId,
+      state: { ...state, ageKnown: true, pendingField: null },
     });
   }
 
-  private async answerWeight(
-    userId: string,
-    conversationId: string,
-    state: OrchestrationState,
-    rawAnswer: string,
+  private async answerNumericField(
+    input: ConversationStepInput,
+    step: NumericFieldStep,
   ): Promise<ConversationTurnResult | WorkoutWithDetails> {
-    const weightKg = parseRangedFloat(rawAnswer, MIN_WEIGHT_KG, MAX_WEIGHT_KG);
-    if (weightKg === null) {
-      return this.repromptTurn(conversationId, 'weight', WEIGHT_QUESTION);
-    }
-    return await this.advance(userId, conversationId, {
-      ...state,
-      weightKg,
-      pendingField: null,
-    });
-  }
-
-  private async answerHeight(
-    userId: string,
-    conversationId: string,
-    state: OrchestrationState,
-    rawAnswer: string,
-  ): Promise<ConversationTurnResult | WorkoutWithDetails> {
-    const heightCm = parseRangedFloat(rawAnswer, MIN_HEIGHT_CM, MAX_HEIGHT_CM);
-    if (heightCm === null) {
-      return this.repromptTurn(conversationId, 'height', HEIGHT_QUESTION);
-    }
-    return await this.advance(userId, conversationId, {
-      ...state,
-      heightCm,
-      pendingField: null,
-    });
-  }
-
-  private async answerSessionDuration(
-    userId: string,
-    conversationId: string,
-    state: OrchestrationState,
-    rawAnswer: string,
-  ): Promise<ConversationTurnResult | WorkoutWithDetails> {
-    const sessionDurationMin = parseRangedInt(
-      rawAnswer,
-      MIN_SESSION_DURATION_MIN,
-      MAX_SESSION_DURATION_MIN,
-    );
-    if (sessionDurationMin === null) {
-      return this.repromptTurn(
+    const { userId, conversationId, state, rawAnswer } = input;
+    const value = step.parse(rawAnswer);
+    if (value === null) {
+      return this.repromptTurn({
         conversationId,
-        'sessionDuration',
-        SESSION_DURATION_QUESTION,
-      );
+        field: step.field,
+        question: step.question,
+      });
     }
-    return await this.advance(userId, conversationId, {
-      ...state,
-      sessionDurationMin,
-      pendingField: null,
+    return await this.advance({
+      userId,
+      conversationId,
+      state: { ...state, [step.stateKey]: value, pendingField: null },
     });
   }
 
   // The last deterministic step (ADR-009/ADR-015): optional, so an empty
   // answer is a valid skip (persisted as `null`), never a reprompt.
   private async answerRestrictionDetail(
-    userId: string,
-    conversationId: string,
-    state: OrchestrationState,
-    rawAnswer: string,
+    input: ConversationStepInput,
   ): Promise<ConversationTurnResult | WorkoutWithDetails> {
+    const { userId, conversationId, state, rawAnswer } = input;
     const trimmed = rawAnswer.trim();
     if (trimmed.length > MAX_RESTRICTION_DETAIL_LENGTH) {
-      return this.repromptTurn(
+      return this.repromptTurn({
         conversationId,
-        'restrictionDetail',
-        RESTRICTION_DETAIL_QUESTION,
-        true,
-      );
+        field: 'restrictionDetail',
+        question: RESTRICTION_DETAIL_QUESTION,
+        optional: true,
+      });
     }
 
     return await this.completeConversation(userId, conversationId, {
@@ -370,38 +349,30 @@ export class WorkoutsService {
   // Asks the next question given the current state, with no raw answer to
   // parse yet — used right after `startConversation` and right after each
   // deterministic step resolves. Walks the deterministic steps in order
-  // (age, weight, height, sessionDuration) before handing off to the LLM.
-  private async advance(
-    userId: string,
-    conversationId: string,
-    state: OrchestrationState,
-  ): Promise<ConversationTurnResult | WorkoutWithDetails> {
+  // (age, then NUMERIC_FIELD_STEPS) before handing off to the LLM.
+  private async advance(input: {
+    userId: string;
+    conversationId: string;
+    state: OrchestrationState;
+  }): Promise<ConversationTurnResult | WorkoutWithDetails> {
+    const { userId, conversationId, state } = input;
     if (!state.ageKnown) {
-      return this.askDeterministic(conversationId, state, 'age', AGE_QUESTION);
-    }
-    if (state.weightKg === undefined) {
-      return this.askDeterministic(
+      return this.askDeterministic({
         conversationId,
         state,
-        'weight',
-        WEIGHT_QUESTION,
-      );
+        field: 'age',
+        question: AGE_QUESTION,
+      });
     }
-    if (state.heightCm === undefined) {
-      return this.askDeterministic(
-        conversationId,
-        state,
-        'height',
-        HEIGHT_QUESTION,
-      );
-    }
-    if (state.sessionDurationMin === undefined) {
-      return this.askDeterministic(
-        conversationId,
-        state,
-        'sessionDuration',
-        SESSION_DURATION_QUESTION,
-      );
+    for (const step of NUMERIC_FIELD_STEPS) {
+      if (state[step.stateKey] === undefined) {
+        return this.askDeterministic({
+          conversationId,
+          state,
+          field: step.field,
+          question: step.question,
+        });
+      }
     }
 
     const turn = await this.llm.nextQuestion({ answers: state.answers });
@@ -437,22 +408,23 @@ export class WorkoutsService {
     state: OrchestrationState,
   ): Promise<ConversationTurnResult | WorkoutWithDetails> {
     if (state.restrictionDetail === undefined) {
-      return this.askDeterministic(
+      return this.askDeterministic({
         conversationId,
         state,
-        'restrictionDetail',
-        RESTRICTION_DETAIL_QUESTION,
-      );
+        field: 'restrictionDetail',
+        question: RESTRICTION_DETAIL_QUESTION,
+      });
     }
     return await this.completeConversation(userId, conversationId, state);
   }
 
-  private askDeterministic(
-    conversationId: string,
-    state: OrchestrationState,
-    field: DeterministicField,
-    question: string,
-  ): ConversationTurnResult {
+  private askDeterministic(input: {
+    conversationId: string;
+    state: OrchestrationState;
+    field: DeterministicField;
+    question: string;
+  }): ConversationTurnResult {
+    const { conversationId, state, field, question } = input;
     this.conversations.update(conversationId, {
       ...state,
       pendingField: field,
@@ -467,12 +439,13 @@ export class WorkoutsService {
     };
   }
 
-  private repromptTurn(
-    conversationId: string,
-    field: DeterministicField,
-    question: string,
-    optional = false,
-  ): ConversationTurnResult {
+  private repromptTurn(input: {
+    conversationId: string;
+    field: DeterministicField;
+    question: string;
+    optional?: boolean;
+  }): ConversationTurnResult {
+    const { conversationId, field, question, optional = false } = input;
     return {
       conversationId,
       field,

@@ -33,8 +33,11 @@ export class LlmExplanationService {
   constructor(@Inject(OPENAI_CLIENT) private readonly client: OpenAI) {}
 
   async nextQuestion(state: ConversationState): Promise<ConversationTurn> {
-    const response = await this.withRetry(() =>
-      this.client.chat.completions.create({
+    // Built once, outside the closure: a retried attempt resends the same
+    // request, it never re-derives it (the prompt-building work shouldn't
+    // scale with RETRY_ATTEMPTS).
+    const request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
+      {
         model: OPENAI_MODEL,
         messages: [
           { role: 'system', content: CONVERSATION_SYSTEM_PROMPT },
@@ -48,15 +51,17 @@ export class LlmExplanationService {
             schema: CONVERSATION_TURN_JSON_SCHEMA,
           },
         },
-      }),
+      };
+    const response = await this.withRetry(() =>
+      this.client.chat.completions.create(request),
     );
 
     return this.parseJsonContent<ConversationTurn>(response);
   }
 
   async explain(plan: GeneratedPlan, profile: FitnessProfile): Promise<string> {
-    const response = await this.withRetry(() =>
-      this.client.chat.completions.create({
+    const request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
+      {
         model: OPENAI_MODEL,
         messages: [
           { role: 'system', content: EXPLANATION_SYSTEM_PROMPT },
@@ -70,7 +75,9 @@ export class LlmExplanationService {
             schema: EXPLANATION_JSON_SCHEMA,
           },
         },
-      }),
+      };
+    const response = await this.withRetry(() =>
+      this.client.chat.completions.create(request),
     );
 
     return this.parseJsonContent<{ explanation: string }>(response).explanation;
@@ -107,11 +114,14 @@ export class LlmExplanationService {
     );
   }
 
-  // CodedError (not AppError) is deliberate here: AppError's `reason` is
-  // never sent to the client (see its own doc comment), but the frontend
-  // needs to tell this specific, recoverable failure apart from every
-  // other 4xx/5xx this service's callers can throw — a CodedError's `code`
-  // is explicitly part of the response body (ADR-008/PRD, this revision).
+  // code-standards: backend-code.md §7 ("always AppError, never a raw
+  // HttpException subtype") — CodedError is used deliberately instead.
+  // AppError's `reason` is never sent to the client (see its own doc
+  // comment), so it structurally cannot carry the distinguishable `code`
+  // PRD ADR-008 requires the frontend to match on; CodedError is this
+  // codebase's own, already-dominant mechanism for exactly that need (its
+  // own doc comment: "a client can tell apart two failures that share a
+  // status"), used by ~30 other services — §7 predates that pattern.
   private llmCallFailed(): CodedError {
     return new CodedError(GENERATION_FAILED, 502, 'llm_call_failed');
   }

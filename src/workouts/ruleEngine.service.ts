@@ -106,6 +106,16 @@ export class RuleEngineService {
   ): GeneratedWorkoutDay['exercises'] {
     const exercises: GeneratedWorkoutDay['exercises'] = [];
     const used = new Set<string>();
+    const tryAdd = (candidate: Exercise): void => {
+      if (used.has(candidate.id)) return;
+      used.add(candidate.id);
+      exercises.push({
+        exerciseId: candidate.id,
+        sets: reps.sets,
+        reps: reps.reps,
+        order: exercises.length + 1,
+      });
+    };
 
     // Reserve up to FOCUS_SLOTS_PER_DAY slots for the muscle-focus pool
     // first (ADR-013) — never more than what's actually available or than
@@ -117,16 +127,9 @@ export class RuleEngineService {
       perDayCount,
     );
     for (let i = 0; i < focusSlots; i++) {
-      const candidate =
-        focusCandidates[(dayIndex * focusSlots + i) % focusCandidates.length];
-      if (used.has(candidate.id)) continue;
-      used.add(candidate.id);
-      exercises.push({
-        exerciseId: candidate.id,
-        sets: reps.sets,
-        reps: reps.reps,
-        order: exercises.length + 1,
-      });
+      tryAdd(
+        focusCandidates[(dayIndex * focusSlots + i) % focusCandidates.length],
+      );
     }
 
     // Fills the remaining slots from the general rotation (identical
@@ -137,16 +140,7 @@ export class RuleEngineService {
       exercises.length < perDayCount && offset < candidates.length;
       offset++
     ) {
-      const candidate =
-        candidates[(dayIndex * perDayCount + offset) % candidates.length];
-      if (used.has(candidate.id)) continue;
-      used.add(candidate.id);
-      exercises.push({
-        exerciseId: candidate.id,
-        sets: reps.sets,
-        reps: reps.reps,
-        order: exercises.length + 1,
-      });
+      tryAdd(candidates[(dayIndex * perDayCount + offset) % candidates.length]);
     }
 
     return exercises;

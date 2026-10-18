@@ -267,6 +267,44 @@ describe('WorkoutsService', () => {
       expect(llmNextQuestion).toHaveBeenCalled();
     });
 
+    it('still asks restrictionDetail for an existing profile whose column is the DB default null (regression: null must collapse to "ask", not "known")', async () => {
+      fitnessProfileFindByUserId.mockResolvedValue(
+        makeProfile({
+          sex: 'MALE',
+          goal: 'MUSCLE_GAIN',
+          equipment: 'GYM',
+          weightKg: 70,
+          heightCm: 170,
+          sessionDurationMin: 45,
+          restrictionDetail: null,
+        }),
+      );
+      // Already-known profile fields mean every field this mock
+      // returns is pre-filled, so the LLM resolves the whole phase
+      // (`done: true`) on the very first call, inside startConversation
+      // itself — the same turn restrictionDetail must be reachable from.
+      llmNextQuestion.mockResolvedValue(
+        makeTurn({
+          answers: {
+            sex: 'MALE',
+            goal: 'MUSCLE_GAIN',
+            daysPerWeek: 3,
+            equipment: 'GYM',
+            restrictions: [],
+          },
+          field: null,
+          done: true,
+        }),
+      );
+
+      const start = (await service.startConversation(
+        'user-1',
+      )) as ConversationTurnResult;
+
+      expect(start.field).toBe('restrictionDetail');
+      expect(start.optional).toBe(true);
+    });
+
     it('UT-052 pre-fills experienceLevel and muscleFocus from a prior FitnessProfile', async () => {
       fitnessProfileFindByUserId.mockResolvedValue(
         makeProfile({
