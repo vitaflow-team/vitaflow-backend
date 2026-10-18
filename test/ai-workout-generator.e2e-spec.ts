@@ -33,6 +33,7 @@ import {
   ProductType,
   Users,
 } from '@prisma/client';
+import OpenAI from 'openai';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -180,47 +181,88 @@ describe('AI Workout Generator integration', () => {
     });
   }
 
-  it('IT-001 progresses through each required field to completion over repeated POST /workouts/conversation calls', async () => {
-    await seedExercise({ name: 'Supino' });
-    const auth = await bearer(freeUser);
+  it('IT-001 (revised) progresses through every required field — age, weight, height, sessionDuration, the LLM-driven fields, then restrictionDetail — over repeated POST /workouts/conversation calls', async () => {
+    const freshUser = await createUser('fresh-flow', {});
+    try {
+      const auth = await bearer(freshUser);
 
-    const start = await request(app.getHttpServer())
-      .post('/workouts/conversation')
-      .set('Authorization', auth)
-      .send({});
-    expect(start.status).toBe(201);
-    expect(start.body.field).toBe('sex');
-    const { conversationId } = start.body;
+      const start = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({});
+      expect(start.status).toBe(201);
+      expect(start.body.field).toBe('weight');
+      const { conversationId } = start.body;
 
-    openAiCreate.mockResolvedValueOnce(
-      completion({
-        answers: { sex: 'MALE' },
-        field: 'goal',
-        question: 'Qual seu objetivo?',
-        done: false,
-        reprompt: false,
-      }),
-    );
-    const afterSex = await request(app.getHttpServer())
-      .post('/workouts/conversation')
-      .set('Authorization', auth)
-      .send({ conversationId, answer: 'masculino' });
-    expect(afterSex.body.field).toBe('goal');
+      const afterWeight = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '70' });
+      expect(afterWeight.body.field).toBe('height');
 
-    openAiCreate.mockResolvedValueOnce(
-      completion({
-        answers: { sex: 'MALE', goal: 'MUSCLE_GAIN' },
-        field: 'daysPerWeek',
-        question: 'Quantos dias?',
-        done: false,
-        reprompt: false,
-      }),
-    );
-    const afterGoal = await request(app.getHttpServer())
-      .post('/workouts/conversation')
-      .set('Authorization', auth)
-      .send({ conversationId, answer: 'ganho de massa' });
-    expect(afterGoal.body.field).toBe('daysPerWeek');
+      const afterHeight = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '170' });
+      expect(afterHeight.body.field).toBe('sessionDuration');
+      expect(openAiCreate).not.toHaveBeenCalled();
+
+      openAiCreate.mockResolvedValueOnce(
+        completion({
+          answers: {
+            sex: null,
+            goal: null,
+            daysPerWeek: null,
+            equipment: null,
+            restrictions: null,
+            experienceLevel: null,
+            muscleFocus: null,
+          },
+          field: 'sex',
+          question: 'Qual é o seu sexo?',
+          done: false,
+          reprompt: false,
+        }),
+      );
+      const afterSessionDuration = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '45' });
+      expect(afterSessionDuration.body.field).toBe('sex');
+
+      openAiCreate.mockResolvedValueOnce(
+        completion({
+          answers: {
+            sex: 'MALE',
+            goal: 'MUSCLE_GAIN',
+            daysPerWeek: 3,
+            equipment: 'GYM',
+            restrictions: [],
+            experienceLevel: 'BEGINNER',
+            muscleFocus: 'NONE',
+          },
+          field: null,
+          question: '',
+          done: true,
+          reprompt: false,
+        }),
+      );
+      const afterLlmPhase = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({
+          conversationId,
+          answer:
+            'masculino, ganho de massa, 3 dias, academia, sem restrições, iniciante, sem preferência',
+        });
+      expect(afterLlmPhase.body.field).toBe('restrictionDetail');
+      expect(afterLlmPhase.body.optional).toBe(true);
+    } finally {
+      await prisma.fitnessProfile.deleteMany({
+        where: { userId: freshUser.id },
+      });
+      await prisma.users.deleteMany({ where: { id: freshUser.id } });
+    }
   });
 
   it('IT-002 leaves no Workout row for a conversation that is never completed', async () => {
@@ -395,5 +437,262 @@ describe('AI Workout Generator integration', () => {
     expect(editedExercise.exercise.id).not.toBe(original.id);
     expect(editedExercise.sets).toBe(5);
     expect(editedExercise.reps).toBe(6);
+  });
+
+  it('IT-007 (revision) retries a transient OpenAI failure transparently, with no error reaching the client', async () => {
+    await seedExercise({ name: 'Retry Transiente' });
+    const auth = await bearer(freeUser);
+    await prisma.fitnessProfile.upsert({
+      where: { userId: freeUser.id },
+      update: { goal: 'MUSCLE_GAIN', equipment: 'GYM', restrictions: [] },
+      create: {
+        userId: freeUser.id,
+        goal: 'MUSCLE_GAIN',
+        equipment: 'GYM',
+        restrictions: [],
+      },
+    });
+
+    const transientError = new OpenAI.APIError(500, {}, 'Internal error', {});
+    openAiCreate
+      .mockRejectedValueOnce(transientError)
+      .mockResolvedValueOnce(completion({ explanation: 'Plano após retry.' }));
+
+    const response = await request(app.getHttpServer())
+      .post('/workouts/generate')
+      .set('Authorization', auth)
+      .send({ daysPerWeek: 1 });
+
+    expect(response.status).toBe(201);
+    expect(response.body.explanation).toBe('Plano após retry.');
+    expect(openAiCreate).toHaveBeenCalledTimes(2);
+  }, 10_000);
+
+  it('IT-008 (revision) returns 502/llm_call_failed once the retry budget is exhausted, on the very first conversation turn too', async () => {
+    await seedExercise({ name: 'Falha Permanente' });
+    const auth = await bearer(freeUser);
+    await prisma.fitnessProfile.upsert({
+      where: { userId: freeUser.id },
+      update: { goal: 'MUSCLE_GAIN', equipment: 'GYM', restrictions: [] },
+      create: {
+        userId: freeUser.id,
+        goal: 'MUSCLE_GAIN',
+        equipment: 'GYM',
+        restrictions: [],
+      },
+    });
+    const transientError = new OpenAI.APIError(500, {}, 'Internal error', {});
+    openAiCreate.mockRejectedValue(transientError);
+
+    const response = await request(app.getHttpServer())
+      .post('/workouts/generate')
+      .set('Authorization', auth)
+      .send({ daysPerWeek: 1 });
+
+    expect(response.status).toBe(502);
+    expect(response.body.code).toBe('llm_call_failed');
+    expect(openAiCreate).toHaveBeenCalledTimes(3);
+  }, 10_000);
+
+  it('IT-009 (revision) shows a higher proportion of muscle-focus-matching exercises in the generated plan', async () => {
+    const legExercise = await seedExercise({
+      name: 'Agachamento Foco',
+      muscleGroup: 'Pernas',
+    });
+    await seedExercise({ name: 'Supino Foco', muscleGroup: 'Peito' });
+    await seedExercise({ name: 'Remada Foco', muscleGroup: 'Costas' });
+    const auth = await bearer(freeUser);
+    await prisma.fitnessProfile.upsert({
+      where: { userId: freeUser.id },
+      update: {
+        goal: 'MUSCLE_GAIN',
+        equipment: 'GYM',
+        restrictions: [],
+        muscleFocus: 'LEGS',
+      },
+      create: {
+        userId: freeUser.id,
+        goal: 'MUSCLE_GAIN',
+        equipment: 'GYM',
+        restrictions: [],
+        muscleFocus: 'LEGS',
+      },
+    });
+
+    openAiCreate.mockResolvedValueOnce(
+      completion({ explanation: 'Plano com foco em pernas.' }),
+    );
+    const response = await request(app.getHttpServer())
+      .post('/workouts/generate')
+      .set('Authorization', auth)
+      .send({ daysPerWeek: 1 });
+
+    expect(response.status).toBe(201);
+    const exerciseIds = response.body.days[0].exercises.map(
+      (exercise: { exercise: { id: string } }) => exercise.exercise.id,
+    );
+    expect(exerciseIds).toContain(legExercise.id);
+  });
+
+  it('IT-010 (revision) persists a skipped restrictionDetail as null and still generates successfully', async () => {
+    await seedExercise({ name: 'Skip Detail' });
+    const freshUser = await createUser('skip-detail', {});
+    try {
+      const auth = await bearer(freshUser);
+
+      const start = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({});
+      const conversationId = start.body.conversationId;
+
+      await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '70' });
+      await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '170' });
+
+      openAiCreate.mockResolvedValueOnce(
+        completion({
+          answers: {
+            sex: 'MALE',
+            goal: 'MUSCLE_GAIN',
+            daysPerWeek: 1,
+            equipment: 'GYM',
+            restrictions: [],
+            experienceLevel: 'BEGINNER',
+            muscleFocus: 'NONE',
+          },
+          field: null,
+          question: '',
+          done: true,
+          reprompt: false,
+        }),
+      );
+      const afterSessionDuration = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '45' });
+      expect(afterSessionDuration.body.field).toBe('restrictionDetail');
+
+      openAiCreate.mockResolvedValueOnce(
+        completion({ explanation: 'Plano sem detalhe de restrição.' }),
+      );
+      const final = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '' });
+      expect(final.status).toBe(201);
+
+      const profile = await prisma.fitnessProfile.findUnique({
+        where: { userId: freshUser.id },
+      });
+      expect(profile?.restrictionDetail).toBeNull();
+    } finally {
+      await prisma.workout.deleteMany({ where: { userId: freshUser.id } });
+      await prisma.fitnessProfile.deleteMany({
+        where: { userId: freshUser.id },
+      });
+      await prisma.users.deleteMany({ where: { id: freshUser.id } });
+    }
+  });
+
+  it('E2E-005 (revision) completes the full expanded conversation — every new field answered, not skipped — and the explanation prompt carries the stated injury detail', async () => {
+    const legExercise = await seedExercise({
+      name: 'Agachamento E2E',
+      muscleGroup: 'Pernas',
+    });
+    const freshUser = await createUser('full-flow', {});
+    try {
+      const auth = await bearer(freshUser);
+
+      const start = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({});
+      const conversationId = start.body.conversationId;
+      expect(start.body.field).toBe('weight');
+
+      await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '82' });
+      await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '178' });
+
+      openAiCreate.mockResolvedValueOnce(
+        completion({
+          answers: {
+            sex: 'MALE',
+            goal: 'MUSCLE_GAIN',
+            daysPerWeek: 1,
+            equipment: 'GYM',
+            restrictions: ['SHOULDER'],
+            experienceLevel: 'INTERMEDIATE',
+            muscleFocus: 'LEGS',
+          },
+          field: null,
+          question: '',
+          done: true,
+          reprompt: false,
+        }),
+      );
+      const afterSessionDuration = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({ conversationId, answer: '60' });
+      expect(afterSessionDuration.body.field).toBe('restrictionDetail');
+      expect(afterSessionDuration.body.optional).toBe(true);
+
+      openAiCreate.mockResolvedValueOnce(
+        completion({
+          explanation: 'Plano com foco em pernas, evitando ombro.',
+        }),
+      );
+      const final = await request(app.getHttpServer())
+        .post('/workouts/conversation')
+        .set('Authorization', auth)
+        .send({
+          conversationId,
+          answer: 'tendinite no ombro direito',
+        });
+      expect(final.status).toBe(201);
+      expect(final.body.explanation).toBe(
+        'Plano com foco em pernas, evitando ombro.',
+      );
+      const exerciseIds = final.body.days[0].exercises.map(
+        (exercise: { exercise: { id: string } }) => exercise.exercise.id,
+      );
+      expect(exerciseIds).toContain(legExercise.id);
+
+      const explainCallArgs = openAiCreate.mock.calls[1][0];
+      const explainUserMessage = explainCallArgs.messages.find(
+        (message: { role: string }) => message.role === 'user',
+      );
+      expect(explainUserMessage.content).toContain(
+        'tendinite no ombro direito',
+      );
+
+      const profile = await prisma.fitnessProfile.findUnique({
+        where: { userId: freshUser.id },
+      });
+      expect(profile?.restrictionDetail).toBe('tendinite no ombro direito');
+      expect(profile?.weightKg).toBe(82);
+      expect(profile?.heightCm).toBe(178);
+      expect(profile?.sessionDurationMin).toBe(60);
+      expect(profile?.experienceLevel).toBe('INTERMEDIATE');
+      expect(profile?.muscleFocus).toBe('LEGS');
+    } finally {
+      await prisma.workout.deleteMany({ where: { userId: freshUser.id } });
+      await prisma.fitnessProfile.deleteMany({
+        where: { userId: freshUser.id },
+      });
+      await prisma.users.deleteMany({ where: { id: freshUser.id } });
+    }
   });
 });

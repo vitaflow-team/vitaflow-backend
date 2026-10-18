@@ -43,8 +43,10 @@ export class CalorieEstimationService {
     return this.parseJsonContent(response).calories;
   }
 
-  // Same retry-once-then-fail policy as LlmExplanationService: one retry on
-  // a transient error, immediate failure on a 4xx.
+  // One retry on a transient error, immediate failure on a 4xx.
+  // LlmExplanationService's own withRetry since diverged to 3 attempts
+  // with exponential backoff (ADR-012 of ai-workout-generator) — this
+  // service's simpler policy is unchanged and intentionally independent.
   private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
     try {
       return await operation();

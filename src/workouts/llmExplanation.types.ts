@@ -1,7 +1,9 @@
 import {
   ExerciseContraindication,
   ExerciseEquipment,
+  FitnessExperienceLevel,
   FitnessGoal,
+  MuscleFocus,
   Sex,
 } from '@prisma/client';
 
@@ -10,7 +12,18 @@ export type ConversationField =
   | 'goal'
   | 'daysPerWeek'
   | 'equipment'
-  | 'restrictions';
+  | 'restrictions'
+  | 'experienceLevel'
+  | 'muscleFocus';
+
+// 'NONE' is a resolved "no preference" answer, distinct from `undefined`
+// ("not yet asked") — ADR-015. `FitnessProfile.muscleFocus` has no such
+// third state (a nullable Prisma enum can't), so WorkoutsService maps
+// 'NONE' to `null` on persist and to `undefined` (no bias) for the rule
+// engine; a profile with `muscleFocus: null` is re-asked on the next
+// conversation either way, whether it was never answered or answered
+// "no preference" — an accepted, documented trade-off, not a bug.
+export type MuscleFocusAnswer = MuscleFocus | 'NONE';
 
 export interface ConversationAnswers {
   sex?: Sex;
@@ -18,6 +31,8 @@ export interface ConversationAnswers {
   daysPerWeek?: number;
   equipment?: ExerciseEquipment;
   restrictions?: ExerciseContraindication[];
+  experienceLevel?: FitnessExperienceLevel;
+  muscleFocus?: MuscleFocusAnswer;
 }
 
 export interface ConversationState {

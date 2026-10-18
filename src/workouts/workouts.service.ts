@@ -8,14 +8,23 @@ import {
 } from '@/repositories/workouts/workouts.repository';
 import { AppError } from '@/utils/app.erro';
 import { Injectable } from '@nestjs/common';
-import { ExerciseStatus, FitnessGoal, FitnessProfile } from '@prisma/client';
+import {
+  ExerciseStatus,
+  FitnessGoal,
+  FitnessProfile,
+  MuscleFocus,
+} from '@prisma/client';
 import { ConversationStore, OrchestrationState } from './conversationStore';
 import { isPlanUsable, toWorkoutInput } from './generatedPlan.util';
-import { ConversationAnswers, ConversationField } from './llmExplanation.types';
+import {
+  ConversationAnswers,
+  ConversationField,
+  MuscleFocusAnswer,
+} from './llmExplanation.types';
 import { LlmExplanationService } from './llmExplanation.service';
 import { PremiumGuard } from '@/common/guards/premium.guard';
 import { RuleEngineService } from './ruleEngine.service';
-import { ConversationTurnResult } from './workouts.types';
+import { ConversationTurnResult, DeterministicField } from './workouts.types';
 
 const NOT_FOUND = 'Recurso não encontrado.';
 const CONVERSATION_NOT_FOUND = 'Conversa não encontrada ou expirada.';
@@ -28,15 +37,60 @@ const CONTRAINDICATED = 'Este exercício é contraindicado para suas restriçõe
 const MISSING_DAYS_PER_WEEK = 'Informe quantos dias por semana você treina.';
 
 const AGE_QUESTION = 'Qual é a sua idade?';
+const RESTRICTION_DETAIL_QUESTION =
+  'Quer contar mais detalhes sobre alguma lesão ou restrição? (opcional — pode deixar em branco)';
+
 const MIN_AGE = 10;
 const MAX_AGE = 100;
+const MAX_RESTRICTION_DETAIL_LENGTH = 500;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+type NumericStateKey = 'weightKg' | 'heightCm' | 'sessionDurationMin';
+
+interface NumericFieldStep {
+  field: 'weight' | 'height' | 'sessionDuration';
+  question: string;
+  stateKey: NumericStateKey;
+  parse: (rawAnswer: string) => number | null;
+}
+
+// Ordered, data-driven list of the ranged-numeric deterministic steps that
+// follow `age` — one place that defines both the question order (`advance`
+// walks this array) and each field's parsing rule (ADR-015), instead of a
+// hand-written method and if-branch per field.
+const NUMERIC_FIELD_STEPS: readonly NumericFieldStep[] = [
+  {
+    field: 'weight',
+    question: 'Qual é o seu peso, em kg?',
+    stateKey: 'weightKg',
+    parse: (rawAnswer) => parseRangedFloat(rawAnswer, 20, 300),
+  },
+  {
+    field: 'height',
+    question: 'Qual é a sua altura, em cm?',
+    stateKey: 'heightCm',
+    parse: (rawAnswer) => parseRangedFloat(rawAnswer, 100, 250),
+  },
+  {
+    field: 'sessionDuration',
+    question: 'Quantos minutos você tem disponível por sessão de treino?',
+    stateKey: 'sessionDurationMin',
+    parse: (rawAnswer) => parseRangedInt(rawAnswer, 10, 180),
+  },
+];
 
 export interface UpdateWorkoutExerciseInput {
   exerciseId?: string;
   sets?: number;
   reps?: number;
   remove?: boolean;
+}
+
+interface ConversationStepInput {
+  userId: string;
+  conversationId: string;
+  state: OrchestrationState;
+  rawAnswer: string;
 }
 
 @Injectable()
@@ -54,7 +108,9 @@ export class WorkoutsService {
 
   // No plan-tier check here (US-001 AC-1): every user, Free or Premium,
   // can always start.
-  async startConversation(userId: string): Promise<ConversationTurnResult> {
+  async startConversation(
+    userId: string,
+  ): Promise<ConversationTurnResult | WorkoutWithDetails> {
     const [profile, user] = await Promise.all([
       this.fitnessProfiles.findByUserId(userId),
       this.users.findUnique({ id: userId }),
@@ -64,11 +120,19 @@ export class WorkoutsService {
     const state: OrchestrationState = {
       answers: prefillAnswers(profile),
       ageKnown: user.birthDate !== null,
+      weightKg: profile?.weightKg ?? undefined,
+      heightCm: profile?.heightCm ?? undefined,
+      sessionDurationMin: profile?.sessionDurationMin ?? undefined,
+      // A stored `null` means either "never asked" or "asked and skipped"
+      // (the column can't distinguish them — same accepted collapse as
+      // MuscleFocusAnswer's 'NONE'); both re-ask, matching the three
+      // fields above, so a DB `null` is never silently permanent.
+      restrictionDetail: profile?.restrictionDetail ?? undefined,
       pendingField: null,
     };
     const conversationId = this.conversations.create(userId, state);
 
-    return await this.advance(userId, conversationId, state);
+    return await this.advance({ userId, conversationId, state });
   }
 
   async answer(
@@ -79,8 +143,20 @@ export class WorkoutsService {
     const state = this.conversations.get(userId, conversationId);
     if (!state) throw new AppError(CONVERSATION_NOT_FOUND, 404);
 
-    if (state.pendingField === 'age') {
-      return await this.answerAge(userId, conversationId, state, rawAnswer);
+    const input: ConversationStepInput = {
+      userId,
+      conversationId,
+      state,
+      rawAnswer,
+    };
+
+    if (state.pendingField === 'age') return await this.answerAge(input);
+    const numericStep = NUMERIC_FIELD_STEPS.find(
+      (step) => step.field === state.pendingField,
+    );
+    if (numericStep) return await this.answerNumericField(input, numericStep);
+    if (state.pendingField === 'restrictionDetail') {
+      return await this.answerRestrictionDetail(input);
     }
 
     const turn = await this.llm.nextQuestion({
@@ -100,20 +176,20 @@ export class WorkoutsService {
         question: turn.question,
         done: false,
         reprompt: true,
+        optional: false,
       };
     }
 
     if (turn.done) {
-      return await this.completeConversation(
-        userId,
-        conversationId,
-        turn.answers,
-      );
+      return await this.advanceAfterLlm(userId, conversationId, {
+        ...state,
+        answers: turn.answers,
+      });
     }
 
     this.conversations.update(conversationId, {
+      ...state,
       answers: turn.answers,
-      ageKnown: true,
       pendingField: turn.field,
     });
     return {
@@ -122,6 +198,7 @@ export class WorkoutsService {
       question: turn.question,
       done: false,
       reprompt: false,
+      optional: false,
     };
   }
 
@@ -160,6 +237,8 @@ export class WorkoutsService {
       daysPerWeek,
       equipment: profile.equipment,
       restrictions: profile.restrictions,
+      experienceLevel: profile.experienceLevel ?? undefined,
+      muscleFocus: profile.muscleFocus ?? undefined,
     });
   }
 
@@ -202,88 +281,210 @@ export class WorkoutsService {
   }
 
   private async answerAge(
-    userId: string,
-    conversationId: string,
-    state: OrchestrationState,
-    rawAnswer: string,
-  ): Promise<ConversationTurnResult> {
-    const age = parseAge(rawAnswer);
+    input: ConversationStepInput,
+  ): Promise<ConversationTurnResult | WorkoutWithDetails> {
+    const { userId, conversationId, state, rawAnswer } = input;
+    const age = parseRangedInt(rawAnswer, MIN_AGE, MAX_AGE);
     if (age === null) {
-      return {
+      return this.repromptTurn({
         conversationId,
         field: 'age',
         question: AGE_QUESTION,
-        done: false,
-        reprompt: true,
-      };
+      });
     }
 
     await this.users.updateUserProfile(userId, {
       birthDate: ageToBirthDate(age),
     });
-    return await this.advance(userId, conversationId, {
+    return await this.advance({
+      userId,
+      conversationId,
+      state: { ...state, ageKnown: true, pendingField: null },
+    });
+  }
+
+  private async answerNumericField(
+    input: ConversationStepInput,
+    step: NumericFieldStep,
+  ): Promise<ConversationTurnResult | WorkoutWithDetails> {
+    const { userId, conversationId, state, rawAnswer } = input;
+    const value = step.parse(rawAnswer);
+    if (value === null) {
+      return this.repromptTurn({
+        conversationId,
+        field: step.field,
+        question: step.question,
+      });
+    }
+    return await this.advance({
+      userId,
+      conversationId,
+      state: { ...state, [step.stateKey]: value, pendingField: null },
+    });
+  }
+
+  // The last deterministic step (ADR-009/ADR-015): optional, so an empty
+  // answer is a valid skip (persisted as `null`), never a reprompt.
+  private async answerRestrictionDetail(
+    input: ConversationStepInput,
+  ): Promise<ConversationTurnResult | WorkoutWithDetails> {
+    const { userId, conversationId, state, rawAnswer } = input;
+    const trimmed = rawAnswer.trim();
+    if (trimmed.length > MAX_RESTRICTION_DETAIL_LENGTH) {
+      return this.repromptTurn({
+        conversationId,
+        field: 'restrictionDetail',
+        question: RESTRICTION_DETAIL_QUESTION,
+        optional: true,
+      });
+    }
+
+    return await this.completeConversation(userId, conversationId, {
       ...state,
-      ageKnown: true,
+      restrictionDetail: trimmed.length === 0 ? null : trimmed,
       pendingField: null,
     });
   }
 
   // Asks the next question given the current state, with no raw answer to
-  // parse yet — used right after `startConversation` and right after the
-  // age step resolves.
-  private async advance(
-    userId: string,
-    conversationId: string,
-    state: OrchestrationState,
-  ): Promise<ConversationTurnResult> {
+  // parse yet — used right after `startConversation` and right after each
+  // deterministic step resolves. Walks the deterministic steps in order
+  // (age, then NUMERIC_FIELD_STEPS) before handing off to the LLM.
+  private async advance(input: {
+    userId: string;
+    conversationId: string;
+    state: OrchestrationState;
+  }): Promise<ConversationTurnResult | WorkoutWithDetails> {
+    const { userId, conversationId, state } = input;
     if (!state.ageKnown) {
-      this.conversations.update(conversationId, {
-        ...state,
-        pendingField: 'age',
-      });
-      return {
+      return this.askDeterministic({
         conversationId,
+        state,
         field: 'age',
         question: AGE_QUESTION,
-        done: false,
-        reprompt: false,
-      };
+      });
+    }
+    for (const step of NUMERIC_FIELD_STEPS) {
+      if (state[step.stateKey] === undefined) {
+        return this.askDeterministic({
+          conversationId,
+          state,
+          field: step.field,
+          question: step.question,
+        });
+      }
     }
 
     const turn = await this.llm.nextQuestion({ answers: state.answers });
+    if (turn.done) {
+      return await this.advanceAfterLlm(userId, conversationId, {
+        ...state,
+        answers: turn.answers,
+      });
+    }
+
     this.conversations.update(conversationId, {
+      ...state,
       answers: turn.answers,
-      ageKnown: true,
-      pendingField: turn.done ? null : turn.field,
+      pendingField: turn.field,
     });
     return {
       conversationId,
       field: turn.field,
       question: turn.question,
-      done: turn.done,
+      done: false,
       reprompt: false,
+      optional: false,
+    };
+  }
+
+  // Runs once every LLM-schema field (sex, goal, daysPerWeek, equipment,
+  // restrictions, experienceLevel, muscleFocus) is known — asks the final
+  // deterministic step (restrictionDetail, UT-050) or, if it's already
+  // known from a prior conversation, completes directly.
+  private async advanceAfterLlm(
+    userId: string,
+    conversationId: string,
+    state: OrchestrationState,
+  ): Promise<ConversationTurnResult | WorkoutWithDetails> {
+    if (state.restrictionDetail === undefined) {
+      return this.askDeterministic({
+        conversationId,
+        state,
+        field: 'restrictionDetail',
+        question: RESTRICTION_DETAIL_QUESTION,
+      });
+    }
+    return await this.completeConversation(userId, conversationId, state);
+  }
+
+  private askDeterministic(input: {
+    conversationId: string;
+    state: OrchestrationState;
+    field: DeterministicField;
+    question: string;
+  }): ConversationTurnResult {
+    const { conversationId, state, field, question } = input;
+    this.conversations.update(conversationId, {
+      ...state,
+      pendingField: field,
+    });
+    return {
+      conversationId,
+      field,
+      question,
+      done: false,
+      reprompt: false,
+      optional: field === 'restrictionDetail',
+    };
+  }
+
+  private repromptTurn(input: {
+    conversationId: string;
+    field: DeterministicField;
+    question: string;
+    optional?: boolean;
+  }): ConversationTurnResult {
+    const { conversationId, field, question, optional = false } = input;
+    return {
+      conversationId,
+      field,
+      question,
+      done: false,
+      reprompt: true,
+      optional,
     };
   }
 
   private async completeConversation(
     userId: string,
     conversationId: string,
-    answers: ConversationAnswers,
+    state: OrchestrationState,
   ): Promise<WorkoutWithDetails> {
     this.conversations.delete(conversationId);
+    const { answers } = state;
 
     const user = await this.users.findUnique({ id: userId });
-    // Never stores a restriction without consent, and never invents a
-    // second consent mechanism — reuses `Users.healthDataConsentAt` as-is
-    // (UT-026).
+    // Never stores a restriction (or its free-text detail) without
+    // consent, and never invents a second consent mechanism — reuses
+    // `Users.healthDataConsentAt` as-is (UT-026).
     const consented = Boolean(user?.healthDataConsentAt);
     const restrictions = consented ? (answers.restrictions ?? []) : [];
+    const restrictionDetail = consented
+      ? (state.restrictionDetail ?? null)
+      : null;
 
     await this.fitnessProfiles.upsert(userId, {
       sex: answers.sex,
       equipment: answers.equipment,
       goal: answers.goal,
       restrictions,
+      restrictionDetail,
+      weightKg: state.weightKg,
+      heightCm: state.heightCm,
+      experienceLevel: answers.experienceLevel,
+      sessionDurationMin: state.sessionDurationMin,
+      muscleFocus: toMuscleFocusPersistValue(answers.muscleFocus),
     });
 
     if (answers.daysPerWeek === undefined) {
@@ -300,6 +501,8 @@ export class WorkoutsService {
       daysPerWeek: number;
       equipment: FitnessProfile['equipment'];
       restrictions: FitnessProfile['restrictions'];
+      experienceLevel?: FitnessProfile['experienceLevel'];
+      muscleFocus?: FitnessProfile['muscleFocus'];
     },
   ): Promise<WorkoutWithDetails> {
     if (!input.equipment) {
@@ -311,6 +514,8 @@ export class WorkoutsService {
       daysPerWeek: input.daysPerWeek,
       equipment: input.equipment,
       restrictions: input.restrictions,
+      experienceLevel: input.experienceLevel ?? undefined,
+      muscleFocus: input.muscleFocus ?? undefined,
     });
 
     if (!isPlanUsable(plan)) {
@@ -365,17 +570,47 @@ function prefillAnswers(profile: FitnessProfile | null): ConversationAnswers {
   if (profile.equipment) answers.equipment = profile.equipment;
   if (profile.restrictions.length > 0)
     answers.restrictions = profile.restrictions;
+  if (profile.experienceLevel)
+    answers.experienceLevel = profile.experienceLevel;
+  if (profile.muscleFocus) answers.muscleFocus = profile.muscleFocus;
   return answers;
 }
 
-function parseAge(rawAnswer: string): number | null {
+function parseRangedInt(
+  rawAnswer: string,
+  min: number,
+  max: number,
+): number | null {
   const trimmed = rawAnswer.trim();
   if (!/^\d+$/.test(trimmed)) return null;
-  const age = Number(trimmed);
-  if (age < MIN_AGE || age > MAX_AGE) return null;
-  return age;
+  const value = Number(trimmed);
+  if (value < min || value > max) return null;
+  return value;
+}
+
+function parseRangedFloat(
+  rawAnswer: string,
+  min: number,
+  max: number,
+): number | null {
+  const trimmed = rawAnswer.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  if (value < min || value > max) return null;
+  return value;
 }
 
 function ageToBirthDate(age: number): Date {
   return new Date(Date.now() - age * 365.25 * DAY_IN_MS);
+}
+
+// 'NONE' (a resolved "no preference" answer) has no matching Prisma enum
+// value, since FitnessProfile.muscleFocus can only be a real MuscleFocus or
+// null — persisted as null, same as "not yet answered" (ADR-015's accepted
+// trade-off, documented on MuscleFocusAnswer).
+function toMuscleFocusPersistValue(
+  answer: MuscleFocusAnswer | undefined,
+): MuscleFocus | null | undefined {
+  if (answer === 'NONE') return null;
+  return answer;
 }

@@ -1,10 +1,11 @@
-import { AppError } from '@/utils/app.erro';
+import { CodedError } from '@/common/errors/codedError';
 import { Test, TestingModule } from '@nestjs/testing';
 import { FitnessProfile } from '@prisma/client';
 import OpenAI from 'openai';
 import { LlmExplanationService } from './llmExplanation.service';
 import { OPENAI_CLIENT } from './openaiClient.provider';
 import { GeneratedPlan } from './ruleEngine.types';
+import { CONVERSATION_TURN_JSON_SCHEMA } from './llmExplanation.schemas';
 
 function makeCompletion(content: unknown) {
   return {
@@ -19,8 +20,14 @@ function makeProfile(overrides: Partial<FitnessProfile> = {}): FitnessProfile {
     userId: 'user-1',
     sex: 'MALE',
     restrictions: [],
+    restrictionDetail: null,
     equipment: 'GYM',
     goal: 'MUSCLE_GAIN',
+    weightKg: null,
+    heightCm: null,
+    experienceLevel: null,
+    sessionDurationMin: null,
+    muscleFocus: null,
     createdAt: timestamp,
     updatedAt: timestamp,
     ...overrides,
@@ -71,36 +78,68 @@ describe('LlmExplanationService', () => {
       );
     });
 
-    it('UT-028 retries once on a transient error and returns successfully on the second attempt', async () => {
+    it('UT-027 includes restrictionDetail in the prompt when present', async () => {
+      create.mockResolvedValue(makeCompletion({ explanation: 'Plano.' }));
+
+      await service.explain(
+        plan,
+        makeProfile({ restrictionDetail: 'tendinite no ombro direito' }),
+      );
+
+      const callArgs = create.mock.calls[0][0];
+      const userMessage = callArgs.messages.find(
+        (message: { role: string }) => message.role === 'user',
+      );
+      expect(userMessage.content).toContain('tendinite no ombro direito');
+    });
+
+    it('UT-028 (ADR-012) succeeds on the third attempt after two transient failures, with exponential backoff', async () => {
+      jest.useFakeTimers();
       const transientError = new OpenAI.APIError(500, {}, 'Internal error', {});
       create
         .mockRejectedValueOnce(transientError)
+        .mockRejectedValueOnce(transientError)
         .mockResolvedValueOnce(
-          makeCompletion({ explanation: 'Plano gerado após nova tentativa.' }),
+          makeCompletion({
+            explanation: 'Plano gerado na terceira tentativa.',
+          }),
         );
 
-      const result = await service.explain(plan, makeProfile());
+      const resultPromise = service.explain(plan, makeProfile());
+      await jest.advanceTimersByTimeAsync(500);
+      await jest.advanceTimersByTimeAsync(1500);
+      const result = await resultPromise;
 
-      expect(result).toBe('Plano gerado após nova tentativa.');
-      expect(create).toHaveBeenCalledTimes(2);
+      expect(result).toBe('Plano gerado na terceira tentativa.');
+      expect(create).toHaveBeenCalledTimes(3);
+      jest.useRealTimers();
     });
 
-    it('UT-028 fails after a second consecutive error without a further retry', async () => {
+    it('UT-028 (ADR-012) fails after 3 consecutive errors, with no 4th attempt', async () => {
+      jest.useFakeTimers();
       const transientError = new OpenAI.APIError(500, {}, 'Internal error', {});
       create.mockRejectedValue(transientError);
 
-      await expect(service.explain(plan, makeProfile())).rejects.toBeInstanceOf(
-        AppError,
-      );
-      expect(create).toHaveBeenCalledTimes(2);
+      const resultPromise = service.explain(plan, makeProfile());
+      const assertion =
+        expect(resultPromise).rejects.toBeInstanceOf(CodedError);
+      await jest.advanceTimersByTimeAsync(500);
+      await jest.advanceTimersByTimeAsync(1500);
+      await assertion;
+      await expect(resultPromise).rejects.toMatchObject({
+        code: 'llm_call_failed',
+      });
+
+      expect(create).toHaveBeenCalledTimes(3);
+      jest.useRealTimers();
     });
 
-    it('UT-028 does not retry on a 4xx response', async () => {
+    it('UT-036 does not retry on a 4xx response', async () => {
       const clientError = new OpenAI.APIError(400, {}, 'Bad request', {});
       create.mockRejectedValue(clientError);
 
       await expect(service.explain(plan, makeProfile())).rejects.toBeInstanceOf(
-        AppError,
+        CodedError,
       );
       expect(create).toHaveBeenCalledTimes(1);
     });
@@ -148,6 +187,29 @@ describe('LlmExplanationService', () => {
 
       expect(turn.reprompt).toBe(true);
       expect(turn.field).toBe('daysPerWeek');
+    });
+
+    it('UT-037 the conversation turn schema includes experienceLevel and muscleFocus with the NONE sentinel', () => {
+      const answerProps = CONVERSATION_TURN_JSON_SCHEMA.properties.answers
+        .properties as Record<string, { enum?: readonly unknown[] }>;
+
+      expect(answerProps.experienceLevel.enum).toEqual([
+        'BEGINNER',
+        'INTERMEDIATE',
+        'ADVANCED',
+        null,
+      ]);
+      expect(answerProps.muscleFocus.enum).toEqual(
+        expect.arrayContaining([
+          'CHEST',
+          'BACK',
+          'LEGS',
+          'SHOULDERS',
+          'ABDOMEN',
+          'NONE',
+        ]),
+      );
+      expect(answerProps.muscleFocus.enum).toContain(null);
     });
   });
 });

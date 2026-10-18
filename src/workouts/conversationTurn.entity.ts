@@ -21,4 +21,10 @@ export class ConversationTurnEntity {
     description: 'True when the previous answer could not be parsed',
   })
   reprompt: boolean;
+
+  @ApiProperty({
+    description:
+      'True only for the restrictionDetail turn — the client may let the user skip it by submitting an empty answer',
+  })
+  optional: boolean;
 }
