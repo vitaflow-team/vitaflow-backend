@@ -1,10 +1,19 @@
 import { ConversationField } from './llmExplanation.types';
 
-// `age` is a WorkoutsService-local step (US-001.EC-1): it backfills
-// `Users.birthDate` when missing, and is never part of `FitnessProfile`, so
-// it is handled here rather than inside LlmExplanationService's structured
-// schema (Task 3), which only knows about the fitness-profile fields.
-export type OrchestrationField = 'age' | ConversationField;
+// Deterministic, non-LLM steps (ADR-015). `age` is a legacy special case
+// (backfills `Users.birthDate`, never part of `FitnessProfile`); `weight`,
+// `height`, and `sessionDuration` generalize the same pattern onto
+// `FitnessProfile` numeric fields. `restrictionDetail` is also
+// deterministic but resolves AFTER the entire LLM-driven phase completes,
+// once every LLM-schema field (including `restrictions`) is known.
+export type DeterministicField =
+  | 'age'
+  | 'weight'
+  | 'height'
+  | 'sessionDuration'
+  | 'restrictionDetail';
+
+export type OrchestrationField = DeterministicField | ConversationField;
 
 export interface ConversationTurnResult {
   conversationId: string;
@@ -12,4 +21,8 @@ export interface ConversationTurnResult {
   question: string;
   done: boolean;
   reprompt: boolean;
+  // True only for the restrictionDetail turn — the frontend renders a skip
+  // affordance only when this is true (ADR-015). Every other field stays
+  // implicitly mandatory.
+  optional: boolean;
 }

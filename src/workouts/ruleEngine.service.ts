@@ -1,9 +1,12 @@
 import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
 import { Injectable } from '@nestjs/common';
 import { Exercise, ExerciseStatus } from '@prisma/client';
+import { EXPERIENCE_LEVEL_TO_DIFFICULTY } from './experienceLevel.constants';
+import { MUSCLE_FOCUS_TO_CATALOG_VALUES } from './muscleFocus.constants';
 import {
   CANDIDATE_FETCH_LIMIT,
   EXERCISES_PER_DAY,
+  FOCUS_SLOTS_PER_DAY,
   SETS_REPS_BY_GOAL,
 } from './ruleEngine.constants';
 import {
@@ -29,44 +32,123 @@ export class RuleEngineService {
     }
 
     const candidates = await this.findCandidates(equipment, restrictions);
+    // ADR-013: both biases below only reorder/subset `candidates` — they
+    // never shrink the pool `perDayCount`/`scaled` are computed from, so
+    // neither can cause a 422 on its own (UT-034).
+    const ordered = this.applyExperienceBias(candidates, input.experienceLevel);
+    const focusCandidates = this.selectFocusCandidates(
+      ordered,
+      input.muscleFocus,
+    );
     const { sets, reps } = SETS_REPS_BY_GOAL[goal];
-    const perDayCount = Math.min(EXERCISES_PER_DAY, candidates.length);
+    const perDayCount = Math.min(EXERCISES_PER_DAY, ordered.length);
     const scaled = perDayCount < EXERCISES_PER_DAY;
 
     const days: GeneratedWorkoutDay[] = [];
     for (let dayIndex = 0; dayIndex < daysPerWeek; dayIndex++) {
       days.push({
         dayOfWeek: dayIndex + 1,
-        exercises: this.pickDayExercises(candidates, dayIndex, perDayCount, {
-          sets,
-          reps,
-        }),
+        exercises: this.pickDayExercises(
+          ordered,
+          focusCandidates,
+          dayIndex,
+          perDayCount,
+          { sets, reps },
+        ),
       });
     }
 
     return { days, scaled };
   }
 
+  // Soft preference (ADR-013): moves candidates whose difficulty maps to the
+  // user's experience level to the front, without excluding anything — a
+  // stable partition, so behavior is identical to today's plain rotation
+  // when `experienceLevel` is absent.
+  private applyExperienceBias(
+    candidates: Exercise[],
+    experienceLevel: RuleEngineInput['experienceLevel'],
+  ): Exercise[] {
+    if (!experienceLevel) return candidates;
+    const matching = EXPERIENCE_LEVEL_TO_DIFFICULTY[experienceLevel];
+    const preferred: Exercise[] = [];
+    const rest: Exercise[] = [];
+    for (const candidate of candidates) {
+      if (candidate.difficulty && matching.includes(candidate.difficulty)) {
+        preferred.push(candidate);
+      } else {
+        rest.push(candidate);
+      }
+    }
+    return [...preferred, ...rest];
+  }
+
+  // The subset of `candidates` matching the chosen muscle focus, used by
+  // `pickDayExercises` to reserve slots — empty (not a filter) when no
+  // focus was given, so the day's pick falls through to the normal rotation.
+  private selectFocusCandidates(
+    candidates: Exercise[],
+    muscleFocus: RuleEngineInput['muscleFocus'],
+  ): Exercise[] {
+    if (!muscleFocus) return [];
+    const matching = MUSCLE_FOCUS_TO_CATALOG_VALUES[muscleFocus];
+    return candidates.filter((candidate) =>
+      matching.includes(candidate.muscleGroup),
+    );
+  }
+
   private pickDayExercises(
     candidates: Exercise[],
+    focusCandidates: Exercise[],
     dayIndex: number,
     perDayCount: number,
     reps: { sets: number; reps: number },
   ): GeneratedWorkoutDay['exercises'] {
     const exercises: GeneratedWorkoutDay['exercises'] = [];
-    for (let slot = 0; slot < perDayCount; slot++) {
-      // Rotates the starting offset per day so different days draw from
-      // different parts of the candidate list when there are enough of
-      // them, instead of every day being an identical list.
+    const used = new Set<string>();
+
+    // Reserve up to FOCUS_SLOTS_PER_DAY slots for the muscle-focus pool
+    // first (ADR-013) — never more than what's actually available or than
+    // the day's total count, so this can only add emphasis, never shrink
+    // the day.
+    const focusSlots = Math.min(
+      FOCUS_SLOTS_PER_DAY,
+      focusCandidates.length,
+      perDayCount,
+    );
+    for (let i = 0; i < focusSlots; i++) {
       const candidate =
-        candidates[(dayIndex * perDayCount + slot) % candidates.length];
+        focusCandidates[(dayIndex * focusSlots + i) % focusCandidates.length];
+      if (used.has(candidate.id)) continue;
+      used.add(candidate.id);
       exercises.push({
         exerciseId: candidate.id,
         sets: reps.sets,
         reps: reps.reps,
-        order: slot + 1,
+        order: exercises.length + 1,
       });
     }
+
+    // Fills the remaining slots from the general rotation (identical
+    // formula to the pre-ADR-013 implementation), skipping anything the
+    // focus reservation above already used for this day.
+    for (
+      let offset = 0;
+      exercises.length < perDayCount && offset < candidates.length;
+      offset++
+    ) {
+      const candidate =
+        candidates[(dayIndex * perDayCount + offset) % candidates.length];
+      if (used.has(candidate.id)) continue;
+      used.add(candidate.id);
+      exercises.push({
+        exerciseId: candidate.id,
+        sets: reps.sets,
+        reps: reps.reps,
+        order: exercises.length + 1,
+      });
+    }
+
     return exercises;
   }
 

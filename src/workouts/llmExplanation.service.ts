@@ -1,4 +1,4 @@
-import { AppError } from '@/utils/app.erro';
+import { CodedError } from '@/common/errors/codedError';
 import { Inject, Injectable } from '@nestjs/common';
 import { FitnessProfile } from '@prisma/client';
 import OpenAI from 'openai';
@@ -20,6 +20,10 @@ export const OPENAI_MODEL = 'gpt-5-mini';
 
 const GENERATION_FAILED =
   'Não foi possível gerar o treino no momento. Tente novamente.';
+
+// ADR-012: 3 total attempts, exponential backoff between them.
+const RETRY_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = [500, 1500];
 
 // Runs the conversational intake and writes the plan's prose explanation —
 // never selects exercises (that is RuleEngineService's exclusive job,
@@ -72,20 +76,26 @@ export class LlmExplanationService {
     return this.parseJsonContent<{ explanation: string }>(response).explanation;
   }
 
-  // One retry on a transient error (network issue, 5xx); a 4xx (bad
-  // request, invalid key, etc.) fails immediately since retrying it would
-  // just reproduce the same rejection.
+  // Up to 3 total attempts with exponential backoff (500ms, then 1500ms) on
+  // a transient error (network issue, 5xx) — ADR-012. A 4xx (bad request,
+  // invalid key, etc.) fails immediately on the first attempt since
+  // retrying it would just reproduce the same rejection.
   private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (this.isClientError(error)) throw this.toAppError(error);
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       try {
         return await operation();
-      } catch (retryError) {
-        throw this.toAppError(retryError);
+      } catch (error) {
+        if (this.isClientError(error) || attempt === RETRY_ATTEMPTS) {
+          throw this.llmCallFailed();
+        }
+        await this.sleep(RETRY_BACKOFF_MS[attempt - 1]);
       }
     }
+    throw this.llmCallFailed();
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private isClientError(error: unknown): boolean {
@@ -97,16 +107,20 @@ export class LlmExplanationService {
     );
   }
 
-  private toAppError(error: unknown): AppError {
-    if (error instanceof AppError) return error;
-    return new AppError(GENERATION_FAILED, 502, 'llm_call_failed');
+  // CodedError (not AppError) is deliberate here: AppError's `reason` is
+  // never sent to the client (see its own doc comment), but the frontend
+  // needs to tell this specific, recoverable failure apart from every
+  // other 4xx/5xx this service's callers can throw — a CodedError's `code`
+  // is explicitly part of the response body (ADR-008/PRD, this revision).
+  private llmCallFailed(): CodedError {
+    return new CodedError(GENERATION_FAILED, 502, 'llm_call_failed');
   }
 
   private parseJsonContent<T>(
     response: OpenAI.Chat.Completions.ChatCompletion,
   ): T {
     const content = response.choices[0]?.message?.content;
-    if (!content) throw new AppError(GENERATION_FAILED, 502, 'llm_call_failed');
+    if (!content) throw this.llmCallFailed();
     return JSON.parse(content) as T;
   }
 }

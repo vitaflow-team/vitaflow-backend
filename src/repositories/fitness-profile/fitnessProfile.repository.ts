@@ -5,7 +5,16 @@ import { FitnessProfile, Prisma } from '@prisma/client';
 export type FitnessProfileInput = Partial<
   Pick<
     Prisma.FitnessProfileUncheckedCreateInput,
-    'sex' | 'restrictions' | 'equipment' | 'goal'
+    | 'sex'
+    | 'restrictions'
+    | 'restrictionDetail'
+    | 'equipment'
+    | 'goal'
+    | 'weightKg'
+    | 'heightCm'
+    | 'experienceLevel'
+    | 'sessionDurationMin'
+    | 'muscleFocus'
   >
 >;
 

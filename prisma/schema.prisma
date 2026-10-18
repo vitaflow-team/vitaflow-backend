@@ -459,19 +459,45 @@ enum FitnessGoal {
   MAINTENANCE
 }
 
+// ai-workout-generator ADR-014: closed categories, mapped to the Exercise
+// Library's free-text muscleGroup/difficulty values via a lookup table
+// (muscleFocus.constants.ts / experienceLevel.constants.ts) rather than
+// matching those free-text values directly.
+enum FitnessExperienceLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum MuscleFocus {
+  CHEST
+  BACK
+  LEGS
+  SHOULDERS
+  ABDOMEN
+}
+
 // Shared with the Food Diary feature (ADR-006 of ai-workout-generator):
 // both features read/write the same row per user. All fields are
 // nullable since a user may have answered only some profile questions.
 model FitnessProfile {
-  id           String                     @id @default(uuid(7))
-  userId       String                     @unique
-  user         Users                      @relation(fields: [userId], references: [id])
-  sex          Sex?
-  restrictions ExerciseContraindication[]
-  equipment    ExerciseEquipment?
-  goal         FitnessGoal?
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @updatedAt
+  id                 String                     @id @default(uuid(7))
+  userId             String                     @unique
+  user               Users                      @relation(fields: [userId], references: [id])
+  sex                Sex?
+  restrictions       ExerciseContraindication[]
+  // ai-workout-generator ADR-009: presentation-only, never read for
+  // exercise exclusion — only `restrictions` above feeds that logic.
+  restrictionDetail  String?
+  equipment          ExerciseEquipment?
+  goal               FitnessGoal?
+  weightKg           Float?
+  heightCm           Float?
+  experienceLevel    FitnessExperienceLevel?
+  sessionDurationMin Int?
+  muscleFocus        MuscleFocus?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
 }
 
 model Workout {

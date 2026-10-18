@@ -39,13 +39,40 @@ export const CONVERSATION_TURN_JSON_SCHEMA = {
             ],
           },
         },
+        experienceLevel: {
+          type: ['string', 'null'],
+          enum: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', null],
+        },
+        // 'NONE' is a resolved "no preference" answer, distinct from `null`
+        // ("not yet known") — ADR-015.
+        muscleFocus: {
+          type: ['string', 'null'],
+          enum: ['CHEST', 'BACK', 'LEGS', 'SHOULDERS', 'ABDOMEN', 'NONE', null],
+        },
       },
-      required: ['sex', 'goal', 'daysPerWeek', 'equipment', 'restrictions'],
+      required: [
+        'sex',
+        'goal',
+        'daysPerWeek',
+        'equipment',
+        'restrictions',
+        'experienceLevel',
+        'muscleFocus',
+      ],
       additionalProperties: false,
     },
     field: {
       type: ['string', 'null'],
-      enum: ['sex', 'goal', 'daysPerWeek', 'equipment', 'restrictions', null],
+      enum: [
+        'sex',
+        'goal',
+        'daysPerWeek',
+        'equipment',
+        'restrictions',
+        'experienceLevel',
+        'muscleFocus',
+        null,
+      ],
     },
     question: { type: 'string' },
     done: { type: 'boolean' },

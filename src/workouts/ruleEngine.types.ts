@@ -1,7 +1,9 @@
 import {
   ExerciseEquipment,
   ExerciseContraindication,
+  FitnessExperienceLevel,
   FitnessGoal,
+  MuscleFocus,
 } from '@prisma/client';
 
 export interface RuleEngineInput {
@@ -9,6 +11,10 @@ export interface RuleEngineInput {
   daysPerWeek: number;
   equipment: ExerciseEquipment;
   restrictions: ExerciseContraindication[];
+  // Both are soft preferences, never exclusions (ADR-013): a miss on either
+  // never shrinks the candidate pool the NOT_ENOUGH_EXERCISES check reads.
+  experienceLevel?: FitnessExperienceLevel;
+  muscleFocus?: MuscleFocus;
 }
 
 export interface GeneratedWorkoutExercise {

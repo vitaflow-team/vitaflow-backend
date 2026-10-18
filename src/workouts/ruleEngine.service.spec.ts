@@ -167,6 +167,125 @@ describe('RuleEngineService', () => {
     }
   });
 
+  it('UT-029 reserves up to FOCUS_SLOTS_PER_DAY slots from muscle-focus-matching candidates each day', async () => {
+    const legExercises = makeCatalog(3, { muscleGroup: 'Pernas' }).map(
+      (exercise, index) => ({ ...exercise, id: `leg-${index}` }),
+    );
+    const chestExercises = makeCatalog(7, { muscleGroup: 'Peito' });
+    findMany.mockResolvedValue([...chestExercises, ...legExercises]);
+
+    const plan = await service.select({
+      goal: 'MUSCLE_GAIN',
+      daysPerWeek: 2,
+      equipment: 'GYM',
+      restrictions: [],
+      muscleFocus: 'LEGS',
+    });
+
+    for (const day of plan.days) {
+      const legCount = day.exercises.filter((exercise) =>
+        exercise.exerciseId.startsWith('leg-'),
+      ).length;
+      expect(legCount).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('UT-030 still fills the day from the general pool when zero candidates match the muscle focus', async () => {
+    findMany.mockResolvedValue(makeCatalog(10, { muscleGroup: 'Peito' }));
+
+    const plan = await service.select({
+      goal: 'MUSCLE_GAIN',
+      daysPerWeek: 2,
+      equipment: 'GYM',
+      restrictions: [],
+      muscleFocus: 'LEGS',
+    });
+
+    expect(plan.scaled).toBe(false);
+    for (const day of plan.days) {
+      expect(day.exercises).toHaveLength(5);
+    }
+  });
+
+  it('UT-031 keeps exercises from other muscle groups in the non-focus slots', async () => {
+    const legExercises = makeCatalog(2, { muscleGroup: 'Pernas' }).map(
+      (exercise, index) => ({ ...exercise, id: `leg-${index}` }),
+    );
+    const otherExercises = makeCatalog(8, { muscleGroup: 'Peito' });
+    findMany.mockResolvedValue([...otherExercises, ...legExercises]);
+
+    const plan = await service.select({
+      goal: 'MUSCLE_GAIN',
+      daysPerWeek: 1,
+      equipment: 'GYM',
+      restrictions: [],
+      muscleFocus: 'LEGS',
+    });
+
+    const nonLegCount = plan.days[0].exercises.filter(
+      (exercise) => !exercise.exerciseId.startsWith('leg-'),
+    ).length;
+    expect(nonLegCount).toBeGreaterThan(0);
+  });
+
+  it('UT-032 orders difficulty-matching candidates before others for the chosen experience level', async () => {
+    const beginnerExercises = makeCatalog(3, { difficulty: 'Iniciante' }).map(
+      (exercise, index) => ({ ...exercise, id: `beg-${index}` }),
+    );
+    const otherExercises = makeCatalog(7, { difficulty: 'Avançado' });
+    findMany.mockResolvedValue([...otherExercises, ...beginnerExercises]);
+
+    const plan = await service.select({
+      goal: 'MUSCLE_GAIN',
+      daysPerWeek: 1,
+      equipment: 'GYM',
+      restrictions: [],
+      experienceLevel: 'BEGINNER',
+    });
+
+    const day0Ids = plan.days[0].exercises.map(
+      (exercise) => exercise.exerciseId,
+    );
+    expect(day0Ids.filter((id) => id.startsWith('beg-'))).toHaveLength(3);
+  });
+
+  it('UT-033 still returns a full plan when zero candidates match the chosen experience level', async () => {
+    findMany.mockResolvedValue(makeCatalog(10, { difficulty: 'Avançado' }));
+
+    const plan = await service.select({
+      goal: 'MUSCLE_GAIN',
+      daysPerWeek: 2,
+      equipment: 'GYM',
+      restrictions: [],
+      experienceLevel: 'BEGINNER',
+    });
+
+    expect(plan.scaled).toBe(false);
+    for (const day of plan.days) {
+      expect(day.exercises).toHaveLength(5);
+    }
+  });
+
+  it('UT-034 never reduces the candidate pool used for scaling because of muscleFocus/experienceLevel misses', async () => {
+    findMany.mockResolvedValue(
+      makeCatalog(10, { muscleGroup: 'Peito', difficulty: 'Avançado' }),
+    );
+
+    const plan = await service.select({
+      goal: 'MUSCLE_GAIN',
+      daysPerWeek: 2,
+      equipment: 'GYM',
+      restrictions: [],
+      muscleFocus: 'LEGS',
+      experienceLevel: 'BEGINNER',
+    });
+
+    expect(plan.scaled).toBe(false);
+    for (const day of plan.days) {
+      expect(day.exercises).toHaveLength(5);
+    }
+  });
+
   it('never returns an exercise whose status is not APPROVED (delegated to the repository filter)', async () => {
     await service.select({
       goal: 'MAINTENANCE',

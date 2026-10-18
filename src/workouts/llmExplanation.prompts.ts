@@ -11,15 +11,20 @@ export const CONVERSATION_FIELD_ORDER: ConversationField[] = [
   'daysPerWeek',
   'equipment',
   'restrictions',
+  'experienceLevel',
+  'muscleFocus',
 ];
 
 export const CONVERSATION_SYSTEM_PROMPT =
   'Você conduz uma entrevista curta em português para montar um plano de treino. ' +
-  'Pergunte um campo por vez, na ordem sex, goal, daysPerWeek, equipment, restrictions. ' +
+  'Pergunte um campo por vez, na ordem sex, goal, daysPerWeek, equipment, restrictions, ' +
+  'experienceLevel, muscleFocus. ' +
   'Se "pendingRawAnswer" estiver presente, tente interpretá-lo como resposta ao campo ' +
   '"pendingField" e preencha "answers" com o valor entendido; se não conseguir interpretar ' +
   'com confiança, marque "reprompt": true e repita a mesma pergunta. ' +
   'Nunca pule o campo "goal", mesmo que já tenha um valor prévio. ' +
+  'Para "muscleFocus", se o usuário disser que não tem preferência, use o valor "NONE" ' +
+  '(nunca null, que significa "ainda não perguntado"). ' +
   'Quando todos os campos estiverem preenchidos, defina "done": true, "field": null e ' +
   '"question": "".';
 
@@ -35,7 +40,9 @@ export function buildConversationPrompt(state: ConversationState): string {
 export const EXPLANATION_SYSTEM_PROMPT =
   'Você escreve, em português, uma explicação curta e motivadora de um plano de treino ' +
   'já decidido por um mecanismo de regras — você nunca escolhe ou troca exercícios, apenas ' +
-  'descreve o plano recebido e por que ele faz sentido para o objetivo do usuário.';
+  'descreve o plano recebido e por que ele faz sentido para o objetivo do usuário. ' +
+  'Se "restrictionDetail" estiver presente, mencione-o ao explicar por que certos ' +
+  'exercícios foram evitados.';
 
 export function buildExplanationPrompt(
   plan: GeneratedPlan,
@@ -45,6 +52,11 @@ export function buildExplanationPrompt(
     goal: profile.goal,
     equipment: profile.equipment,
     restrictions: profile.restrictions,
+    // Presentation-only (ADR-009) — never read by RuleEngineService, only
+    // mentioned here so the prose explanation can reference it.
+    restrictionDetail: profile.restrictionDetail,
+    experienceLevel: profile.experienceLevel,
+    muscleFocus: profile.muscleFocus,
     daysPerWeek: plan.days.length,
     scaled: plan.scaled,
     exercisesPerDay: plan.days.map((day) => day.exercises.length),
