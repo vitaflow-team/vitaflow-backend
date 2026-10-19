@@ -1,5 +1,5 @@
 import { CodedError } from '@/common/errors/codedError';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { FitnessProfile } from '@prisma/client';
 import OpenAI from 'openai';
 import {
@@ -30,6 +30,8 @@ const RETRY_BACKOFF_MS = [500, 1500];
 // ADR-001).
 @Injectable()
 export class LlmExplanationService {
+  private readonly logger = new Logger(LlmExplanationService.name);
+
   constructor(@Inject(OPENAI_CLIENT) private readonly client: OpenAI) {}
 
   async nextQuestion(state: ConversationState): Promise<ConversationTurn> {
@@ -93,12 +95,15 @@ export class LlmExplanationService {
         return await operation();
       } catch (error) {
         if (this.isClientError(error) || attempt === RETRY_ATTEMPTS) {
-          throw this.llmCallFailed();
+          throw this.llmCallFailed(error, attempt);
         }
         await this.sleep(RETRY_BACKOFF_MS[attempt - 1]);
       }
     }
-    throw this.llmCallFailed();
+    throw this.llmCallFailed(
+      new Error('unreachable: loop exits via return or throw above'),
+      RETRY_ATTEMPTS,
+    );
   }
 
   private sleep(ms: number): Promise<void> {
@@ -129,15 +134,33 @@ export class LlmExplanationService {
   // codebase's own, already-dominant mechanism for exactly that need (its
   // own doc comment: "a client can tell apart two failures that share a
   // status"), used by ~30 other services — §7 predates that pattern.
-  private llmCallFailed(): CodedError {
+  // Logs the real OpenAI failure (status, code, message) before converting
+  // it to the generic client-facing CodedError — without this, a 502 in
+  // production is undiagnosable: the client only ever sees GENERATION_FAILED.
+  private llmCallFailed(error?: unknown, attempt?: number): CodedError {
+    this.logger.error(
+      `llm_call_failed attempt=${attempt ?? 'n/a'} ${this.describeError(error)}`,
+    );
     return new CodedError(GENERATION_FAILED, 502, 'llm_call_failed');
+  }
+
+  private describeError(error: unknown): string {
+    if (error instanceof OpenAI.APIError) {
+      return `status=${error.status} code=${error.code ?? 'n/a'} type=${error.type ?? 'n/a'} message=${error.message}`;
+    }
+    if (error instanceof Error) {
+      return `${error.constructor.name}: ${error.message}`;
+    }
+    return `non-error thrown: ${String(error)}`;
   }
 
   private parseJsonContent<T>(
     response: OpenAI.Chat.Completions.ChatCompletion,
   ): T {
     const content = response.choices[0]?.message?.content;
-    if (!content) throw this.llmCallFailed();
+    if (!content) {
+      throw this.llmCallFailed(new Error('empty content in OpenAI response'));
+    }
     return JSON.parse(content) as T;
   }
 }
