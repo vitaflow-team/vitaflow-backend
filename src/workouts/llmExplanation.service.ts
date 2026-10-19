@@ -105,12 +105,19 @@ export class LlmExplanationService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  // 429 is deliberately excluded: ADR-012 itself says the retry policy
+  // should absorb "momentary rate-limit backpressure" invisibly, and a
+  // conversation fires several sequential calls, making 429 the most
+  // likely real-world 4xx this path hits. The other 4xx's (bad request,
+  // invalid key) stay non-retryable — retrying those just reproduces the
+  // same rejection.
   private isClientError(error: unknown): boolean {
     return (
       error instanceof OpenAI.APIError &&
       typeof error.status === 'number' &&
       error.status >= 400 &&
-      error.status < 500
+      error.status < 500 &&
+      error.status !== 429
     );
   }
 

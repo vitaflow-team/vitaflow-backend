@@ -143,6 +143,24 @@ describe('LlmExplanationService', () => {
       );
       expect(create).toHaveBeenCalledTimes(1);
     });
+
+    it('retries a 429 (rate limited) like a transient failure, per ADR-012', async () => {
+      jest.useFakeTimers();
+      const rateLimited = new OpenAI.APIError(429, {}, 'Rate limited', {});
+      create
+        .mockRejectedValueOnce(rateLimited)
+        .mockResolvedValueOnce(
+          makeCompletion({ explanation: 'Plano gerado após rate limit.' }),
+        );
+
+      const resultPromise = service.explain(plan, makeProfile());
+      await jest.advanceTimersByTimeAsync(500);
+      const result = await resultPromise;
+
+      expect(result).toBe('Plano gerado após rate limit.');
+      expect(create).toHaveBeenCalledTimes(2);
+      jest.useRealTimers();
+    });
   });
 
   describe('nextQuestion', () => {
