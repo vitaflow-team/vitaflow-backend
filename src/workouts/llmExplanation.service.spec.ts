@@ -187,6 +187,25 @@ describe('LlmExplanationService', () => {
       expect(create).toHaveBeenCalledTimes(2);
       jest.useRealTimers();
     });
+
+    it('does not retry an insufficient_quota 429 (billing exhausted, permanent until topped up)', async () => {
+      const quotaExhausted = new OpenAI.APIError(
+        429,
+        {
+          code: 'credit_balance_exhausted',
+          type: 'insufficient_quota',
+          message: 'You have no credits remaining.',
+        },
+        'You have no credits remaining.',
+        {},
+      );
+      create.mockRejectedValue(quotaExhausted);
+
+      await expect(service.explain(plan, makeProfile())).rejects.toBeInstanceOf(
+        CodedError,
+      );
+      expect(create).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('nextQuestion', () => {
