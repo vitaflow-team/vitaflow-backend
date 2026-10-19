@@ -1,4 +1,5 @@
 import { CodedError } from '@/common/errors/codedError';
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { FitnessProfile } from '@prisma/client';
 import OpenAI from 'openai';
@@ -142,6 +143,31 @@ describe('LlmExplanationService', () => {
         CodedError,
       );
       expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs the real OpenAI status/code/message instead of swallowing it', async () => {
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      const clientError = new OpenAI.APIError(
+        401,
+        { code: 'invalid_api_key', message: 'Incorrect API key provided' },
+        'Incorrect API key provided',
+        {},
+      );
+      create.mockRejectedValue(clientError);
+
+      await expect(service.explain(plan, makeProfile())).rejects.toBeInstanceOf(
+        CodedError,
+      );
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('status=401'),
+      );
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Incorrect API key provided'),
+      );
+      errorSpy.mockRestore();
     });
 
     it('retries a 429 (rate limited) like a transient failure, per ADR-012', async () => {
