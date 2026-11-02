@@ -87,7 +87,11 @@ describe('StudentsService', () => {
     update: jest.fn(),
     delete: jest.fn(),
   };
-  const users = { findByEmailInsensitive: jest.fn(), findUnique: jest.fn() };
+  const users = {
+    findByEmailInsensitive: jest.fn(),
+    findUnique: jest.fn(),
+    findByIdWithProduct: jest.fn().mockResolvedValue(null),
+  };
   const formRecords = {
     findLatestByClient: jest.fn(),
     findHistory: jest.fn(),
@@ -98,10 +102,20 @@ describe('StudentsService', () => {
     findActive: jest.fn(),
   };
   const activity = { recordActivity: jest.fn() };
+  const invoices = {
+    findNonCanceledByClients: jest.fn(),
+    findNonCanceledByClient: jest.fn(),
+    findOpenAndOverdueByClient: jest.fn(),
+  };
+  const billing = { cancelOpenInvoicesBestEffort: jest.fn() };
   let service: StudentsService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    invoices.findNonCanceledByClients.mockResolvedValue([]);
+    invoices.findNonCanceledByClient.mockResolvedValue([]);
+    invoices.findOpenAndOverdueByClient.mockResolvedValue([]);
+    billing.cancelOpenInvoicesBestEffort.mockResolvedValue([]);
     clients.findByEmailAndProfessionalId.mockResolvedValue(null);
     clients.findByEmailAndAcademiaId.mockResolvedValue(null);
     employments.listActiveByEducator.mockResolvedValue([]);
@@ -130,6 +144,8 @@ describe('StudentsService', () => {
       { now: () => new Date('2026-10-01T12:00:00Z') } as any,
       employments as any,
       activity as any,
+      invoices as any,
+      billing as any,
     );
   });
 
@@ -150,6 +166,7 @@ describe('StudentsService', () => {
           hasAccount: true,
           lastAssessedOn: '2026-09-15',
           nextSession: null,
+          financialSituation: null,
         },
         {
           id: 'id-Zeca',
@@ -158,6 +175,7 @@ describe('StudentsService', () => {
           hasAccount: false,
           lastAssessedOn: null,
           nextSession: null,
+          financialSituation: null,
         },
       ]);
     });
@@ -758,6 +776,34 @@ describe('StudentsService', () => {
       await service.remove(EDUCATOR, STUDENT_ID);
 
       expect(clients.delete).toHaveBeenCalledWith(STUDENT_ID);
+    });
+
+    it('UT-103 cancels open charges best-effort before deleting, returning billingWarnings', async () => {
+      clients.findOwnedById.mockResolvedValue(client());
+      billing.cancelOpenInvoicesBestEffort.mockResolvedValue([
+        { competenceYear: 2026, competenceMonth: 11 },
+      ]);
+
+      const result = await service.remove(EDUCATOR, STUDENT_ID);
+
+      expect(billing.cancelOpenInvoicesBestEffort).toHaveBeenCalledWith(
+        STUDENT_ID,
+      );
+      expect(result).toEqual({
+        billingWarnings: [{ competenceYear: 2026, competenceMonth: 11 }],
+      });
+    });
+
+    it('UT-103 a cancellation failure still completes the removal', async () => {
+      clients.findOwnedById.mockResolvedValue(client());
+      billing.cancelOpenInvoicesBestEffort.mockResolvedValue([
+        { competenceYear: 2026, competenceMonth: 10 },
+      ]);
+
+      const result = await service.remove(EDUCATOR, STUDENT_ID);
+
+      expect(clients.delete).toHaveBeenCalledWith(STUDENT_ID);
+      expect(result.billingWarnings).toHaveLength(1);
     });
 
     it('UT-061 answers 404 and deletes nothing for a foreign student', async () => {

@@ -9,4 +9,5 @@ export const BILLING_LIMITS = {
   invoicePageSize: 20,
   resendIntervalMinutes: 60,
   orphanReservationGraceMinutes: 10,
+  reconciliationCallSpacingMs: 200,
 } as const;

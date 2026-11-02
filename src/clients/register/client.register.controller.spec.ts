@@ -1,3 +1,4 @@
+import { InvoicesService } from '@/billing/invoices/invoices.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
@@ -24,6 +25,12 @@ describe('ClientRegisterController Tests', () => {
         userRepositoryMock,
         ClientsRepositoryMock,
         jwtServiceMock,
+        {
+          provide: InvoicesService,
+          useValue: {
+            cancelOpenInvoicesBestEffort: jest.fn().mockResolvedValue([]),
+          },
+        },
       ],
     }).compile();
 

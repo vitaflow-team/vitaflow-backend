@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import { UpdateInvoiceDTO } from '@/billing/invoices/dto/updateInvoice.Dto';
+import { MarkPaidDTO } from '@/billing/invoices/dto/markPaid.Dto';
 import { ClientRegisterDTO } from '@/clients/register/client.register.Dto';
 import { ProfileDTO } from '@/users/profile/profile.Dto';
 import { NewPasswordDto } from '@/users/recoverpass/newPassword.Dto';
@@ -66,6 +68,28 @@ describe('Global ValidationPipe - auth and input hardening', () => {
       await expect(
         validateBody(ClientRegisterDTO, validClient),
       ).resolves.toBeInstanceOf(ClientRegisterDTO);
+    });
+
+    it('UT-105 strips unknown properties from billing DTOs (clientId, status, billingAccountId, paidAmountCents)', async () => {
+      const updateMessages = await rejectionMessages(UpdateInvoiceDTO, {
+        amount: '199.90',
+        clientId: 'other-client',
+        status: 'PAID',
+        billingAccountId: 'other-account',
+      });
+      expect(updateMessages).toContain('property clientId should not exist');
+      expect(updateMessages).toContain('property status should not exist');
+      expect(updateMessages).toContain(
+        'property billingAccountId should not exist',
+      );
+
+      const markPaidMessages = await rejectionMessages(MarkPaidDTO, {
+        paidOn: '2026-11-18',
+        paidAmountCents: 1,
+      });
+      expect(markPaidMessages).toContain(
+        'property paidAmountCents should not exist',
+      );
     });
 
     it('keeps every field real callers send: recovery token and profile email', async () => {

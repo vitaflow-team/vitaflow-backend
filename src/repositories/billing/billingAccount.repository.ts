@@ -96,4 +96,44 @@ export class BillingAccountRepository {
       data: { keyInvalidAt: at },
     });
   }
+
+  // Webhook authentication (ADR-007): any status that still holds a key —
+  // a REPLACED account's own open invoices must keep receiving notices
+  // until it is purged; only DISCONNECTED (apiKeyEncrypted null) is excluded.
+  async findByWebhookTokenHash(hash: string): Promise<BillingAccount | null> {
+    return await this.prisma.billingAccount.findFirst({
+      where: { webhookTokenHash: hash, apiKeyEncrypted: { not: null } },
+    });
+  }
+
+  // The daily job's own reconciliation scope: every account, of any status,
+  // still holding a key — same rule as the webhook lookup above.
+  async findAllWithKey(): Promise<BillingAccount[]> {
+    return await this.prisma.billingAccount.findMany({
+      where: { apiKeyEncrypted: { not: null } },
+    });
+  }
+
+  // A replaced account is only safe to purge once none of its own invoices
+  // are still open (ADR-009) — returns the ids actually cleared.
+  async purgeReplacedWithoutOpenInvoices(): Promise<string[]> {
+    const candidates = await this.prisma.billingAccount.findMany({
+      where: {
+        status: BillingAccountStatus.REPLACED,
+        apiKeyEncrypted: { not: null },
+      },
+      select: { id: true },
+    });
+    const purged: string[] = [];
+    for (const { id } of candidates) {
+      const openCount = await this.countOpenInvoices(id);
+      if (openCount > 0) continue;
+      await this.prisma.billingAccount.update({
+        where: { id },
+        data: { apiKeyEncrypted: null, webhookId: null },
+      });
+      purged.push(id);
+    }
+    return purged;
+  }
 }

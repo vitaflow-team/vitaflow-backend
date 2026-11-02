@@ -57,6 +57,7 @@ describe('ProfessionalMirrorService schedule (UT-080 to UT-082)', () => {
         listVersions: jest.fn().mockResolvedValue([]),
         getVersion: jest.fn(),
       } as any,
+      { findNonCanceledByClient: jest.fn().mockResolvedValue([]) } as any,
       { now: () => NOW } as Clock,
     );
   });

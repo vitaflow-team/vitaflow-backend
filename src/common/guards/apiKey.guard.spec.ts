@@ -1,5 +1,6 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { timingSafeEqual } from 'crypto';
 import { ApiKeyGuard, secretsMatch } from './apiKey.guard';
@@ -15,6 +16,7 @@ describe('ApiKeyGuard', () => {
   const mockConfigService = {
     get: jest.fn(),
   };
+  const getAllAndOverride = jest.fn().mockReturnValue(false);
 
   const createMockExecutionContext = (headers: any): ExecutionContext => {
     return {
@@ -23,7 +25,9 @@ describe('ApiKeyGuard', () => {
           headers,
         }),
       }),
-    } as ExecutionContext;
+      getHandler: () => ({}),
+      getClass: () => ({}),
+    } as unknown as ExecutionContext;
   };
 
   beforeEach(async () => {
@@ -33,6 +37,10 @@ describe('ApiKeyGuard', () => {
         {
           provide: ConfigService,
           useValue: mockConfigService,
+        },
+        {
+          provide: Reflector,
+          useValue: { getAllAndOverride },
         },
       ],
     }).compile();
@@ -92,6 +100,22 @@ describe('ApiKeyGuard', () => {
     const context = createMockExecutionContext({
       'x-application-secret': ['my-secret', 'my-secret'],
     });
+
+    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
+
+  it('UT-027 a route carrying the opt-out marker passes without the shared secret', () => {
+    mockConfigService.get.mockReturnValue('my-secret');
+    getAllAndOverride.mockReturnValueOnce(true);
+    const context = createMockExecutionContext({});
+
+    expect(guard.canActivate(context)).toBe(true);
+  });
+
+  it('UT-027 an unmarked route still requires the secret', () => {
+    mockConfigService.get.mockReturnValue('my-secret');
+    getAllAndOverride.mockReturnValueOnce(false);
+    const context = createMockExecutionContext({});
 
     expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
   });

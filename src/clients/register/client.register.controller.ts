@@ -19,7 +19,10 @@ import {
 } from '@nestjs/swagger';
 import { ClientEntity } from '../client.entity';
 import { ClientRegisterDTO } from './client.register.Dto';
-import { ClientRegisterService } from './client.register.service';
+import {
+  ClientRegisterService,
+  DeleteClientResponse,
+} from './client.register.service';
 
 @ApiTags('Clients')
 @Controller('clients')
@@ -76,7 +79,8 @@ export class ClientRegisterController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Client successfully deleted. No response body.',
+    description:
+      'Client deleted; billingWarnings lists competences whose charge could not be canceled.',
   })
   @ApiResponse({
     status: 401,
@@ -86,7 +90,7 @@ export class ClientRegisterController {
   async deleteClientById(
     @Param('id') id: string,
     @Request() req: AuthenticatedRequest,
-  ): Promise<void> {
+  ): Promise<DeleteClientResponse> {
     return await this.service.deleteClientById(id, req.user.id);
   }
 

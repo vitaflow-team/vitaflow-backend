@@ -1,5 +1,6 @@
 import { GatewayCharge } from '@/billing/gateway/paymentGateway';
-import { Invoice, InvoiceStatus } from '@prisma/client';
+import { Invoice, InvoiceStatus, Prisma } from '@prisma/client';
+import { dateOnlyKey } from './dates';
 
 export type FinancialSituation = 'OVERDUE' | 'PENDING' | 'UP_TO_DATE' | 'NONE';
 
@@ -7,6 +8,24 @@ export type InvoiceTransition =
   | { status: 'PAID'; paidAt: string; paidAmountCents: number }
   | { status: 'OVERDUE' }
   | { status: 'CANCELED' };
+
+export interface StudentBillingStatusDTO {
+  openInvoice: {
+    competenceYear: number;
+    competenceMonth: number;
+    amountCents: number;
+    dueDate: string;
+    status: InvoiceStatus;
+    paymentUrl: string | null;
+  } | null;
+  otherOpenCount: number;
+  latestPaid: {
+    competenceYear: number;
+    competenceMonth: number;
+    amountCents: number;
+    paidAt: string | null;
+  } | null;
+}
 
 const OPEN_STATUSES: InvoiceStatus[] = [
   InvoiceStatus.PENDING,
@@ -29,8 +48,12 @@ export function applyChargeToInvoice(
   invoice: Pick<Invoice, 'status'>,
   charge: GatewayCharge,
 ): InvoiceTransition | null {
-  if (!OPEN_STATUSES.includes(invoice.status)) return null;
+  // PAID is the one true terminal state (never leave a paid invoice).
+  if (invoice.status === InvoiceStatus.PAID) return null;
 
+  // The gateway's payment always wins, even over a local cancel or a
+  // manual mark outside the gateway (ADR-002 decision 6, IT-019) — this
+  // check runs before the open-only guard below on purpose.
   if (charge.status === 'PAID') {
     return {
       status: 'PAID',
@@ -38,10 +61,94 @@ export function applyChargeToInvoice(
       paidAmountCents: charge.valueCents,
     };
   }
+
+  // Everything else only moves an invoice that is still open: a closed
+  // (CANCELED/PAID_MANUALLY) invoice can only be reopened by a real
+  // payment, handled above.
+  if (!OPEN_STATUSES.includes(invoice.status)) return null;
+
   if (charge.status === 'CANCELED') {
     return { status: 'CANCELED' };
   }
+  if (charge.status === 'OVERDUE' && invoice.status !== InvoiceStatus.OVERDUE) {
+    return { status: 'OVERDUE' };
+  }
+  // PENDING (not yet due per the gateway) and UNHANDLED (refunds,
+  // chargebacks, anything mapChargeStatus doesn't recognize) change
+  // nothing — the caller logs UNHANDLED separately for visibility.
   return null;
+}
+
+// Maps a decided transition to the conditional update data every caller
+// (task_02's own checks, the webhook, the daily job) applies the same way
+// through InvoicesRepository.transition.
+export function invoiceTransitionToUpdateData(
+  transition: InvoiceTransition,
+): Prisma.InvoiceUpdateInput {
+  if (transition.status === 'PAID') {
+    return {
+      status: InvoiceStatus.PAID,
+      paidAt: new Date(transition.paidAt),
+      paidAmountCents: transition.paidAmountCents,
+    };
+  }
+  if (transition.status === 'OVERDUE') {
+    return { status: InvoiceStatus.OVERDUE };
+  }
+  return { status: InvoiceStatus.CANCELED };
+}
+
+// The mirror's own selection (UT-012): among open invoices, overdue first
+// then the earliest due date is "the" open invoice; the rest are just a
+// count. The latest paid (by paid date) is reported separately and
+// independently of whether there is a currently open invoice. Manually
+// paid counts as paid; canceled invoices never appear here at all.
+export function mirrorBillingStatus(
+  invoices: Invoice[],
+): StudentBillingStatusDTO | null {
+  const relevant = invoices.filter((i) => i.status !== InvoiceStatus.CANCELED);
+  if (relevant.length === 0) return null;
+
+  const open = relevant
+    .filter((i) => OPEN_STATUSES.includes(i.status))
+    .sort((a, b) => {
+      if (a.status !== b.status) {
+        return a.status === InvoiceStatus.OVERDUE ? -1 : 1;
+      }
+      return a.dueDate.getTime() - b.dueDate.getTime();
+    });
+  const [selected, ...rest] = open;
+
+  const paid = relevant
+    .filter(
+      (i) =>
+        i.status === InvoiceStatus.PAID ||
+        i.status === InvoiceStatus.PAID_MANUALLY,
+    )
+    .sort((a, b) => (b.paidAt?.getTime() ?? 0) - (a.paidAt?.getTime() ?? 0));
+  const latestPaid = paid[0];
+
+  return {
+    openInvoice: selected
+      ? {
+          competenceYear: selected.competenceYear,
+          competenceMonth: selected.competenceMonth,
+          amountCents: selected.amountCents,
+          dueDate: dateOnlyKey(selected.dueDate),
+          status: selected.status,
+          paymentUrl: selected.paymentUrl,
+        }
+      : null,
+    otherOpenCount: rest.length,
+    latestPaid: latestPaid
+      ? {
+          competenceYear: latestPaid.competenceYear,
+          competenceMonth: latestPaid.competenceMonth,
+          amountCents: latestPaid.amountCents,
+          paidAt: latestPaid.paidAt ? dateOnlyKey(latestPaid.paidAt) : null,
+        }
+      : null,
+  };
 }
 
 // Any overdue invoice wins, then any pending, then any paid; a student with

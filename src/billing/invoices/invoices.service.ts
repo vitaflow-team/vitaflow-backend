@@ -53,6 +53,11 @@ const OPEN_STATUSES: InvoiceStatus[] = [
   InvoiceStatus.OVERDUE,
 ];
 
+export interface BillingWarningDTO {
+  competenceYear: number;
+  competenceMonth: number;
+}
+
 const STUDENT_NOT_FOUND = 'Aluno não encontrado.';
 const INVOICE_NOT_FOUND = 'Cobrança não encontrada.';
 const INVOICE_EXISTS = 'Já existe uma cobrança para esse mês.';
@@ -279,6 +284,44 @@ export class InvoicesService {
       encryptSecret(tax.digits, this.cipherKey),
     );
     return { present: true, masked: maskTaxId(tax) };
+  }
+
+  // Student removal (US-016, both professions): best-effort cancel of every
+  // open charge before the record's own cascade deletes its invoices. The
+  // caller has already checked ownership of the client; a cancellation
+  // failure is logged and reported back, never thrown — removal must always
+  // complete (ADR-009's "reserve, then call" invariant has no bearing here,
+  // this is tearing down, not creating).
+  async cancelOpenInvoicesBestEffort(
+    clientId: string,
+  ): Promise<BillingWarningDTO[]> {
+    const open = await this.invoices.findOpenAndOverdueByClient(clientId);
+    const warnings: BillingWarningDTO[] = [];
+    for (const invoice of open) {
+      if (!invoice.externalId) {
+        // An unconfirmed reservation (ADR-009's narrow crash window) never
+        // reached the gateway — nothing to cancel there.
+        await this.invoices.deleteReservation(invoice.id);
+        continue;
+      }
+      try {
+        const account = await this.accounts.findById(invoice.billingAccountId);
+        if (!account) throw new Error('billing_account_not_found');
+        await this.withGateway(account, (apiKey) =>
+          this.gateway.cancelCharge(apiKey, invoice.externalId!),
+        );
+        await this.invoices.transition(invoice.id, OPEN_STATUSES, {
+          status: InvoiceStatus.CANCELED,
+        });
+      } catch {
+        this.logger.error(`invoice_cancel_failed invoiceId=${invoice.id}`);
+        warnings.push({
+          competenceYear: invoice.competenceYear,
+          competenceMonth: invoice.competenceMonth,
+        });
+      }
+    }
+    return warnings;
   }
 
   // --- Ownership and account lookups ---

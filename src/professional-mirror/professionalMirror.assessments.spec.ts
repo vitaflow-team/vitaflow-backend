@@ -97,6 +97,7 @@ describe('ProfessionalMirrorService — assessment (clinical-records)', () => {
         listVersions: jest.fn().mockResolvedValue([]),
         getVersion: jest.fn(),
       } as any,
+      { findNonCanceledByClient: jest.fn().mockResolvedValue([]) } as any,
       { now: () => new Date('2026-10-01T12:00:00Z') } as any,
     );
   });

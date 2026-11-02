@@ -2,11 +2,18 @@ import type { NextSession } from '@/scheduling/fixed-times/fixedSessions.service
 import type { NextSessionDTO } from './dto/studentResponse.Dto';
 import { AcademiaActivityService } from '@/academia/activity/academiaActivity.service';
 import { toFormRecordResponse } from '@/clinical-records/records/formRecords.service';
+import {
+  financialSituation,
+  FinancialSituation,
+} from '@/billing/shared/invoiceTransitions';
+import { isProfessionalPremium } from '@/billing/shared/premiumAccess';
 import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import { Clock } from '@/scheduling/clock.service';
 import { CodedError } from '@/common/errors/codedError';
 import { toIsoDay } from '@/common/dateFormat.util';
+import { InvoicesService } from '@/billing/invoices/invoices.service';
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import {
   ClientsRepository,
   ClientWithLatestAssessment,
@@ -15,12 +22,13 @@ import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/edu
 import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Injectable, Logger } from '@nestjs/common';
-import { Client, Prisma, TemplatePurpose } from '@prisma/client';
+import { Client, Invoice, Prisma, TemplatePurpose } from '@prisma/client';
 import { computeWeightVariation } from './studentWeightVariation.util';
 import { CreateStudentDTO } from './dto/createStudent.Dto';
 import { ListStudentsQueryDTO } from './dto/listStudentsQuery.Dto';
 import {
   AccountLookupResponseDTO,
+  RemoveStudentResponseDTO,
   StudentListItemDTO,
   StudentListResponseDTO,
   StudentOverviewDTO,
@@ -68,16 +76,31 @@ export class StudentsService {
     private readonly clock: Clock,
     private readonly employments: EmploymentRepository,
     private readonly activity: AcademiaActivityService,
+    private readonly invoices: InvoicesRepository,
+    private readonly billing: InvoicesService,
   ) {}
 
-  // The whole list is read in one query; search, ordering and paging run over
-  // all of the educator's students, never over a loaded page.
+  // The whole list is read in one query; search, the pending filter,
+  // ordering and paging all run over the full list, never over a loaded
+  // page (US-012: filter and search apply before paging).
   async list(
     educatorId: string,
     query: ListStudentsQueryDTO,
   ): Promise<StudentListResponseDTO> {
     const rows = await this.clients.findAllWithLatestAssessment(educatorId);
-    const matched = rows.filter((row) => matchesSearch(row, query.search));
+    let matched = rows.filter((row) => matchesSearch(row, query.search));
+
+    const premium = await this.isPremium(educatorId);
+    const situations = premium
+      ? await this.situationsByClient(matched.map((row) => row.id))
+      : new Map<string, FinancialSituation>();
+    if (premium && query.pending) {
+      matched = matched.filter((row) => {
+        const situation = situations.get(row.id) ?? 'NONE';
+        return situation === 'OVERDUE' || situation === 'PENDING';
+      });
+    }
+
     const next = await this.fixedSessions.nextForRecords(
       educatorId,
       matched.map((row) => ({ clientId: row.id, userId: row.userId })),
@@ -91,11 +114,42 @@ export class StudentsService {
     return {
       items: matched
         .slice(start, start + STUDENTS_PAGE_SIZE)
-        .map((row) => this.toListItem(row, next.get(row.id) ?? null)),
+        .map((row) =>
+          this.toListItem(
+            row,
+            next.get(row.id) ?? null,
+            premium ? (situations.get(row.id) ?? 'NONE') : null,
+          ),
+        ),
       total: matched.length,
       page,
       pageSize: STUDENTS_PAGE_SIZE,
     };
+  }
+
+  private async isPremium(educatorId: string): Promise<boolean> {
+    const user = await this.users.findByIdWithProduct(educatorId);
+    return isProfessionalPremium(user);
+  }
+
+  private async situationsByClient(
+    clientIds: string[],
+  ): Promise<Map<string, FinancialSituation>> {
+    const rows = await this.invoices.findNonCanceledByClients(clientIds);
+    const byClient = new Map<string, Invoice[]>();
+    for (const invoice of rows) {
+      const existing = byClient.get(invoice.clientId) ?? [];
+      existing.push(invoice);
+      byClient.set(invoice.clientId, existing);
+    }
+    const situations = new Map<string, FinancialSituation>();
+    for (const clientId of clientIds) {
+      situations.set(
+        clientId,
+        financialSituation(byClient.get(clientId) ?? []),
+      );
+    }
+    return situations;
   }
 
   // Exposes only whether a confirmed account exists and its holder's name, so
@@ -159,6 +213,7 @@ export class StudentsService {
     return this.toStudentResponse(
       created,
       await this.buildOverview(educatorId, created),
+      await this.studentSituation(educatorId, created.id),
     );
   }
 
@@ -218,6 +273,9 @@ export class StudentsService {
     return this.toStudentResponse(
       created,
       await this.buildOverview(professionalId, created),
+      professionalId
+        ? await this.studentSituation(professionalId, created.id)
+        : null,
     );
   }
 
@@ -268,6 +326,17 @@ export class StudentsService {
     return this.toStudentResponse(
       student,
       await this.buildOverview(educatorId, student),
+      await this.studentSituation(educatorId, student.id),
+    );
+  }
+
+  private async studentSituation(
+    educatorId: string,
+    studentId: string,
+  ): Promise<FinancialSituation | null> {
+    if (!(await this.isPremium(educatorId))) return null;
+    return financialSituation(
+      await this.invoices.findNonCanceledByClient(studentId),
     );
   }
 
@@ -287,14 +356,24 @@ export class StudentsService {
     return this.toStudentResponse(
       saved,
       await this.buildOverview(educatorId, saved),
+      await this.studentSituation(educatorId, saved.id),
     );
   }
 
   // Deleting the record removes its assessments with it (database cascade).
-  async remove(educatorId: string, studentId: string): Promise<void> {
+  // Open charges are canceled best-effort first (US-016) — a failure is
+  // reported back but never blocks the removal itself.
+  async remove(
+    educatorId: string,
+    studentId: string,
+  ): Promise<RemoveStudentResponseDTO> {
     const student = await this.findOwned(educatorId, studentId);
+    const billingWarnings = await this.billing.cancelOpenInvoicesBestEffort(
+      student.id,
+    );
     await this.clients.delete(student.id);
     this.logger.log(`student_removed educatorId=${educatorId}`);
+    return { billingWarnings };
   }
 
   private async findOwned(
@@ -459,6 +538,7 @@ export class StudentsService {
   private toListItem(
     row: ClientWithLatestAssessment,
     next: NextSession | null,
+    financialSituation: FinancialSituation | null,
   ): StudentListItemDTO {
     return {
       id: row.id,
@@ -469,12 +549,14 @@ export class StudentsService {
       lastAssessedOn: row.formRecords[0]
         ? toIsoDay(row.formRecords[0].recordedAt)
         : null,
+      financialSituation,
     };
   }
 
   private toStudentResponse(
     student: Client,
     overview: StudentOverviewDTO,
+    financialSituation: FinancialSituation | null,
   ): StudentResponseDTO {
     return {
       id: student.id,
@@ -486,6 +568,7 @@ export class StudentsService {
       userId: student.userId,
       createdAt: student.createdAt.toISOString(),
       overview,
+      financialSituation,
     };
   }
 }

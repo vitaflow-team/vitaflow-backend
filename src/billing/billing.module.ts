@@ -4,11 +4,13 @@ import { MailModule } from '@/mail/mail.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
 import { ProfessionalGuard } from '@/common/guards/professional.guard';
 import { ProfessionalPremiumGuard } from '@/common/guards/professionalPremium.guard';
+import { InvoiceNotifications } from './shared/invoiceNotifications.service';
 import { BillingAccountRepository } from '@/repositories/billing/billingAccount.repository';
 import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { StudentTaxIdRepository } from '@/repositories/billing/studentTaxId.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { Clock } from '@/scheduling/clock.service';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BillingAccountController } from './account/billingAccount.controller';
@@ -22,7 +24,10 @@ import { PAYMENT_GATEWAY } from './gateway/paymentGateway';
 import { InvoicesController } from './invoices/invoices.controller';
 import { InvoicesService } from './invoices/invoices.service';
 import { StudentInvoicesController } from './invoices/studentInvoices.controller';
+import { ReconciliationService } from './reconciliation/reconciliation.service';
 import { decodeCipherKey } from './shared/secretCipher';
+import { AsaasWebhookController } from './webhook/asaasWebhook.controller';
+import { AsaasWebhookService } from './webhook/asaasWebhook.service';
 
 const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
 
@@ -32,6 +37,7 @@ const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
     BillingAccountController,
     InvoicesController,
     StudentInvoicesController,
+    AsaasWebhookController,
   ],
   providers: [
     PrismaService,
@@ -44,6 +50,10 @@ const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
     ProfessionalPremiumGuard,
     BillingAccountService,
     InvoicesService,
+    AsaasWebhookService,
+    ReconciliationService,
+    InvoiceNotifications,
+    Clock,
     {
       provide: PAYMENT_GATEWAY,
       inject: [ConfigService],
@@ -65,6 +75,11 @@ const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
         config.getOrThrow<string>('API_PUBLIC_URL').replace(/\/$/, ''),
     },
   ],
-  exports: [BillingAccountService, BillingAccountRepository],
+  exports: [
+    BillingAccountService,
+    BillingAccountRepository,
+    InvoicesService,
+    InvoicesRepository,
+  ],
 })
 export class BillingModule {}

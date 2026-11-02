@@ -1,3 +1,4 @@
+import { InvoicesService } from '@/billing/invoices/invoices.service';
 import { AppError } from '@/utils/app.erro';
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -8,6 +9,11 @@ import {
 import { jwtServiceMock } from 'mock/jwtService.mock';
 import { userRepositoryMock } from 'mock/user.repository.mock';
 import { ClientRegisterService } from './client.register.service';
+
+const billingMock = {
+  provide: InvoicesService,
+  useValue: { cancelOpenInvoicesBestEffort: jest.fn().mockResolvedValue([]) },
+};
 
 const clients = ClientsRepositoryMock.useValue;
 
@@ -26,6 +32,7 @@ describe('ClientRegisterService.postRegister — ownership', () => {
         userRepositoryMock,
         ClientsRepositoryMock,
         jwtServiceMock,
+        billingMock,
       ],
     }).compile();
 
@@ -155,5 +162,67 @@ describe('ClientRegisterService.postRegister — ownership', () => {
       message: 'Cliente cadastrado com outro ID.',
     });
     expect(clients.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('ClientRegisterService.deleteClientById (UT-104)', () => {
+  let service: ClientRegisterService;
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      providers: [
+        ClientRegisterService,
+        userRepositoryMock,
+        ClientsRepositoryMock,
+        jwtServiceMock,
+        billingMock,
+      ],
+    }).compile();
+
+    service = moduleFixture.get(ClientRegisterService);
+    jest.clearAllMocks();
+  });
+
+  it('cancels open charges best-effort before deleting and returns billingWarnings', async () => {
+    billingMock.useValue.cancelOpenInvoicesBestEffort.mockResolvedValue([
+      { competenceYear: 2026, competenceMonth: 11 },
+    ]);
+
+    const result = await service.deleteClientById(
+      ownClient.id,
+      ownClient.professionalId!,
+    );
+
+    expect(
+      billingMock.useValue.cancelOpenInvoicesBestEffort,
+    ).toHaveBeenCalledWith(ownClient.id);
+    expect(clients.delete).toHaveBeenCalledWith(ownClient.id);
+    expect(result).toEqual({
+      billingWarnings: [{ competenceYear: 2026, competenceMonth: 11 }],
+    });
+  });
+
+  it('still deletes when the cancellation failed for some charge', async () => {
+    billingMock.useValue.cancelOpenInvoicesBestEffort.mockResolvedValue([
+      { competenceYear: 2026, competenceMonth: 10 },
+    ]);
+
+    const result = await service.deleteClientById(
+      ownClient.id,
+      ownClient.professionalId!,
+    );
+
+    expect(clients.delete).toHaveBeenCalledWith(ownClient.id);
+    expect(result.billingWarnings).toHaveLength(1);
+  });
+
+  it('rejects an id owned by another professional without canceling anything', async () => {
+    await expect(
+      service.deleteClientById(foreignClient.id, ownClient.professionalId!),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(
+      billingMock.useValue.cancelOpenInvoicesBestEffort,
+    ).not.toHaveBeenCalled();
+    expect(clients.delete).not.toHaveBeenCalled();
   });
 });

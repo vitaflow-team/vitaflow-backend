@@ -2,6 +2,7 @@ import { ProfessionalGuard } from '@/common/guards/professional.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { ProfessionalDiscoveryRepository } from '@/repositories/professional-discovery/professionalDiscovery.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConnectionRequestsController } from './connectionRequests.controller';
 import { ProfessionalDiscoveryModule } from './professionalDiscovery.module';
@@ -13,8 +14,18 @@ describe('ProfessionalDiscoveryModule', () => {
   let moduleRef: TestingModule;
 
   beforeEach(async () => {
+    // Transitively imports ClientsModule -> BillingModule (best-effort
+    // invoice cancellation on removal), which reads these from ConfigService.
+    process.env.BILLING_ENCRYPTION_KEY =
+      process.env.BILLING_ENCRYPTION_KEY ??
+      Buffer.alloc(32, 9).toString('base64');
+    process.env.API_PUBLIC_URL =
+      process.env.API_PUBLIC_URL ?? 'https://api.vitaflow.test';
     moduleRef = await Test.createTestingModule({
-      imports: [ProfessionalDiscoveryModule],
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true }),
+        ProfessionalDiscoveryModule,
+      ],
     }).compile();
   });
 

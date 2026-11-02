@@ -1,3 +1,4 @@
+import { IS_PUBLIC_WEBHOOK } from '@/common/decorators/publicWebhook.decorator';
 import {
   CanActivate,
   ExecutionContext,
@@ -5,6 +6,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Reflector } from '@nestjs/core';
 import { createHash, timingSafeEqual } from 'crypto';
 
 function digest(value: string): Buffer {
@@ -22,9 +24,18 @@ export function secretsMatch(provided: unknown, expected: string): boolean {
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly reflector: Reflector,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const isPublicWebhook = this.reflector.getAllAndOverride<boolean>(
+      IS_PUBLIC_WEBHOOK,
+      [context.getHandler(), context.getClass()],
+    );
+    if (isPublicWebhook) return true;
+
     const request = context
       .switchToHttp()
       .getRequest<{ headers: Record<string, unknown> }>();
