@@ -5,10 +5,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const BRASILIA_OFFSET_MS = -3 * 60 * 60 * 1000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+// For a precise instant (e.g. `new Date()`, "right now") that needs
+// localizing to the Brasília calendar date it falls on.
 export function brasiliaDateKey(instant: Date): string {
   return new Date(instant.getTime() + BRASILIA_OFFSET_MS)
     .toISOString()
     .slice(0, 10);
+}
+
+// For a `@db.Date` column (dueDate, paidAt): Prisma stores these as
+// midnight UTC of the calendar date itself, with no time-of-day meaning to
+// localize — applying brasiliaDateKey's offset here would shift the date
+// back a day instead of round-tripping it.
+export function dateOnlyKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 export function parseCalendarDate(value: unknown): string | null {

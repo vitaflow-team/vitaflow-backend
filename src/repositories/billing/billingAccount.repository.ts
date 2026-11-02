@@ -25,6 +25,13 @@ export class BillingAccountRepository {
     });
   }
 
+  // Looked up by id rather than by current owner: an invoice's account may
+  // have been replaced since the invoice was created (ADR-009) — a replaced
+  // account still holds its key for its own open invoices.
+  async findById(id: string): Promise<BillingAccount | null> {
+    return await this.prisma.billingAccount.findUnique({ where: { id } });
+  }
+
   // A key held by another professional's account that is not disconnected yet.
   async findLiveHolderOfFingerprint(
     fingerprint: string,

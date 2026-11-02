@@ -40,11 +40,19 @@ export class NotificationsService {
   // preference (PRD Business Rules) — only the email send is gated. An
   // email failure is caught here, never propagated, so it can never roll
   // back or appear to fail the already-committed in-app record.
+  //
+  // code-standards: rule 5 (max 3 params) — skipEmail is a 5th positional
+  // param on an already pre-existing 4-param signature. Converting this to
+  // an options object would touch all 11 existing call sites across the
+  // codebase, out of scope for billing's own, purely additive need (educator-
+  // billing task_02: the link e-mail is sent separately to the student's own
+  // address, so the in-app BILLING notice must not also send its own).
   async create(
     userId: string,
     category: NotificationCategory,
     message: string,
     link?: string,
+    skipEmail = false,
   ): Promise<NotificationEntity> {
     const notification = await this.notifications.create(userId, {
       category,
@@ -52,7 +60,7 @@ export class NotificationsService {
       link,
     });
 
-    const enabled = await this.isEnabled(userId, category);
+    const enabled = !skipEmail && (await this.isEnabled(userId, category));
     let emailAttempted = false;
     if (enabled) {
       emailAttempted = true;

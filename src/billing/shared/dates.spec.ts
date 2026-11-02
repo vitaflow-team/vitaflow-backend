@@ -1,6 +1,7 @@
 import {
   brasiliaDateKey,
   currentCompetence,
+  dateOnlyKey,
   validateCompetence,
   validateDueDate,
 } from './dates';
@@ -12,6 +13,15 @@ describe('due date and competence rules (UT-002, UT-003)', () => {
     // 01:00 UTC on Oct 3 is 22:00 on Oct 2 in Brasília.
     expect(brasiliaDateKey(new Date('2026-10-03T01:00:00Z'))).toBe(
       '2026-10-02',
+    );
+  });
+
+  it('dateOnlyKey round-trips a @db.Date column without the Brasília offset', () => {
+    // Unlike brasiliaDateKey, a stored dueDate/paidAt is already the
+    // calendar date (midnight UTC by Prisma convention) — applying the
+    // Brasília offset here would wrongly shift it back a day.
+    expect(dateOnlyKey(new Date('2026-11-25T00:00:00.000Z'))).toBe(
+      '2026-11-25',
     );
   });
 

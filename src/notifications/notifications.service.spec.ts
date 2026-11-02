@@ -196,6 +196,25 @@ describe('NotificationsService', () => {
       ).resolves.toBeDefined();
       expect(mailSendNotificationEmail).not.toHaveBeenCalled();
     });
+
+    it('UT-096 (educator-billing) the skip-e-mail option writes the row and sends no e-mail', async () => {
+      notificationsCreate.mockResolvedValue(makeNotification());
+      notificationsFindPreference.mockResolvedValue(null);
+
+      await service.create('user-1', 'BILLING', 'x', undefined, true);
+
+      expect(notificationsCreate).toHaveBeenCalled();
+      expect(mailSendNotificationEmail).not.toHaveBeenCalled();
+    });
+
+    it('UT-096 (educator-billing) without the option it behaves as before', async () => {
+      notificationsCreate.mockResolvedValue(makeNotification());
+      notificationsFindPreference.mockResolvedValue(null);
+
+      await service.create('user-1', 'BILLING', 'x');
+
+      expect(mailSendNotificationEmail).toHaveBeenCalled();
+    });
   });
 
   describe('preferences (UT-008, UT-009, UT-010)', () => {
