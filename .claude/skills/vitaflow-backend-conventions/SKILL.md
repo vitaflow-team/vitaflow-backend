@@ -1,14 +1,17 @@
-# Backend Code Standards
+---
+name: vitaflow-backend-conventions
+description: Apply vitaflow-backend's NestJS conventions (domain-per-folder structure, controller/DTO/service/repository/module roles, AppError, naming) whenever writing or reviewing backend code in vitaflow-backend. Builds on vitaflow-code-standards, which still applies.
+---
 
-Rules specific to `vitaflow-backend` (NestJS + Prisma + PostgreSQL). These build on the language-agnostic rules in [`../code-standards.md`](../code-standards.md) — that document still applies (English-only code, function length, nesting, parameter count, one type per file). This document adds NestJS-specific structure and naming. For starting work on a new PRD (worktree, branch, registration), see [`../git-workflow.md`](../git-workflow.md).
+# Vitaflow Backend Conventions
+
+Rules specific to `vitaflow-backend` (NestJS + Prisma + PostgreSQL). They build on the `vitaflow-code-standards` skill (English-only code, function length, nesting, parameter count, one type per file), which still apply. For starting work on a new PRD (worktree, branch, registration), use the `vitaflow-git-workflow` skill.
 
 The rules below reflect the project's actual, consistent conventions, refined in the few places the codebase itself is inconsistent (noted inline as **Refinement**). New code follows this document; existing code may be brought in line opportunistically, not as a required mass rename.
 
----
-
 ## 1. Organize by domain, one folder per feature
 
-Each business domain lives in its own top-level folder under `src/`, and every file that belongs to it — controller, service, module, DTOs, entities — is colocated in that folder (or in a subfolder for a specific use case within the domain). Do not spread one feature's controller, service, and DTOs across unrelated directories, and do not create a generic `controllers/`, `services/`, or `dtos/` folder that groups by file type instead of by feature.
+Each business domain lives in its own top-level folder under `src/`, and every file that belongs to it — controller, service, module, DTOs, entities — is colocated in that folder (or a subfolder for a specific use case within the domain). Do not spread one feature's controller, service, and DTOs across unrelated directories, and do not create a generic `controllers/`, `services/`, or `dtos/` folder that groups by file type instead of by feature.
 
 A domain with several distinct use cases (sign up, sign in, profile, password recovery) splits into **one subfolder per use case**, each a self-contained controller/service/DTO trio, wired together by a single `<domain>.module.ts` at the domain root.
 
@@ -39,8 +42,6 @@ src/
 ```
 
 **Exception**: data-access code is not colocated with its domain folder. Every repository lives under `src/repositories/<domain>/`, so the domain folder stays free of Prisma-specific code and repositories can be reused across domains without a circular import (e.g. `SubscriptionService`, in `users/subscription/`, using `src/repositories/product/product.repository.ts`).
-
----
 
 ## 2. Controllers: `*.controller.ts`, Swagger-documented, one request DTO and one response DTO
 
@@ -83,13 +84,11 @@ export class ProgressController {
 
 **Refinement**: read the authenticated user id only from `req.user.id` inside an `AuthenticatedRequest`-typed request, never from a route param, query string, or request body — a client must never be able to name a different user's id and have the controller act on it.
 
----
-
 ## 3. DTOs: `*.Dto.ts`, validated with `class-validator`, one request class and one response type
 
 Every DTO file ends in `.Dto.ts` — note the capital `D`. This is the project's established, project-wide convention; keep it for new files instead of introducing a mixed-case codebase.
 
-> **Refinement note**: NestJS's own generators default to a lowercase `.dto.ts` suffix, and a new project should typically follow that default. `vitaflow-backend` has already standardized on `.Dto.ts` across every domain (`profile.Dto.ts`, `signup.Dto.ts`, `progress.Dto.ts`, and every other DTO file), with zero lowercase exceptions. Matching that existing, consistent convention beats a partial migration that leaves the codebase with two suffixes — so `.Dto.ts` is the rule here.
+> NestJS's own generators default to a lowercase `.dto.ts` suffix, and a new project would typically follow that default. `vitaflow-backend` has already standardized on `.Dto.ts` across every domain, with zero lowercase exceptions. Matching that existing, consistent convention beats a partial migration that leaves the codebase with two suffixes.
 
 A DTO file separates two shapes:
 
@@ -141,8 +140,6 @@ export class DashboardQueryDTO {
 
 **Refinement**: a DTO used only to shape a Swagger response and also accepted back as input (as `ProfileDTO` is) should still be a validated `class` — a DTO is a request DTO the moment any decorated field of it can arrive from the client, regardless of what else reuses its shape for documentation.
 
----
-
 ## 4. Services: `*.service.ts`, dependency injection only, no direct Prisma access
 
 Every service file ends in `.service.ts` and its class name ends in `Service`. A service holds business rules: validation that depends on domain state (not just input shape — that stays in the DTO), orchestration across repositories, and calls to other services or utilities (`UploadService`, `MailService`, `PasswordHash`). A service never imports `PrismaClient`/`PrismaService` directly and never builds a Prisma query itself — all persistence goes through an injected repository (§5).
@@ -186,8 +183,6 @@ A service method that needs to reject a request throws `AppError` (`src/utils/ap
 
 **Refinement**: some services in the current codebase inject with plain `private` (no `readonly`). Keep `readonly` for every new or touched constructor; it costs nothing and prevents a dependency from being reassigned by mistake.
 
----
-
 ## 5. Repositories: `*.repository.ts`, the only layer that touches Prisma
 
 Every repository file ends in `.repository.ts` and lives under `src/repositories/<domain>/`, separate from the domain's controller/service folder (§1). A repository's only job is translating a domain-shaped call into a Prisma query and back; it holds no business rules and no HTTP concerns.
@@ -206,8 +201,6 @@ export class MeasurementRecordsRepository {
 
 Only repositories inject `PrismaService`. A service depends on one or more repositories, never on `PrismaService` — this keeps every Prisma-specific detail (field names, `include`, `orderBy`) in one place per model and makes services trivial to unit-test with a plain mock (§8).
 
----
-
 ## 6. Modules: `*.module.ts`, one module per domain
 
 Every module file ends in `.module.ts` and its class name ends in `Module`. A domain module declares every controller and provider (services, repositories) that domain needs, and `imports` any other module whose exported providers it depends on (most commonly `AuthModule`, for `AuthGuard`).
@@ -224,8 +217,6 @@ export class ProgressModule {}
 
 A module only adds an `exports` array when another module genuinely needs to inject one of its providers — most domain modules export nothing. `AuthModule` is the standing exception, exporting `JwtModule`, `AuthGuard`, and its other shared providers for every other domain to import.
 
----
-
 ## 7. Errors: always `AppError`, always thrown from the service layer
 
 Every business-rule rejection throws `AppError` (`src/utils/app.erro.ts`, an `HttpException` subclass), and it is always thrown inside a **service** method, never inside a controller or a repository. A controller that needs to reject a request before calling its service (this should be rare — that validation belongs in the DTO) still delegates the throw to the service.
@@ -234,12 +225,8 @@ Every business-rule rejection throws `AppError` (`src/utils/app.erro.ts`, an `Ht
 // src/progress/progress.service.ts
 async assertOwnership(recordId: string, userId: string): Promise<void> {
   const record = await this.measurementRecords.findById(recordId);
-  if (!record) {
-    throw new AppError('Registro não encontrado.', 404);
-  }
-  if (record.userId !== userId) {
-    throw new AppError('Ação não permitida.', 401);
-  }
+  if (!record) throw new AppError('Registro não encontrado.', 404);
+  if (record.userId !== userId) throw new AppError('Ação não permitida.', 401);
 }
 ```
 
@@ -247,9 +234,7 @@ Pick the status code for what actually happened: `401` for authentication or own
 
 **Refinement**: `402 Payment Required` has appeared in this codebase standing in for "not found." Do not reuse `402` for anything other than an actual payment-required condition — use `404` for "resource not found," even when the resource in question is the user's own profile.
 
-Per [`code-standards.md`](../code-standards.md) rule 1, the `message` shown to the end user may be in Portuguese (it is product copy); the `reason` code, like every other identifier, is in English.
-
----
+Per `vitaflow-code-standards` rule 1, the `message` shown to the end user may be in Portuguese (it is product copy); the `reason` code, like every other identifier, is in English.
 
 ## 8. Naming conventions
 
@@ -257,11 +242,9 @@ Per [`code-standards.md`](../code-standards.md) rule 1, the `message` shown to t
 - **Methods and variables** are **camelCase**: `getDashboard`, `assertOwnership`, `weightVariationKg`.
 - **Module-level constants** (values fixed at load time, never reassigned) are **UPPER_SNAKE_CASE**: `DASHBOARD_WEEKS`, `DEFAULT_DASHBOARD_WEEKS`.
 - **Enum names** are PascalCase; **enum values** are UPPER_SNAKE_CASE, matching the Prisma convention already in `schema.prisma` (`enum ProductType { USER NUTRITIONIST PHYSICAL_EDUCATOR }`).
-- **Filenames** are camelCase for multi-word names, with the type suffix always attached: `measurementRecords.repository.ts`, `userToken.repository.ts`, `profileAddress.Dto.ts`. Do not mix in kebab-case (`some-name.service.ts`) for new files — camelCase is the project's dominant convention and the one to converge on.
+- **Filenames** are camelCase for multi-word names, with the type suffix always attached: `measurementRecords.repository.ts`, `userToken.repository.ts`, `profileAddress.Dto.ts`. Do not mix in kebab-case (`some-name.service.ts`) for new files.
 - **Prisma models** are PascalCase and singular (`MeasurementRecord`, `Client`, `Product`). The one standing exception is `Users` (and `UsersToken`, which inherits its plural): do not introduce further plural model names — `Users` stays as-is for compatibility, but every new model is singular.
-
----
 
 ## Enforcement
 
-Follow this document together with [`../code-standards.md`](../code-standards.md). Both are reviewed in code review; a deliberate exception is marked inline with `// code-standards: <rule> — <reason>` at the point of deviation, exactly as described there.
+Follow this skill together with `vitaflow-code-standards`. Both are reviewed in code review; a deliberate exception is marked inline with `// code-standards: <rule> — <reason>` at the point of deviation.
