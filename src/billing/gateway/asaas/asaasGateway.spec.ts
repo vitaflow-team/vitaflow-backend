@@ -55,6 +55,30 @@ describe('Asaas client requests (UT-020)', () => {
     expect(body.notificationDisabled).toBe(true);
   });
 
+  it('registers the webhook with its required events and notification email, per the sandbox (task_01 1.1)', async () => {
+    const originalMailUser = process.env.MAIL_USER;
+    process.env.MAIL_USER = 'ops@vitaflow.test';
+    const { gateway, fetchImpl } = gatewayWith([reply(200, { id: 'wh_1' })]);
+    const result = await gateway.registerWebhook(
+      KEY,
+      'https://api.vitaflow.test/billing/webhooks/asaas',
+      'a'.repeat(32),
+    );
+    const body = JSON.parse(
+      (fetchImpl.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body).toMatchObject({
+      url: 'https://api.vitaflow.test/billing/webhooks/asaas',
+      email: 'ops@vitaflow.test',
+      authToken: 'a'.repeat(32),
+      enabled: true,
+    });
+    expect(Array.isArray(body.events)).toBe(true);
+    expect(body.events.length).toBeGreaterThan(0);
+    expect(result).toEqual({ webhookId: 'wh_1' });
+    process.env.MAIL_USER = originalMailUser;
+  });
+
   it('creates the charge with the payment type undefined, decimal value, due date and external reference', async () => {
     const { gateway, fetchImpl } = gatewayWith([
       reply(200, { id: 'pay_1', invoiceUrl: 'https://pay.test/1' }),
@@ -71,11 +95,11 @@ describe('Asaas client requests (UT-020)', () => {
     );
     expect(body).toMatchObject({
       customer: 'cus_1',
+      billingType: 'UNDEFINED',
       value: 19.9,
       dueDate: '2026-10-20',
       externalReference: 'invoice-1',
     });
-    expect(body).not.toHaveProperty('billingType');
     expect(result).toEqual({
       externalId: 'pay_1',
       paymentUrl: 'https://pay.test/1',

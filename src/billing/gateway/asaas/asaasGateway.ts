@@ -12,6 +12,22 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const READ_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 300;
 
+// Asaas rejects a webhook with no `events` ("É necessário informar no
+// mínimo um evento de notificação para essa configuração" — confirmed in
+// the sandbox, task_01 subtask 1.1). This set matches what mapChargeStatus
+// below already interprets — PAID (RECEIVED, CONFIRMED), OVERDUE, and a
+// charge being removed. `RECEIVED_IN_CASH` is a status value, not its own
+// webhook event name ("PAYMENT_RECEIVED_IN_CASH" was rejected as invalid
+// in the sandbox) — a manually-marked-paid charge surfaces through
+// PAYMENT_RECEIVED/PAYMENT_CONFIRMED with that status on the payload.
+const WEBHOOK_EVENTS = [
+  'PAYMENT_CREATED',
+  'PAYMENT_RECEIVED',
+  'PAYMENT_CONFIRMED',
+  'PAYMENT_OVERDUE',
+  'PAYMENT_DELETED',
+] as const;
+
 interface AsaasRequest {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string;
@@ -73,6 +89,11 @@ export class AsaasGateway implements PaymentGateway {
     return { accountName: body.name };
   }
 
+  // `email` is Asaas's own delivery-failure alert address, not a parameter
+  // of this call — it's always Vita Flow's own ops inbox regardless of
+  // which professional's account registers the webhook, and Asaas rejects
+  // the request without one ("O parâmetro email deve ser informado" —
+  // confirmed in the sandbox, task_01 subtask 1.1).
   async registerWebhook(
     apiKey: string,
     url: string,
@@ -84,10 +105,12 @@ export class AsaasGateway implements PaymentGateway {
       body: {
         name: 'Vita Flow',
         url,
+        email: process.env.MAIL_USER,
         enabled: true,
         interrupted: false,
         authToken: token,
         sendType: 'SEQUENTIALLY',
+        events: WEBHOOK_EVENTS,
       },
       retryable: false,
     });
@@ -130,6 +153,13 @@ export class AsaasGateway implements PaymentGateway {
       path: '/payments',
       body: {
         customer: charge.customerExternalId,
+        // Asaas rejects a charge with no billingType ("O parâmetro
+        // billingType deve ser informado" — confirmed in the sandbox,
+        // task_01 subtask 1.1). UNDEFINED lets the payer pick Pix, boleto
+        // or card on the link itself — matching ADR-001 decision 5 ("the
+        // payer's choice of payment method is not restricted by the
+        // professional").
+        billingType: 'UNDEFINED',
         value: centsToDecimal(charge.amountCents),
         dueDate: charge.dueDate,
         description: charge.description,
