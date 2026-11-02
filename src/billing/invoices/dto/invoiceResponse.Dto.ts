@@ -16,7 +16,9 @@ export interface InvoiceResponseDTO {
   // Not in the TechSpec's own DTO field list, but UT-052/UT-053 require the
   // response to say whether the link e-mail went out, so the professional
   // knows to copy the link by hand — added to satisfy that assigned case.
-  emailSent: boolean;
+  // Only `create` sets this; other actions never send this e-mail, so it is
+  // omitted there rather than carrying a meaningless value.
+  emailSent?: boolean;
 }
 
 export class InvoiceResponse {
@@ -31,5 +33,5 @@ export class InvoiceResponse {
   @ApiProperty({ nullable: true }) manualNote!: string | null;
   @ApiProperty({ nullable: true }) paymentUrl!: string | null;
   @ApiProperty({ nullable: true }) canResendAt!: string | null;
-  @ApiProperty() emailSent!: boolean;
+  @ApiProperty({ required: false }) emailSent?: boolean;
 }

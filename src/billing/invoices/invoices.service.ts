@@ -94,7 +94,7 @@ export class InvoicesService {
       BILLING_LIMITS.invoicePageSize,
     );
     return {
-      items: items.map((i) => this.toResponse(i, true)),
+      items: items.map((i) => this.toResponse(i)),
       total,
       page,
       pageSize: BILLING_LIMITS.invoicePageSize,
@@ -169,7 +169,7 @@ export class InvoicesService {
       amountCents === invoice.amountCents &&
       dueDate === this.dueKey(invoice)
     ) {
-      return this.toResponse(invoice, true);
+      return this.toResponse(invoice);
     }
 
     const newStatus = this.statusAfterDueDateChange(invoice, dueDate, todayKey);
@@ -185,7 +185,7 @@ export class InvoicesService {
       status: newStatus,
     });
     if (!updated) throw new CodedError(NOT_OPEN, 409, 'invoice_not_open');
-    return this.toResponse(updated, true);
+    return this.toResponse(updated);
   }
 
   async cancel(
@@ -194,7 +194,7 @@ export class InvoicesService {
   ): Promise<InvoiceResponseDTO> {
     const invoice = await this.ownedInvoice(invoiceId, professionalId);
     if (invoice.status === InvoiceStatus.CANCELED) {
-      return this.toResponse(invoice, true);
+      return this.toResponse(invoice);
     }
     this.requireOpen(invoice);
     const account = await this.requireAccount(invoice.billingAccountId);
@@ -207,7 +207,7 @@ export class InvoicesService {
       status: InvoiceStatus.CANCELED,
     });
     if (!updated) throw new CodedError(NOT_OPEN, 409, 'invoice_not_open');
-    return this.toResponse(updated, true);
+    return this.toResponse(updated);
   }
 
   async markPaid(
@@ -217,7 +217,7 @@ export class InvoicesService {
   ): Promise<InvoiceResponseDTO> {
     const invoice = await this.ownedInvoice(invoiceId, professionalId);
     if (invoice.status === InvoiceStatus.PAID_MANUALLY) {
-      return this.toResponse(invoice, true);
+      return this.toResponse(invoice);
     }
     this.requireOpen(invoice);
     const account = await this.requireAccount(invoice.billingAccountId);
@@ -234,7 +234,7 @@ export class InvoicesService {
       manualNote: dto.note ?? null,
     });
     if (!updated) throw new CodedError(NOT_OPEN, 409, 'invoice_not_open');
-    return this.toResponse(updated, true);
+    return this.toResponse(updated);
   }
 
   async resend(professionalId: string, invoiceId: string): Promise<void> {
@@ -585,7 +585,10 @@ export class InvoicesService {
     );
   }
 
-  private toResponse(invoice: Invoice, emailSent: boolean): InvoiceResponseDTO {
+  private toResponse(
+    invoice: Invoice,
+    emailSent?: boolean,
+  ): InvoiceResponseDTO {
     const canResendAt = invoice.linkSentAt
       ? new Date(
           invoice.linkSentAt.getTime() +
