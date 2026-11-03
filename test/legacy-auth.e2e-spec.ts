@@ -1,4 +1,5 @@
 import { createValidationPipe } from '@/config/validationPipe';
+import { AcademiaStaffAuthService } from '@/academia/staff/academiaStaffAuth.service';
 import { AuditLogger } from '@/auth/auditLogger.service';
 import { AuthGuard } from '@/auth/auth.guard';
 import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
@@ -82,6 +83,16 @@ describe('Legacy authentication integration', () => {
         {
           provide: AuditLogger,
           useValue: { log: jest.fn(), warn: jest.fn() },
+        },
+        {
+          // No case here signs in with an email that both (a) has no
+          // matching Users row and (b) passes input whitelisting — so
+          // SignInService never actually reaches the staff-account
+          // fallback branch that calls this. See IT-011: its "unknown"
+          // email case is rejected by the ValidationPipe for the
+          // undeclared socialLogin field before the service runs.
+          provide: AcademiaStaffAuthService,
+          useValue: { findByEmail: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();
