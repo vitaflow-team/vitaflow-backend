@@ -4,7 +4,8 @@ const requiredEnv = {
   JWT_SECRET: 'a-jwt-secret-that-is-at-least-32-chars',
   DATABASE_URL: 'postgresql://localhost/test',
   APPLICATION_SECRET: 'application-secret',
-  STRIPE_API_KEY: 'sk_test_key',
+  ASAAS_PLATFORM_API_KEY: 'platform-asaas-key',
+  ASAAS_PLATFORM_WEBHOOK_TOKEN: 'platform-webhook-token',
   OPENAI_API_KEY: 'sk-test-key',
   APP_URL: 'http://localhost:3000',
   GCP_PROJECT_ID: 'test-project',
@@ -64,10 +65,16 @@ describe('validateEnv', () => {
     ).toThrow('JWT_SECRET');
   });
 
-  it('names a missing Stripe secret key', () => {
-    expect(() => validateEnv({ ...requiredEnv, STRIPE_API_KEY: '  ' })).toThrow(
-      'STRIPE_API_KEY',
-    );
+  it('names a missing platform Asaas API key', () => {
+    expect(() =>
+      validateEnv({ ...requiredEnv, ASAAS_PLATFORM_API_KEY: '  ' }),
+    ).toThrow('ASAAS_PLATFORM_API_KEY');
+  });
+
+  it('names a missing platform Asaas webhook token', () => {
+    expect(() =>
+      validateEnv({ ...requiredEnv, ASAAS_PLATFORM_WEBHOOK_TOKEN: '  ' }),
+    ).toThrow('ASAAS_PLATFORM_WEBHOOK_TOKEN');
   });
 
   it('names a missing OpenAI secret key', () => {

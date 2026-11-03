@@ -21,7 +21,6 @@ const productGroupsMock: ProductGroupWithDetails[] = [
         price: 29.9,
         type: 'USER',
         groupId: 'group-1',
-        stripeId: 'st_123',
         tier: 'STANDARD',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -45,7 +44,6 @@ const freeProductMock: Product = {
   price: 0,
   type: 'USER',
   groupId: 'group-1',
-  stripeId: null,
   tier: 'STANDARD',
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -194,7 +192,7 @@ describe('ProductsRepository Tests', () => {
       expect(result).toEqual(freeProductMock);
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prismaService.product.findFirst).toHaveBeenCalledWith({
-        where: { type: 'USER', price: 0, stripeId: null },
+        where: { type: 'USER', price: 0 },
       });
     });
 

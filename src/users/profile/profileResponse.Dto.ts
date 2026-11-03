@@ -56,7 +56,7 @@ export class ProfileResponseDTO {
   autoRenew: boolean;
 
   @ApiProperty({ example: false })
-  hasStripeCustomer: boolean;
+  hasAsaasCustomer: boolean;
 
   @ApiProperty({ example: 0 })
   clientsCount: number;

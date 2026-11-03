@@ -1,3 +1,4 @@
+import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { createValidationPipe } from '@/config/validationPipe';
 import { AuditLogger } from '@/auth/auditLogger.service';
 import { AuthController } from '@/auth/auth.controller';
@@ -5,16 +6,20 @@ import { AuthGuard } from '@/auth/auth.guard';
 import { AuthService } from '@/auth/auth.service';
 import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
 import { GoogleAuthService } from '@/auth/googleAuth.service';
+import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { ClientRegisterController } from '@/clients/register/client.register.controller';
 import { ClientRegisterService } from '@/clients/register/client.register.service';
 import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { MailService } from '@/mail/mail.service';
+import { NotificationsService } from '@/notifications/notifications.service';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
+import { Clock } from '@/scheduling/clock.service';
 import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
 import { SignInController } from '@/users/signin/signin.controller';
@@ -23,11 +28,10 @@ import { SignUpController } from '@/users/signup/signup.controller';
 import { SignUpService } from '@/users/signup/signup.service';
 import { UserTokenService } from '@/users/token/userToken.service';
 import { SubscriptionController } from '@/users/subscription/subscription.controller';
-import { SubscriptionSyncController } from '@/users/subscription/subscriptionSync.controller';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
+import { PLATFORM_ASAAS_API_KEY } from '@/users/subscription/platformGateway.tokens';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
-import { StripeVerification } from '@/utils/stripeVerification';
 import { UploadService } from '@/utils/upload.service';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -36,27 +40,8 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { TokenType, Users } from '@prisma/client';
-import Stripe from 'stripe';
 import request from 'supertest';
 import { App } from 'supertest/types';
-
-// Stripe is the one outbound dependency under test here. Only the SDK's
-// client is replaced — the real StripeVerification, SubscriptionService and
-// database all run — and the real error classes are kept.
-const mockRetrieve = jest.fn();
-jest.mock('stripe', () => {
-  const actual = jest.requireActual('stripe');
-  const ActualStripe = actual.default ?? actual;
-  const MockStripe = Object.assign(
-    jest.fn(() => ({
-      subscriptions: {
-        retrieve: (...args: unknown[]): unknown => mockRetrieve(...args),
-      },
-    })),
-    { errors: ActualStripe.errors },
-  );
-  return { __esModule: true, default: MockStripe };
-});
 
 jest.setTimeout(60_000);
 
@@ -76,7 +61,6 @@ describe('Critical security fixes integration', () => {
   >();
   let sequence = 0;
   let paidProductId: string;
-  let paidPriceId: string;
   let groupId: string;
   const sendEmailPassword = jest.fn().mockResolvedValue(undefined);
 
@@ -100,7 +84,6 @@ describe('Critical security fixes integration', () => {
         SignUpController,
         SignInController,
         SubscriptionController,
-        SubscriptionSyncController,
         AuthController,
       ],
       providers: [
@@ -111,13 +94,31 @@ describe('Critical security fixes integration', () => {
         ProductsRepository,
         OAuthIdentityRepository,
         PasswordHash,
-        StripeVerification,
         ClientRegisterService,
         ProfileService,
         SignUpService,
         UserTokenService,
         SignInService,
         SubscriptionService,
+        Clock,
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+        {
+          provide: AcademiaProvisioningService,
+          useValue: { provisionForOwner: jest.fn() },
+        },
+        {
+          provide: TemplatesService,
+          useValue: { ensureStarterTemplates: jest.fn() },
+        },
+        {
+          provide: PAYMENT_GATEWAY,
+          useValue: {
+            createSubscriptionCheckout: jest.fn(),
+            updateSubscription: jest.fn(),
+            createCharge: jest.fn(),
+          },
+        },
+        { provide: PLATFORM_ASAAS_API_KEY, useValue: 'test-platform-key' },
         AuthService,
         AuthGuard,
         DualBucketThrottlerGuard,
@@ -160,7 +161,7 @@ describe('Critical security fixes integration', () => {
 
     // Signup needs Gratuito; the paid plan is a throwaway row removed below.
     const freeProduct = await prisma.product.findFirst({
-      where: { type: 'USER', price: 0, stripeId: null },
+      where: { type: 'USER', price: 0 },
     });
     if (!freeProduct) {
       throw new Error('The test database needs the Gratuito product');
@@ -169,13 +170,11 @@ describe('Critical security fixes integration', () => {
       data: { name: `${MARKER} group` },
     });
     groupId = group.id;
-    paidPriceId = `price_${MARKER}_${Date.now()}`;
     const paid = await prisma.product.create({
       data: {
         name: `${MARKER} Premium`,
         price: 29.9,
         type: 'USER',
-        stripeId: paidPriceId,
         groupId,
       },
     });
@@ -184,7 +183,6 @@ describe('Critical security fixes integration', () => {
 
   beforeEach(() => {
     sequence += 1;
-    mockRetrieve.mockReset();
     googleIdentities.clear();
   });
 
@@ -260,17 +258,6 @@ describe('Critical security fixes integration', () => {
         professionalId: professional.id,
       },
     });
-  }
-
-  function stripeSubscription(overrides: Record<string, unknown>) {
-    return {
-      id: 'sub_test',
-      status: 'active',
-      customer: 'cus_test',
-      metadata: {},
-      items: { data: [{ price: { id: paidPriceId } }] },
-      ...overrides,
-    };
   }
 
   describe('POST /clients ownership (US-001)', () => {
@@ -355,7 +342,7 @@ describe('Critical security fixes integration', () => {
     it('IT-003 GET and POST /profile never serialize a password field', async () => {
       const user = await createUser('profile', {
         password: await passwordHash.generateHash('Secret123'),
-        stripeCustomerId: `cus_${MARKER}_${sequence}_${Date.now()}`,
+        asaasCustomerId: `cus_${MARKER}_${sequence}_${Date.now()}`,
       });
       const auth = `Bearer ${await tokenFor(user)}`;
 
@@ -377,7 +364,7 @@ describe('Critical security fixes integration', () => {
         expect(response.text).not.toContain('"password"');
         expect(response.text).not.toContain(user.password);
       }
-      expect(written.text).not.toContain(user.stripeCustomerId);
+      expect(written.text).not.toContain(user.asaasCustomerId);
       expect(written.body).toMatchObject({
         id: user.id,
         name: 'Renamed User',
@@ -403,36 +390,32 @@ describe('Critical security fixes integration', () => {
     });
   });
 
-  describe('PATCH /users/subscription is verified with Stripe (US-003)', () => {
+  // ADR-010: the Stripe-era "claim a subscription by id" endpoint this block
+  // used to test is gone — PATCH /users/subscription/plan never takes a
+  // subscription or customer id from the caller at all (it only ever acts
+  // on the id already stored on the caller's own record, set exclusively by
+  // the platform webhook). The forged-claim attack class this block guarded
+  // against is now structurally impossible rather than merely rejected.
+  describe("subscription endpoints only ever act on the caller's own record (US-003)", () => {
     async function freeUser(label: string) {
       const free = await prisma.product.findFirstOrThrow({
-        where: { type: 'USER', price: 0, stripeId: null },
+        where: { type: 'USER', price: 0 },
       });
       return await createUser(label, { productId: free.id });
     }
 
-    function patch(user: Users, token: string, subscriptionId: string) {
-      return call('patch', '/users/subscription')
+    it('IT-005 smuggled asaasCustomerId/asaasSubscriptionId fields are ignored and nothing changes', async () => {
+      const user = await freeUser('forger');
+      const token = await tokenFor(user);
+
+      await call('patch', '/users/subscription/plan')
         .set('Authorization', `Bearer ${token}`)
         .send({
           productId: paidProductId,
-          stripeCustomerId: 'cus_forged',
-          stripeSubscriptionId: subscriptionId,
-          subscriptionStatus: 'active',
-        });
-    }
-
-    it('IT-005 answers 400 and changes nothing for a subscription Stripe does not have', async () => {
-      const user = await freeUser('forger');
-      mockRetrieve.mockRejectedValue(
-        new Stripe.errors.StripeInvalidRequestError({
-          type: 'invalid_request_error',
-          message: 'No such subscription',
-          code: 'resource_missing',
-        }),
-      );
-
-      await patch(user, await tokenFor(user), 'sub_forged').expect(400);
+          asaasCustomerId: 'cus_forged',
+          asaasSubscriptionId: 'sub_forged',
+        })
+        .expect(400); // no active subscription on file to change
 
       const stored = await prisma.users.findUniqueOrThrow({
         where: { id: user.id },
@@ -440,56 +423,44 @@ describe('Critical security fixes integration', () => {
       expect(stored).toMatchObject({
         productId: user.productId,
         subscriptionStatus: null,
-        stripeSubscriptionId: null,
-        stripeCustomerId: null,
+        asaasSubscriptionId: null,
+        asaasCustomerId: null,
       });
     });
 
-    it("IT-006 answers 400 for another user's subscription and stores Stripe's status for the caller's own", async () => {
-      const user = await freeUser('subscriber');
-      const token = await tokenFor(user);
-
-      mockRetrieve.mockResolvedValue(
-        stripeSubscription({
-          id: 'sub_someone_else',
-          customer: 'cus_someone_else',
-          metadata: { userId: 'someone-else' },
-        }),
-      );
-      await patch(user, token, 'sub_someone_else').expect(400);
-      const untouched = await prisma.users.findUniqueOrThrow({
-        where: { id: user.id },
-      });
-      expect(untouched).toMatchObject({
-        productId: user.productId,
-        subscriptionStatus: null,
+    it("IT-006 an attacker with no subscription of their own can never act on another user's", async () => {
+      const victimSubscriptionId = `sub_${MARKER}_${sequence}_${Date.now()}`;
+      const victim = await freeUser('victim');
+      await prisma.users.update({
+        where: { id: victim.id },
+        data: {
+          productId: paidProductId,
+          asaasCustomerId: `cus_${MARKER}_${sequence}_${Date.now()}`,
+          asaasSubscriptionId: victimSubscriptionId,
+          subscriptionStatus: 'active',
+          subscriptionCurrentPeriodEnd: new Date(
+            Date.now() + 10 * 24 * 60 * 60 * 1000,
+          ),
+        },
       });
 
-      const ownSubscriptionId = `sub_${MARKER}_${sequence}_${Date.now()}`;
-      const ownCustomerId = `cus_${MARKER}_${sequence}_${Date.now()}`;
-      mockRetrieve.mockResolvedValue(
-        stripeSubscription({
-          id: ownSubscriptionId,
-          status: 'past_due',
-          customer: ownCustomerId,
-          metadata: { userId: user.id },
-        }),
-      );
-      const accepted = await patch(user, token, ownSubscriptionId).expect(200);
+      const attacker = await freeUser('attacker');
+      const token = await tokenFor(attacker);
 
-      expect(mockRetrieve).toHaveBeenLastCalledWith(ownSubscriptionId);
-      expect(accepted.body).toMatchObject({
+      // No field in the request can name the victim's subscription instead
+      // of the caller's own — the endpoint resolves it only from the
+      // authenticated caller's stored record.
+      await call('patch', '/users/subscription/plan')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ productId: paidProductId })
+        .expect(400);
+
+      const victimAfter = await prisma.users.findUniqueOrThrow({
+        where: { id: victim.id },
+      });
+      expect(victimAfter).toMatchObject({
         productId: paidProductId,
-        subscriptionStatus: 'past_due',
-      });
-      const stored = await prisma.users.findUniqueOrThrow({
-        where: { id: user.id },
-      });
-      expect(stored).toMatchObject({
-        productId: paidProductId,
-        subscriptionStatus: 'past_due',
-        stripeSubscriptionId: ownSubscriptionId,
-        stripeCustomerId: ownCustomerId,
+        asaasSubscriptionId: victimSubscriptionId,
       });
     });
   });

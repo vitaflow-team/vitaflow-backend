@@ -113,11 +113,9 @@ export class UserRepository {
     });
   }
 
-  async findByStripeCustomerId(
-    stripeCustomerId: string,
-  ): Promise<Users | null> {
+  async findByAsaasCustomerId(asaasCustomerId: string): Promise<Users | null> {
     return await this.prisma.users.findUnique({
-      where: { stripeCustomerId },
+      where: { asaasCustomerId },
     });
   }
 
@@ -125,8 +123,8 @@ export class UserRepository {
     id: string,
     data: {
       productId?: string | null;
-      stripeCustomerId?: string;
-      stripeSubscriptionId?: string | null;
+      asaasCustomerId?: string;
+      asaasSubscriptionId?: string | null;
       subscriptionStatus?: string | null;
       subscriptionCancelAt?: Date | null;
       subscriptionCurrentPeriodEnd?: Date | null;

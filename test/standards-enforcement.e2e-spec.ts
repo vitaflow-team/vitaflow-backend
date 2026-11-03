@@ -1,8 +1,8 @@
+import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
 import { configureApp } from '@/config/configureApp';
 import { validateEnv } from '@/config/validateEnv';
 import { PrismaService } from '@/database/prisma.service';
 import { UserRepository } from '@/repositories/users/user.repository';
-import { StripeVerification } from '@/utils/stripeVerification';
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -18,8 +18,8 @@ jest.unmock('@nestjs/swagger');
 jest.setTimeout(90_000);
 
 const APPLICATION_SECRET = 'standards-enforcement-application-secret';
+const WEBHOOK_TOKEN = 'standards-enforcement-webhook-token';
 const EMAIL_DOMAIN = '@standards-enforcement.test';
-const STRIPE_PRICE_ID = `price_standards_enforcement_${Date.now()}`;
 const PRODUCT_NAME = 'Standards enforcement plan';
 const PRODUCT_GROUP_NAME = 'Standards enforcement group';
 
@@ -30,7 +30,8 @@ function bootEnv(): NodeJS.ProcessEnv {
     JWT_SECRET: 'standards-enforcement-jwt-secret-0123456789',
     DATABASE_URL: process.env.TEST_DATABASE_URL,
     APPLICATION_SECRET,
-    STRIPE_API_KEY: 'sk_test_standards_enforcement',
+    ASAAS_PLATFORM_API_KEY: 'standards-enforcement-platform-key',
+    ASAAS_PLATFORM_WEBHOOK_TOKEN: WEBHOOK_TOKEN,
     APP_URL: 'https://app.vitaflow.test',
     GCP_PROJECT_ID: 'test-project',
     GCP_CLIENT_EMAIL: 'storage@test-project.iam.gserviceaccount.com',
@@ -60,8 +61,13 @@ describe('Standards enforcement — HTTP layer (IT-001 to IT-005)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let jwtService: JwtService;
-  const verifySubscriptionWithStripe = jest.fn();
+  const fakeGateway = {
+    createSubscriptionCheckout: jest.fn(),
+    updateSubscription: jest.fn().mockResolvedValue(undefined),
+    createCharge: jest.fn(),
+  };
   let productId: string;
+  let secondProductId: string;
   let sequence = 0;
 
   beforeAll(async () => {
@@ -78,8 +84,8 @@ describe('Standards enforcement — HTTP layer (IT-001 to IT-005)', () => {
     const { AppModule } =
       jest.requireActual<typeof import('@/app.module')>('@/app.module');
     const module = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(StripeVerification)
-      .useValue({ verifySubscriptionWithStripe })
+      .overrideProvider(PAYMENT_GATEWAY)
+      .useValue(fakeGateway)
       .compile();
     const nestApp = module.createNestApplication<NestExpressApplication>();
     configureApp(nestApp, { ...process.env, NODE_ENV: 'test' });
@@ -93,14 +99,13 @@ describe('Standards enforcement — HTTP layer (IT-001 to IT-005)', () => {
       data: { name: PRODUCT_GROUP_NAME },
     });
     const product = await prisma.product.create({
-      data: {
-        name: PRODUCT_NAME,
-        price: 19.9,
-        groupId: group.id,
-        stripeId: STRIPE_PRICE_ID,
-      },
+      data: { name: PRODUCT_NAME, price: 19.9, groupId: group.id },
     });
     productId = product.id;
+    const secondProduct = await prisma.product.create({
+      data: { name: `${PRODUCT_NAME} 2`, price: 29.9, groupId: group.id },
+    });
+    secondProductId = secondProduct.id;
   });
 
   afterAll(async () => {
@@ -116,7 +121,9 @@ describe('Standards enforcement — HTTP layer (IT-001 to IT-005)', () => {
       await prisma.userAddress.deleteMany({ where: { userId: { in: ids } } });
       await prisma.users.deleteMany({ where: { id: { in: ids } } });
       // By name, so a run that crashed before this point is cleaned up too.
-      await prisma.product.deleteMany({ where: { name: PRODUCT_NAME } });
+      await prisma.product.deleteMany({
+        where: { name: { startsWith: PRODUCT_NAME } },
+      });
       await prisma.productGroup.deleteMany({
         where: { name: PRODUCT_GROUP_NAME },
       });
@@ -306,7 +313,7 @@ describe('Standards enforcement — HTTP layer (IT-001 to IT-005)', () => {
   describe('IT-004 authenticated subscription routes (SubscriptionController)', () => {
     it('GET /users/subscription returns the caller state and requires a JWT', async () => {
       const { token } = await createUser({
-        stripeCustomerId: `cus_get_${Date.now()}`,
+        asaasCustomerId: `cus_get_${Date.now()}`,
         subscriptionStatus: 'active',
       });
 
@@ -321,52 +328,52 @@ describe('Standards enforcement — HTTP layer (IT-001 to IT-005)', () => {
       });
     });
 
-    it('PATCH /users/subscription updates the caller and requires a JWT', async () => {
-      const { user, token } = await createUser();
-      const customerId = `cus_patch_${Date.now()}`;
-      const subscriptionId = `sub_patch_${Date.now()}`;
-      verifySubscriptionWithStripe.mockResolvedValueOnce({
-        status: 'active',
-        priceId: STRIPE_PRICE_ID,
-        customerId,
-        belongsToUser: true,
-      });
-      const body = {
+    it('PATCH /users/subscription/plan changes the caller and requires a JWT', async () => {
+      const { user, token } = await createUser({
         productId,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: subscriptionId,
+        asaasCustomerId: `cus_patch_${Date.now()}`,
+        asaasSubscriptionId: `sub_patch_${Date.now()}`,
         subscriptionStatus: 'active',
-      };
+        subscriptionCurrentPeriodEnd: new Date(
+          Date.now() + 10 * 24 * 60 * 60 * 1000,
+        ),
+      });
+      const body = { productId: secondProductId };
 
-      await call('patch', '/users/subscription').send(body).expect(401);
-      const response = await call('patch', '/users/subscription')
+      await call('patch', '/users/subscription/plan').send(body).expect(401);
+      const response = await call('patch', '/users/subscription/plan')
         .set('Authorization', `Bearer ${token}`)
         .send(body)
         .expect(200);
 
       expect(response.body).toMatchObject({
         id: user.id,
-        productId,
+        productId: secondProductId,
         subscriptionStatus: 'active',
       });
-      expect(verifySubscriptionWithStripe).toHaveBeenCalledWith(
-        subscriptionId,
-        user.id,
+      expect(fakeGateway.updateSubscription).toHaveBeenCalledWith(
+        'standards-enforcement-platform-key',
+        user.asaasSubscriptionId,
+        expect.objectContaining({ valueCents: 2990 }),
       );
     });
   });
 
-  describe('IT-005 webhook sync (SubscriptionSyncController)', () => {
-    it('PATCH /users/subscription/sync works with the secret alone, no JWT', async () => {
+  describe('IT-005 platform subscription webhook (SubscriptionWebhookController)', () => {
+    it('POST /users/subscription/webhook works with the webhook token alone, no JWT or application secret', async () => {
       const customerId = `cus_sync_${Date.now()}`;
-      const { user } = await createUser({ stripeCustomerId: customerId });
+      const { user } = await createUser({ asaasCustomerId: customerId });
 
-      const response = await call('patch', '/users/subscription/sync')
+      const response = await request(app.getHttpServer())
+        .post('/users/subscription/webhook')
+        .set('asaas-access-token', WEBHOOK_TOKEN)
         .send({
-          stripeCustomerId: customerId,
-          stripePriceId: STRIPE_PRICE_ID,
-          stripeSubscriptionId: `sub_sync_${Date.now()}`,
-          subscriptionStatus: 'active',
+          event: 'SUBSCRIPTION_UPDATED',
+          subscription: {
+            id: `sub_sync_${Date.now()}`,
+            customer: customerId,
+            externalReference: `${user.id}:${productId}`,
+          },
         })
         .expect(200);
 
@@ -377,14 +384,15 @@ describe('Standards enforcement — HTTP layer (IT-001 to IT-005)', () => {
       });
     });
 
-    it('still rejects a call without the application secret', async () => {
+    it('still rejects a call with the wrong webhook token', async () => {
       await request(app.getHttpServer())
-        .patch('/users/subscription/sync')
+        .post('/users/subscription/webhook')
+        .set('asaas-access-token', 'wrong-token')
         .send({
-          stripeCustomerId: 'cus_no_secret',
-          subscriptionStatus: 'active',
+          event: 'SUBSCRIPTION_UPDATED',
+          subscription: { id: 'sub_no_token', customer: 'cus_no_token' },
         })
-        .expect(403);
+        .expect(401);
     });
   });
 });

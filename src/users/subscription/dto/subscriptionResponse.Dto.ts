@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-// Response of a subscription update or webhook sync. Decorated for Swagger,
-// never validated.
+// Response of a plan change, cancel, reactivate or Asaas sync. Decorated
+// for Swagger, never validated.
 export class SubscriptionResponseDTO {
   @ApiProperty({ example: 'cuid-user-456' })
   id: string;

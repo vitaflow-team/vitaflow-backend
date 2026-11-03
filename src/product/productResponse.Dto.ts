@@ -19,9 +19,6 @@ export class ProductResponseDTO {
   @ApiProperty({ enum: ProductType })
   type: ProductType;
 
-  @ApiProperty({ nullable: true, type: String, example: 'price_123' })
-  stripeId: string | null;
-
   @ApiProperty()
   createdAt: Date;
 

@@ -52,7 +52,7 @@ describe('ProfileService Tests', () => {
     ...userMock[0],
     productId: null,
     product: null,
-    stripeCustomerId: null,
+    asaasCustomerId: null,
     userAddresses: null,
     ...overrides,
   });
@@ -278,7 +278,6 @@ describe('ProfileService Tests', () => {
             price: 59.9,
             type: 'NUTRITIONIST',
             groupId: 'group-nutri',
-            stripeId: 'price_123',
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -310,7 +309,6 @@ describe('ProfileService Tests', () => {
             price: 29.9,
             type: 'USER',
             groupId: 'group-1',
-            stripeId: 'price_123',
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -343,7 +341,6 @@ describe('ProfileService Tests', () => {
             price: 29.9,
             type: 'USER',
             groupId: 'group-1',
-            stripeId: 'price_123',
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -370,7 +367,6 @@ describe('ProfileService Tests', () => {
             price: 0,
             type: 'USER',
             groupId: 'group-1',
-            stripeId: null,
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -399,8 +395,8 @@ describe('ProfileService Tests', () => {
     };
     const withSecrets = profileWith({
       password: '$2b$08$storedHash',
-      stripeCustomerId: 'cus_secret',
-      stripeSubscriptionId: 'sub_secret',
+      asaasCustomerId: 'cus_secret',
+      asaasSubscriptionId: 'sub_secret',
     });
 
     it('getProfile, with and without an address or avatar', async () => {
@@ -448,8 +444,8 @@ describe('ProfileService Tests', () => {
 
       for (const profile of [bare, full]) {
         expect(Object.keys(profile)).not.toContain('password');
-        expect(Object.keys(profile)).not.toContain('stripeCustomerId');
-        expect(Object.keys(profile)).not.toContain('stripeSubscriptionId');
+        expect(Object.keys(profile)).not.toContain('asaasCustomerId');
+        expect(Object.keys(profile)).not.toContain('asaasSubscriptionId');
         expect(profile).toMatchObject({
           id: '1',
           name: userMock[0].name,

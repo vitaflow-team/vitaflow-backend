@@ -80,6 +80,10 @@ const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
     BillingAccountRepository,
     InvoicesService,
     InvoicesRepository,
+    // Reused by UsersModule's platform subscription flow (ADR-010 decision
+    // 2): the same AsaasGateway instance serves both, since every method
+    // already takes the caller's own apiKey.
+    PAYMENT_GATEWAY,
   ],
 })
 export class BillingModule {}

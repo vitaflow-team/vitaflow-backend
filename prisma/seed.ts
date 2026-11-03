@@ -12,7 +12,6 @@ async function main() {
         {
           name: 'Gratuito',
           price: 0,
-          stripeId: null,
           type: 'USER',
           productInfos: [
             {
@@ -27,7 +26,6 @@ async function main() {
         {
           name: 'Premium',
           price: 19.9,
-          stripeId: 'price_1Sgm0pPGgtxCL5rk9gdFSGhS',
           type: 'USER',
           productInfos: [
             { description: 'Todas as funcionalidades do plano gratuito' },
@@ -49,7 +47,6 @@ async function main() {
         {
           name: 'Profissional',
           price: 59.9,
-          stripeId: 'price_1SpIZ9PGgtxCL5rk3zXMC9hy',
           type: 'PHYSICAL_EDUCATOR',
           productInfos: [
             { description: 'Cadastro ilimitado de alunos' },
@@ -66,7 +63,6 @@ async function main() {
         {
           name: 'Premium',
           price: 99.9,
-          stripeId: 'price_1Sgm6qPGgtxCL5rk8P14a12F',
           type: 'PHYSICAL_EDUCATOR',
           productInfos: [
             { description: 'Todas as funcionalidades do plano profissional' },
@@ -92,7 +88,6 @@ async function main() {
         {
           name: 'Plano 1',
           price: 149.9,
-          stripeId: 'price_ACADEMIA_PLANO_1_REPLACE_ME',
           type: 'ACADEMIA',
           productInfos: [
             {
@@ -105,7 +100,6 @@ async function main() {
         {
           name: 'Plano 2',
           price: 249.9,
-          stripeId: 'price_ACADEMIA_PLANO_2_REPLACE_ME',
           type: 'ACADEMIA',
           productInfos: [
             {
@@ -123,7 +117,6 @@ async function main() {
         {
           name: 'Profissional',
           price: 79.9,
-          stripeId: 'price_1SpIUuPGgtxCL5rk4gfpIYKP',
           type: 'NUTRITIONIST',
           productInfos: [
             { description: 'Cadastro ilimitado de pacientes' },
@@ -141,7 +134,6 @@ async function main() {
         {
           name: 'Premium',
           price: 129.9,
-          stripeId: 'price_1SpIVbPGgtxCL5rk2V1KG9WL',
           type: 'NUTRITIONIST',
           productInfos: [
             { description: 'Todas as funcionalidades do plano profissional' },
@@ -172,7 +164,6 @@ async function main() {
             name: product.name,
             price: product.price,
             tier: tierOf(product),
-            stripeId: product.stripeId,
             type: toProductType(product.type),
             productInfos: {
               create: product.productInfos.map((info) => ({

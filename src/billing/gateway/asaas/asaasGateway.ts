@@ -6,6 +6,8 @@ import {
   GatewayChargeStatus,
   GatewayError,
   PaymentGateway,
+  SubscriptionChanges,
+  SubscriptionCheckoutInput,
 } from '../paymentGateway';
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -215,6 +217,63 @@ export class AsaasGateway implements PaymentGateway {
     await this.call(apiKey, {
       method: 'DELETE',
       path: `/payments/${externalId}`,
+      retryable: false,
+    });
+  }
+
+  // Asaas Checkout (not the lower-level POST /v3/subscriptions) so card
+  // data is entered on Asaas's own hosted page and never reaches this
+  // backend (TechSpec addendum, "Checkout flow"). The subscription itself
+  // is created by Asaas on completion, delivered back via webhook.
+  async createSubscriptionCheckout(
+    apiKey: string,
+    input: SubscriptionCheckoutInput,
+  ): Promise<{ checkoutId: string; link: string }> {
+    const body = await this.call<{ id: string; link?: string }>(apiKey, {
+      method: 'POST',
+      path: '/checkouts',
+      body: {
+        billingTypes: ['CREDIT_CARD'],
+        chargeTypes: ['RECURRENT'],
+        callback: {
+          successUrl: input.successUrl,
+          cancelUrl: input.cancelUrl,
+        },
+        items: [
+          {
+            name: input.itemName,
+            value: centsToDecimal(input.valueCents),
+            quantity: 1,
+          },
+        ],
+        subscription: { cycle: 'MONTHLY', nextDueDate: input.nextDueDate },
+        externalReference: input.externalReference,
+      },
+      retryable: false,
+    });
+    return {
+      checkoutId: body.id,
+      link: body.link ?? `https://asaas.com/checkoutSession/show?id=${body.id}`,
+    };
+  }
+
+  // Cancel/reactivate is the same `status` toggle as a price change (ADR-010
+  // TechSpec addendum, "Cancel and reactivate") — one method, no separate
+  // cancel/reactivate/changePrice calls on the gateway.
+  async updateSubscription(
+    apiKey: string,
+    subscriptionId: string,
+    changes: SubscriptionChanges,
+  ): Promise<void> {
+    await this.call(apiKey, {
+      method: 'PUT',
+      path: `/subscriptions/${subscriptionId}`,
+      body: {
+        ...(changes.valueCents === undefined
+          ? {}
+          : { value: centsToDecimal(changes.valueCents) }),
+        ...(changes.status === undefined ? {} : { status: changes.status }),
+      },
       retryable: false,
     });
   }
