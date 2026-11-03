@@ -1,4 +1,6 @@
 import type { FormRecordResponseDTO } from '@/clinical-records/records/dto/formRecordResponse.Dto';
+import type { FinancialSituation } from '@/billing/shared/invoiceTransitions';
+import type { BillingWarningDTO } from '@/billing/invoices/invoices.service';
 import type { StudentWeightVariation } from '../studentWeightVariation.util';
 
 // Response shapes only: plain interfaces, never validated at runtime.
@@ -16,6 +18,8 @@ export interface StudentListItemDTO {
   nextSession: NextSessionDTO | null;
   /** `YYYY-MM-DD`, or null when the student has no assessment yet. */
   lastAssessedOn: string | null;
+  /** `null` for a professional who is not Premium. */
+  financialSituation: FinancialSituation | null;
 }
 
 export interface StudentListResponseDTO {
@@ -53,6 +57,13 @@ export interface StudentResponseDTO {
   userId: string | null;
   createdAt: string;
   overview: StudentOverviewDTO;
+  /** `null` for a professional who is not Premium. */
+  financialSituation: FinancialSituation | null;
+}
+
+export interface RemoveStudentResponseDTO {
+  /** Competences whose charge could not be canceled at the gateway. */
+  billingWarnings: BillingWarningDTO[];
 }
 
 export interface AccountLookupResponseDTO {

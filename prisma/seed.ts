@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { toProductType } from '../src/utils/productType';
+import { tierOf } from '../src/utils/productTier';
 
 const prisma = new PrismaClient();
 
@@ -170,6 +171,7 @@ async function main() {
           create: item.products.map((product) => ({
             name: product.name,
             price: product.price,
+            tier: tierOf(product),
             stripeId: product.stripeId,
             type: toProductType(product.type),
             productInfos: {

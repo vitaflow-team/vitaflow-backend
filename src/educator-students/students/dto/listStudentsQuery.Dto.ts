@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, TransformFnParams } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -42,4 +43,19 @@ export class ListStudentsQueryDTO {
   @IsOptional()
   @IsIn(['next', 'name'])
   order?: 'next' | 'name';
+
+  @ApiProperty({
+    required: false,
+    description:
+      'When true, only students currently pending or overdue (Premium only; ignored otherwise).',
+  })
+  @IsOptional()
+  @Transform(({ value }: TransformFnParams) => {
+    const raw = value as unknown;
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    return raw;
+  })
+  @IsBoolean()
+  pending?: boolean;
 }

@@ -2,6 +2,7 @@ import { Clock } from '@/scheduling/clock.service';
 import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import { MealPlansService } from '@/meal-plans/mealPlans.service';
 import { ProfessionalDiscoveryService } from '@/professional-discovery/professionalDiscovery.service';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
@@ -35,6 +36,7 @@ describe('ProfessionalMirrorService', () => {
   const listVersions = jest.fn();
   const getVersion = jest.fn();
   const getPublishedVersion = jest.fn();
+  const findNonCanceledByClient = jest.fn();
 
   let service: ProfessionalMirrorService;
 
@@ -44,6 +46,7 @@ describe('ProfessionalMirrorService', () => {
     findHistory.mockResolvedValue([]);
     findActiveByClient.mockResolvedValue(null);
     listVersions.mockResolvedValue([]);
+    findNonCanceledByClient.mockResolvedValue([]);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProfessionalMirrorService,
@@ -75,6 +78,10 @@ describe('ProfessionalMirrorService', () => {
         {
           provide: MealPlansService,
           useValue: { listVersions, getVersion, getPublishedVersion },
+        },
+        {
+          provide: InvoicesRepository,
+          useValue: { findNonCanceledByClient },
         },
         {
           provide: Clock,
@@ -528,6 +535,66 @@ describe('ProfessionalMirrorService', () => {
         physicalAssessment: null,
         billingStatus: null,
       });
+    });
+
+    it('UT-100 returns billingStatus built from the student mirror invoices, and nothing else when there is a key or tax number nearby', async () => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(
+        makeClient({ professionalId: 'educator-1' }),
+      );
+      professionalDiscoveryGetProfile.mockResolvedValue({
+        id: 'educator-1',
+        name: 'Prof. Bruno',
+        type: 'PHYSICAL_EDUCATOR',
+        specialty: 'Funcional',
+        priceFrom: null,
+        attendsOnline: false,
+        bio: null,
+      });
+      findNonCanceledByClient.mockResolvedValue([
+        {
+          competenceYear: 2026,
+          competenceMonth: 11,
+          amountCents: 19990,
+          dueDate: new Date('2026-11-20T00:00:00.000Z'),
+          status: 'PENDING',
+          paymentUrl: 'https://asaas.test/i/pay_1',
+          paidAt: null,
+        },
+      ]);
+
+      const result = await service.getEducatorMirror('user-1');
+
+      expect(result).toMatchObject({
+        billingStatus: {
+          openInvoice: expect.objectContaining({
+            competenceMonth: 11,
+            paymentUrl: 'https://asaas.test/i/pay_1',
+          }),
+          otherOpenCount: 0,
+          latestPaid: null,
+        },
+      });
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toMatch(/apiKey|webhookToken|cpf|cnpj/i);
+    });
+
+    it('UT-100 returns null when the student has no non-canceled invoice', async () => {
+      clientsFindByUserAndProfessionalType.mockResolvedValue(
+        makeClient({ professionalId: 'educator-1' }),
+      );
+      professionalDiscoveryGetProfile.mockResolvedValue({
+        id: 'educator-1',
+        name: 'Prof. Bruno',
+        type: 'PHYSICAL_EDUCATOR',
+        specialty: 'Funcional',
+        priceFrom: null,
+        attendsOnline: false,
+        bio: null,
+      });
+      findNonCanceledByClient.mockResolvedValue([]);
+
+      const result = await service.getEducatorMirror('user-1');
+      expect(result).toMatchObject({ billingStatus: null });
     });
   });
 

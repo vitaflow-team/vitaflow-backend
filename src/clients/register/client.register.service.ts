@@ -1,9 +1,17 @@
 import { AuthGuard } from '@/auth/auth.guard';
+import {
+  BillingWarningDTO,
+  InvoicesService,
+} from '@/billing/invoices/invoices.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
 import { Logger, UseGuards } from '@nestjs/common';
 import { ClientRegisterDTO } from './client.register.Dto';
+
+export interface DeleteClientResponse {
+  billingWarnings: BillingWarningDTO[];
+}
 
 @UseGuards(AuthGuard)
 export class ClientRegisterService {
@@ -12,6 +20,7 @@ export class ClientRegisterService {
   constructor(
     private readonly clients: ClientsRepository,
     private readonly users: UserRepository,
+    private readonly billing: InvoicesService,
   ) {}
 
   async getClients(userId: string) {
@@ -30,7 +39,10 @@ export class ClientRegisterService {
     return client;
   }
 
-  async deleteClientById(id: string, userId: string) {
+  async deleteClientById(
+    id: string,
+    userId: string,
+  ): Promise<DeleteClientResponse> {
     const client = await this.clients.getClientById(id);
 
     if (client) {
@@ -38,10 +50,13 @@ export class ClientRegisterService {
         throw new AppError('Exclusão não permitida.', 401);
       }
 
+      const billingWarnings =
+        await this.billing.cancelOpenInvoicesBestEffort(id);
       await this.clients.delete(id);
+      return { billingWarnings };
     }
 
-    return;
+    return { billingWarnings: [] };
   }
 
   async postRegister(body: ClientRegisterDTO, userId: string) {

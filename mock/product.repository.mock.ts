@@ -12,6 +12,7 @@ export const productsMock = [
     type: 'USER',
     groupId: 'group-1',
     stripeId: 'st_123',
+    tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [
@@ -31,6 +32,7 @@ export const productsMock = [
     type: 'USER',
     groupId: 'group-1',
     stripeId: 'st_456',
+    tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [
@@ -50,6 +52,7 @@ export const productsMock = [
     type: 'USER',
     groupId: 'group-1',
     stripeId: 'st_123',
+    tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [
@@ -62,7 +65,7 @@ export const productsMock = [
       },
     ],
   },
-] as Product[];
+] as unknown as Product[];
 
 // The flat catalog `listPlans` serves: unlike `productsMock` it spans every
 // category, so filtering by one really narrows the result, and its prices
@@ -75,6 +78,7 @@ export const planProductsMock = [
     type: 'USER',
     groupId: 'group-1',
     stripeId: null,
+    tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [],
@@ -86,6 +90,7 @@ export const planProductsMock = [
     type: 'USER',
     groupId: 'group-1',
     stripeId: 'st_premium',
+    tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [],
@@ -97,6 +102,7 @@ export const planProductsMock = [
     type: 'NUTRITIONIST',
     groupId: 'group-2',
     stripeId: 'st_nutri_basic',
+    tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [],
@@ -108,6 +114,7 @@ export const planProductsMock = [
     type: 'NUTRITIONIST',
     groupId: 'group-2',
     stripeId: 'st_nutri_pro',
+    tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [],
@@ -119,6 +126,7 @@ export const planProductsMock = [
     type: 'PHYSICAL_EDUCATOR',
     groupId: 'group-3',
     stripeId: 'st_edu',
+    tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
     productInfos: [],
@@ -134,6 +142,7 @@ export const freeProductMock = {
   type: 'USER',
   groupId: 'group-1',
   stripeId: null,
+  tier: 'STANDARD',
   createdAt: new Date(),
   updatedAt: new Date(),
 } as Product;

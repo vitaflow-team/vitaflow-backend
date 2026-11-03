@@ -1,4 +1,6 @@
+import { mirrorBillingStatus } from '@/billing/shared/invoiceTransitions';
 import { CodedError } from '@/common/errors/codedError';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { Clock } from '@/scheduling/clock.service';
 import type { NextScheduleEntity } from './professionalMirror.entity';
 import {
@@ -57,8 +59,15 @@ export class ProfessionalMirrorService {
     private readonly workouts: EducatorWorkoutsRepository,
     private readonly fixedSessions: FixedSessionsService,
     private readonly mealPlans: MealPlansService,
+    private readonly invoices: InvoicesRepository,
     private readonly clock: Clock,
   ) {}
+
+  private async billingStatus(clientId: string) {
+    return mirrorBillingStatus(
+      await this.invoices.findNonCanceledByClient(clientId),
+    );
+  }
 
   async getNutritionistMirror(
     userId: string,
@@ -66,11 +75,13 @@ export class ProfessionalMirrorService {
     const link = await this.resolveLink(userId, ProductType.NUTRITIONIST);
     if (!link) return { hasProfessional: false };
 
-    const [anamnese, assessmentHistory, mealPlan] = await Promise.all([
-      this.currentAnamnese(link.client.id),
-      this.fullAssessmentHistory(link.client.id),
-      this.currentMealPlan(link.client.id),
-    ]);
+    const [anamnese, assessmentHistory, mealPlan, billingStatus] =
+      await Promise.all([
+        this.currentAnamnese(link.client.id),
+        this.fullAssessmentHistory(link.client.id),
+        this.currentMealPlan(link.client.id),
+        this.billingStatus(link.client.id),
+      ]);
 
     return {
       professional: link.professional,
@@ -78,7 +89,7 @@ export class ProfessionalMirrorService {
       assessmentHistory,
       mealPlan,
       nextConsultation: null,
-      billingStatus: null,
+      billingStatus,
     };
   }
 
@@ -186,7 +197,7 @@ export class ProfessionalMirrorService {
         ? await this.nextSchedule(link.client.id, upcoming)
         : null,
       physicalAssessment: await this.latestAssessments(link.client.id),
-      billingStatus: null,
+      billingStatus: await this.billingStatus(link.client.id),
     };
   }
 

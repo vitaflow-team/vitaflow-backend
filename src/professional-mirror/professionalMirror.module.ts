@@ -2,6 +2,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { MealPlansService } from '@/meal-plans/mealPlans.service';
 import { PrismaService } from '@/database/prisma.service';
 import { ProfessionalDiscoveryModule } from '@/professional-discovery/professionalDiscovery.module';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
@@ -20,6 +21,7 @@ import { ProfessionalMirrorService } from './professionalMirror.service';
     PrismaService,
     UserRepository,
     ClientsRepository,
+    InvoicesRepository,
     FormRecordsRepository,
     EducatorWorkoutsRepository,
     MealPlansRepository,

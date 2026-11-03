@@ -6,7 +6,6 @@ import {
   Controller,
   Delete,
   Get,
-  HttpCode,
   Param,
   Patch,
   Post,
@@ -27,6 +26,7 @@ import { CreateStudentDTO } from './dto/createStudent.Dto';
 import { ListStudentsQueryDTO } from './dto/listStudentsQuery.Dto';
 import {
   AccountLookupResponseDTO,
+  RemoveStudentResponseDTO,
   StudentListResponseDTO,
   StudentResponseDTO,
 } from './dto/studentResponse.Dto';
@@ -129,14 +129,17 @@ export class StudentsController {
   @ApiOperation({
     summary: 'Remove a student and all their assessments',
   })
-  @ApiResponse({ status: 204, description: 'Student removed.' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Student removed; billingWarnings lists competences whose charge could not be canceled.',
+  })
   @ApiResponse({ status: 404, description: 'Student not found.' })
-  @HttpCode(204)
   @Delete(':id')
   async remove(
     @Param('id') id: string,
     @Request() req: AuthenticatedRequest,
-  ): Promise<void> {
-    await this.service.remove(req.user.id, id);
+  ): Promise<RemoveStudentResponseDTO> {
+    return await this.service.remove(req.user.id, id);
   }
 }

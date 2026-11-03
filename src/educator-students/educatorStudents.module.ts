@@ -3,6 +3,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { PhysicalEducatorGuard } from '@/common/guards/physicalEducator.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { NotificationsModule } from '@/notifications/notifications.module';
+import { BillingModule } from '@/billing/billing.module';
 import { EmploymentRepository } from '@/repositories/academia/employment.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
@@ -29,6 +30,7 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     AuthModule,
     NotificationsModule,
     FixedTimesModule,
+    BillingModule,
     // Own throttler storage: the account lookup limit is independent of the
     // auth routes' throttlers and keyed by the authenticated educator.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),

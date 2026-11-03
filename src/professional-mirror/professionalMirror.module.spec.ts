@@ -1,6 +1,7 @@
 import { PrismaService } from '@/database/prisma.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfessionalMirrorController } from './professionalMirror.controller';
 import { ProfessionalMirrorModule } from './professionalMirror.module';
@@ -10,8 +11,18 @@ describe('ProfessionalMirrorModule', () => {
   let moduleRef: TestingModule;
 
   beforeEach(async () => {
+    // Transitively imports ProfessionalDiscoveryModule -> ClientsModule ->
+    // BillingModule, which reads these from ConfigService.
+    process.env.BILLING_ENCRYPTION_KEY =
+      process.env.BILLING_ENCRYPTION_KEY ??
+      Buffer.alloc(32, 9).toString('base64');
+    process.env.API_PUBLIC_URL =
+      process.env.API_PUBLIC_URL ?? 'https://api.vitaflow.test';
     moduleRef = await Test.createTestingModule({
-      imports: [ProfessionalMirrorModule],
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true }),
+        ProfessionalMirrorModule,
+      ],
     }).compile();
   });
 

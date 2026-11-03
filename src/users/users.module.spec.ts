@@ -4,6 +4,7 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { PasswordHash } from '@/utils/password.hash';
 import { UploadService } from '@/utils/upload.service';
+import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfileController } from './profile/profile.controller';
 import { ProfileService } from './profile/profile.service';
@@ -19,8 +20,15 @@ describe('UsersModule Test', () => {
   let moduleRef: TestingModule;
 
   beforeEach(async () => {
+    // Transitively imports ClientsModule -> BillingModule, which reads
+    // these from ConfigService.
+    process.env.BILLING_ENCRYPTION_KEY =
+      process.env.BILLING_ENCRYPTION_KEY ??
+      Buffer.alloc(32, 9).toString('base64');
+    process.env.API_PUBLIC_URL =
+      process.env.API_PUBLIC_URL ?? 'https://api.vitaflow.test';
     moduleRef = await Test.createTestingModule({
-      imports: [UsersModule],
+      imports: [ConfigModule.forRoot({ isGlobal: true }), UsersModule],
     }).compile();
   });
 

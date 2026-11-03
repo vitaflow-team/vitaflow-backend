@@ -1,5 +1,34 @@
+import type { StudentBillingStatusDTO } from '@/billing/shared/invoiceTransitions';
 import { ApiProperty } from '@nestjs/swagger';
 import { Weekday } from '@prisma/client';
+
+class StudentOpenInvoiceEntity {
+  @ApiProperty() competenceYear: number;
+  @ApiProperty() competenceMonth: number;
+  @ApiProperty() amountCents: number;
+  @ApiProperty() dueDate: string;
+  @ApiProperty() status: string;
+  @ApiProperty({ nullable: true, type: String }) paymentUrl: string | null;
+}
+
+class StudentLatestPaidEntity {
+  @ApiProperty() competenceYear: number;
+  @ApiProperty() competenceMonth: number;
+  @ApiProperty() amountCents: number;
+  @ApiProperty({ nullable: true, type: String }) paidAt: string | null;
+}
+
+// The link and amount, never a tax number or the professional's gateway
+// account or key (UT-101).
+export class StudentBillingStatusEntity {
+  @ApiProperty({ type: StudentOpenInvoiceEntity, nullable: true })
+  openInvoice: StudentOpenInvoiceEntity | null;
+
+  @ApiProperty() otherOpenCount: number;
+
+  @ApiProperty({ type: StudentLatestPaidEntity, nullable: true })
+  latestPaid: StudentLatestPaidEntity | null;
+}
 
 export class MirrorProfessionalEntity {
   @ApiProperty({ description: "The linked professional's user id." })
@@ -140,10 +169,12 @@ export class NutritionistMirrorEntity {
   nextConsultation: null;
 
   @ApiProperty({
+    type: StudentBillingStatusEntity,
     nullable: true,
-    description: 'Populated by a future per-client-billing PRD.',
+    description:
+      'The most urgent open invoice, the count of the others, and the latest paid; null when there is no non-canceled invoice.',
   })
-  billingStatus: null;
+  billingStatus: StudentBillingStatusDTO | null;
 }
 
 export class MirrorWorkoutSessionEntity {
@@ -222,10 +253,12 @@ export class EducatorMirrorEntity {
   physicalAssessment: MirrorAssessmentEntity[] | null;
 
   @ApiProperty({
+    type: StudentBillingStatusEntity,
     nullable: true,
-    description: 'Populated by a future per-client-billing PRD.',
+    description:
+      'The most urgent open invoice, the count of the others, and the latest paid; null when there is no non-canceled invoice.',
   })
-  billingStatus: null;
+  billingStatus: StudentBillingStatusDTO | null;
 }
 
 export class NoProfessionalEntity {
