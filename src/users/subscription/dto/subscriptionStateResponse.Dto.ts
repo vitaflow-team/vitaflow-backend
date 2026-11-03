@@ -1,17 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-// Response of GET /users/subscription. It carries the Stripe identifiers, so
+// Response of GET /users/subscription. It carries the Asaas identifiers, so
 // it is for server-to-server use only. Decorated for Swagger, never
 // validated.
 export class SubscriptionStateResponseDTO {
   @ApiProperty({ nullable: true, type: String, example: 'cuid-product-123' })
   productId: string | null;
 
-  @ApiProperty({ nullable: true, type: String, example: 'cus_123' })
-  stripeCustomerId: string | null;
+  @ApiProperty({ nullable: true, type: String, example: 'cus_000123456789' })
+  asaasCustomerId: string | null;
 
-  @ApiProperty({ nullable: true, type: String, example: 'sub_123' })
-  stripeSubscriptionId: string | null;
+  @ApiProperty({ nullable: true, type: String, example: 'sub_000123456789' })
+  asaasSubscriptionId: string | null;
 
   @ApiProperty({ nullable: true, type: String, example: 'active' })
   subscriptionStatus: string | null;

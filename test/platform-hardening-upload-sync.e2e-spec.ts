@@ -1,17 +1,26 @@
+import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { AuthGuard } from '@/auth/auth.guard';
+import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { createValidationPipe } from '@/config/validationPipe';
+import { NotificationsService } from '@/notifications/notifications.service';
 import { PrismaService } from '@/database/prisma.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { Clock } from '@/scheduling/clock.service';
 import { AVATAR_MAX_BYTES } from '@/users/profile/avatarUpload';
 import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
 import { SubscriptionController } from '@/users/subscription/subscription.controller';
-import { SubscriptionSyncController } from '@/users/subscription/subscriptionSync.controller';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
-import { StripeVerification } from '@/utils/stripeVerification';
+import { SubscriptionWebhookController } from '@/users/subscription/subscriptionWebhook.controller';
+import { SubscriptionWebhookService } from '@/users/subscription/subscriptionWebhook.service';
+import {
+  PLATFORM_ASAAS_API_KEY,
+  PLATFORM_WEBHOOK_TOKEN,
+} from '@/users/subscription/platformGateway.tokens';
 import { UploadService } from '@/utils/upload.service';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -71,6 +80,7 @@ describe('Platform hardening — avatar uploads and subscription sync', () => {
   let jwtService: JwtService;
   const jwtSecret = 'platform-upload-sync-jwt-secret-0123456789';
   const applicationSecret = 'platform-upload-sync-application-secret';
+  const webhookToken = 'platform-upload-sync-webhook-token';
   let sequence = 0;
 
   beforeAll(async () => {
@@ -91,7 +101,7 @@ describe('Platform hardening — avatar uploads and subscription sync', () => {
       controllers: [
         ProfileController,
         SubscriptionController,
-        SubscriptionSyncController,
+        SubscriptionWebhookController,
       ],
       providers: [
         PrismaService,
@@ -101,7 +111,27 @@ describe('Platform hardening — avatar uploads and subscription sync', () => {
         UploadService,
         ProfileService,
         SubscriptionService,
-        StripeVerification,
+        SubscriptionWebhookService,
+        Clock,
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+        {
+          provide: AcademiaProvisioningService,
+          useValue: { provisionForOwner: jest.fn() },
+        },
+        {
+          provide: TemplatesService,
+          useValue: { ensureStarterTemplates: jest.fn() },
+        },
+        {
+          provide: PAYMENT_GATEWAY,
+          useValue: {
+            createSubscriptionCheckout: jest.fn(),
+            updateSubscription: jest.fn(),
+            createCharge: jest.fn(),
+          },
+        },
+        { provide: PLATFORM_ASAAS_API_KEY, useValue: 'test-platform-key' },
+        { provide: PLATFORM_WEBHOOK_TOKEN, useValue: webhookToken },
         AuthGuard,
         {
           provide: ConfigService,
@@ -243,17 +273,18 @@ describe('Platform hardening — avatar uploads and subscription sync', () => {
     });
   });
 
-  describe('IT-008 subscription sync relink guard', () => {
-    function sync(stripeCustomerId: string, userId: string) {
+  describe('IT-008 subscription webhook relink guard', () => {
+    function sync(asaasCustomerId: string, userId: string) {
       return request(app.getHttpServer())
-        .patch('/users/subscription/sync')
-        .set('x-application-secret', applicationSecret)
+        .post('/users/subscription/webhook')
+        .set('asaas-access-token', webhookToken)
         .send({
-          stripeCustomerId,
-          stripePriceId: 'price_unknown_platform_hardening',
-          stripeSubscriptionId: `sub_${stripeCustomerId}`,
-          subscriptionStatus: 'active',
-          userId,
+          event: 'SUBSCRIPTION_UPDATED',
+          subscription: {
+            id: `sub_${asaasCustomerId}`,
+            customer: asaasCustomerId,
+            externalReference: `${userId}:`,
+          },
         })
         .expect(200);
     }
@@ -261,20 +292,16 @@ describe('Platform hardening — avatar uploads and subscription sync', () => {
     it('persists no change when relinking a user who already has a different customer id', async () => {
       const existing = `cus_existing_${sequence}_${Date.now()}`;
       const user = await createUser({
-        stripeCustomerId: existing,
-        stripeSubscriptionId: 'sub_original',
+        asaasCustomerId: existing,
+        asaasSubscriptionId: 'sub_original',
         subscriptionStatus: 'active',
       });
 
-      const response = await sync(
-        `cus_other_${sequence}_${Date.now()}`,
-        user.id,
-      );
+      await sync(`cus_other_${sequence}_${Date.now()}`, user.id);
 
-      expect(response.body).toEqual({});
       const stored = await prisma.users.findUnique({ where: { id: user.id } });
-      expect(stored?.stripeCustomerId).toBe(existing);
-      expect(stored?.stripeSubscriptionId).toBe('sub_original');
+      expect(stored?.asaasCustomerId).toBe(existing);
+      expect(stored?.asaasSubscriptionId).toBe('sub_original');
     });
 
     it('links a brand-new customer id to a user with none yet', async () => {
@@ -284,19 +311,19 @@ describe('Platform hardening — avatar uploads and subscription sync', () => {
       await sync(customerId, user.id);
 
       const stored = await prisma.users.findUnique({ where: { id: user.id } });
-      expect(stored?.stripeCustomerId).toBe(customerId);
-      expect(stored?.stripeSubscriptionId).toBe(`sub_${customerId}`);
+      expect(stored?.asaasCustomerId).toBe(customerId);
+      expect(stored?.asaasSubscriptionId).toBe(`sub_${customerId}`);
     });
 
     it('keeps a retried delivery for an already-linked pair a harmless no-op', async () => {
       const customerId = `cus_linked_${sequence}_${Date.now()}`;
-      const user = await createUser({ stripeCustomerId: customerId });
+      const user = await createUser({ asaasCustomerId: customerId });
 
       await sync(customerId, user.id);
       await sync(customerId, user.id);
 
       const stored = await prisma.users.findUnique({ where: { id: user.id } });
-      expect(stored?.stripeCustomerId).toBe(customerId);
+      expect(stored?.asaasCustomerId).toBe(customerId);
     });
   });
 });

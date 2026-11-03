@@ -154,8 +154,8 @@ export class ProfileService {
       expiresAt: expiry.expiresAt,
       autoRenew: expiry.autoRenew,
       // Deliberately a boolean, not the id: this response reaches client
-      // components, so the raw Stripe identifiers never leave the server.
-      hasStripeCustomer: Boolean(user.stripeCustomerId),
+      // components, so the raw Asaas identifiers never leave the server.
+      hasAsaasCustomer: Boolean(user.asaasCustomerId),
       clientsCount,
       address: this.toAddressResponse(user.userAddresses),
     };

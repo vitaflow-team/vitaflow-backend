@@ -1,17 +1,22 @@
 import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { TemplatesService } from '@/clinical-records/templates/templates.service';
+import {
+  PAYMENT_GATEWAY,
+  type PaymentGateway,
+} from '@/billing/gateway/paymentGateway';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { Clock } from '@/scheduling/clock.service';
 import { AppError } from '@/utils/app.erro';
-import { StripeVerification } from '@/utils/stripeVerification';
-import { VerifiedSubscription } from '@/utils/verifiedSubscription';
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Product, ProductType, Users } from '@prisma/client';
-import { SyncSubscriptionDTO } from './dto/syncSubscription.Dto';
+import { AsaasSyncInput } from './asaasSyncInput';
+import { CheckoutResponseDTO } from './dto/checkoutResponse.Dto';
 import { SubscriptionResponseDTO } from './dto/subscriptionResponse.Dto';
 import { SubscriptionStateResponseDTO } from './dto/subscriptionStateResponse.Dto';
-import { UpdateSubscriptionDTO } from './dto/updateSubscription.Dto';
+import { PLATFORM_ASAAS_API_KEY } from './platformGateway.tokens';
+import { prorationDeltaCents } from './proration';
 import { deriveExpiry } from './subscriptionExpiry';
 
 // Distinct message per real, detectable billing-event transition (task
@@ -24,6 +29,14 @@ const BILLING_EVENT_MESSAGES: Record<string, string> = {
     'Sua assinatura está com pagamento pendente após múltiplas tentativas. Atualize seus dados de pagamento para manter seu acesso Premium.',
 };
 
+function centsOf(price: number): number {
+  return Math.round(price * 100);
+}
+
+function dateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
@@ -31,10 +44,12 @@ export class SubscriptionService {
   constructor(
     private readonly users: UserRepository,
     private readonly products: ProductsRepository,
-    private readonly stripeVerification: StripeVerification,
+    @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
+    @Inject(PLATFORM_ASAAS_API_KEY) private readonly platformApiKey: string,
     private readonly notifications: NotificationsService,
     private readonly academiaProvisioning: AcademiaProvisioningService,
     private readonly templates: TemplatesService,
+    private readonly clock: Clock,
   ) {}
 
   // Starter templates (PRD ADR-004) for every new nutritionist or physical
@@ -77,8 +92,8 @@ export class SubscriptionService {
 
     return {
       productId: user.productId,
-      stripeCustomerId: user.stripeCustomerId,
-      stripeSubscriptionId: user.stripeSubscriptionId,
+      asaasCustomerId: user.asaasCustomerId,
+      asaasSubscriptionId: user.asaasSubscriptionId,
       subscriptionStatus: user.subscriptionStatus,
       subscriptionCancelAt: user.subscriptionCancelAt,
       subscriptionCurrentPeriodEnd: user.subscriptionCurrentPeriodEnd,
@@ -87,121 +102,223 @@ export class SubscriptionService {
     };
   }
 
-  async updateForUser(
+  // Starts an Asaas Checkout for a brand-new subscription (ADR-010 TechSpec
+  // addendum, "Checkout flow"). Nothing is written locally yet — Asaas
+  // creates the subscription itself on completion, delivered back only via
+  // the webhook (`syncFromGateway`), since the hosted checkout page never
+  // hands this backend anything to "claim" the way Stripe's client-side
+  // session object did.
+  async createCheckout(
     userId: string,
-    dto: UpdateSubscriptionDTO,
-  ): Promise<SubscriptionResponseDTO> {
-    const product = await this.products.getProductById(dto.productId);
+    productId: string,
+  ): Promise<CheckoutResponseDTO> {
+    const user = await this.users.findUnique({ id: userId });
+    if (!user) {
+      throw new AppError('Usuário não encontrado.', 404);
+    }
+    const product = await this.products.getProductById(productId);
     if (!product) {
       throw new AppError('Produto não encontrado.', 404);
     }
+    if (product.price <= 0) {
+      throw new AppError('Este plano não precisa de assinatura.', 400);
+    }
 
-    const verified = await this.verifyClaim(
-      userId,
-      dto.stripeSubscriptionId,
-      product,
+    const appUrl = process.env.APP_URL;
+    const { link } = await this.gateway.createSubscriptionCheckout(
+      this.platformApiKey,
+      {
+        successUrl: `${appUrl}/restrict/settings?tab=plano&checkout=success`,
+        cancelUrl: `${appUrl}/restrict/settings?tab=plano&checkout=canceled`,
+        itemName: product.name,
+        valueCents: centsOf(product.price),
+        nextDueDate: dateOnly(this.clock.now()),
+        externalReference: `${userId}:${productId}`,
+      },
     );
 
-    // Status and customer come from Stripe, never from the caller's body.
-    const user = await this.users.updateSubscription(userId, {
-      productId: product.id,
-      stripeCustomerId: verified.customerId,
-      stripeSubscriptionId: dto.stripeSubscriptionId,
-      subscriptionStatus: verified.status,
-      // Omitted entirely (undefined) means "leave as-is" — a plan change
-      // shouldn't silently clear a real pending cancellation the caller
-      // didn't ask to touch. Only an explicit value (including null, to
-      // reactivate) updates it.
-      ...(dto.subscriptionCancelAt !== undefined && {
-        subscriptionCancelAt: dto.subscriptionCancelAt
-          ? new Date(dto.subscriptionCancelAt)
-          : null,
-      }),
-      // Same three-way rule: Stripe doesn't always carry a period end, and
-      // a caller that can't report one must not wipe the date the sidebar
-      // renders. Only an explicit null clears it.
-      ...(dto.subscriptionCurrentPeriodEnd !== undefined && {
-        subscriptionCurrentPeriodEnd: dto.subscriptionCurrentPeriodEnd
-          ? new Date(dto.subscriptionCurrentPeriodEnd)
-          : null,
-      }),
+    return { link };
+  }
+
+  // Moves an already-subscribed user to a different paid plan immediately:
+  // the subscription's own recurring value changes for future cycles, and
+  // the remainder of the current cycle is settled with a one-off adjustment
+  // charge (ADR-010 decision 3; see `prorationDeltaCents`).
+  async changePlan(
+    userId: string,
+    newProductId: string,
+  ): Promise<SubscriptionResponseDTO> {
+    const user = await this.users.findUnique({ id: userId });
+    if (!user) {
+      throw new AppError('Usuário não encontrado.', 404);
+    }
+    if (!user.asaasSubscriptionId) {
+      throw new AppError('Nenhuma assinatura ativa para alterar.', 400);
+    }
+    const newProduct = await this.products.getProductById(newProductId);
+    if (!newProduct) {
+      throw new AppError('Produto não encontrado.', 404);
+    }
+    if (newProduct.price <= 0) {
+      throw new AppError(
+        'Para voltar ao plano gratuito, cancele a assinatura.',
+        400,
+      );
+    }
+
+    await this.chargeProrationIfDue(user, newProduct);
+
+    await this.gateway.updateSubscription(
+      this.platformApiKey,
+      user.asaasSubscriptionId,
+      { valueCents: centsOf(newProduct.price) },
+    );
+
+    const updated = await this.users.updateSubscription(userId, {
+      productId: newProduct.id,
     });
 
     await this.academiaProvisioning.provisionForOwner(userId);
-    await this.ensureStarterTemplatesForProfessional(userId, product.type);
+    await this.ensureStarterTemplatesForProfessional(userId, newProduct.type);
 
-    return this.toResponse(user);
+    return this.toResponse(updated);
   }
 
-  // The caller must name a subscription Stripe knows, created for this user,
-  // and billing the very plan being claimed — otherwise any account could
-  // declare itself paid, or pay for a cheap plan and claim a dearer one.
-  private async verifyClaim(
-    userId: string,
-    stripeSubscriptionId: string,
-    product: Product,
-  ): Promise<VerifiedSubscription> {
-    const verified = await this.stripeVerification.verifySubscriptionWithStripe(
-      stripeSubscriptionId,
-      userId,
-    );
-
-    if (
-      !verified ||
-      !verified.belongsToUser ||
-      verified.priceId !== product.stripeId
-    ) {
-      this.logger.warn(`subscription_claim_rejected user=${userId}`);
-      throw new AppError('Assinatura inválida.', 400);
+  // Only an upgrade (a positive delta) is collected as an immediate charge —
+  // Asaas's `cobranças` API has no mechanism to issue a negative charge, so
+  // a downgrade's credit is left to apply implicitly through the lower
+  // recurring value from the next cycle on, same as decision 3's own scope
+  // (the subscription's future charges, not a refund mechanism).
+  private async chargeProrationIfDue(
+    user: Users,
+    newProduct: Product,
+  ): Promise<void> {
+    if (!user.productId || !user.subscriptionCurrentPeriodEnd) {
+      return;
+    }
+    const oldProduct = await this.products.getProductById(user.productId);
+    const deltaCents = prorationDeltaCents({
+      oldPriceCents: oldProduct ? centsOf(oldProduct.price) : 0,
+      newPriceCents: centsOf(newProduct.price),
+      now: this.clock.now(),
+      periodEnd: user.subscriptionCurrentPeriodEnd,
+    });
+    if (deltaCents <= 0) {
+      return;
     }
 
-    return verified;
+    await this.gateway.createCharge(this.platformApiKey, {
+      customerExternalId: user.asaasCustomerId ?? '',
+      amountCents: deltaCents,
+      dueDate: dateOnly(this.clock.now()),
+      description: `Ajuste de troca de plano para ${newProduct.name}`,
+      externalReference: `${user.id}:${newProduct.id}:proration`,
+    });
+    this.logger.log(
+      `subscription_proration_charged user=${user.id} amountCents=${deltaCents}`,
+    );
   }
 
-  // Called only by the frontend's Stripe webhook handler (server-to-server,
-  // gated by the shared application secret — see ApiKeyGuard). Stripe events
-  // are the source of truth for subscription state; a missing user here
-  // means the customer hasn't been linked yet or was removed — either way
-  // there's nothing to update, so this no-ops rather than erroring, since
-  // Stripe retries webhook deliveries that respond with an error status.
-  async syncFromWebhook(
-    dto: SyncSubscriptionDTO,
+  // Stops the subscription from generating new charges immediately — Asaas
+  // has no "cancel at period end" toggle, so `subscriptionCancelAt` is set
+  // locally and `deriveExpiry` keeps the user's access alive until then,
+  // same as the Stripe-era behavior (ADR-010 TechSpec addendum, "Cancel and
+  // reactivate").
+  async cancel(userId: string): Promise<SubscriptionResponseDTO> {
+    const user = await this.users.findUnique({ id: userId });
+    if (!user) {
+      throw new AppError('Usuário não encontrado.', 404);
+    }
+    if (!user.asaasSubscriptionId) {
+      throw new AppError('Nenhuma assinatura ativa para cancelar.', 400);
+    }
+
+    await this.gateway.updateSubscription(
+      this.platformApiKey,
+      user.asaasSubscriptionId,
+      { status: 'INACTIVE' },
+    );
+
+    const updated = await this.users.updateSubscription(userId, {
+      subscriptionCancelAt: user.subscriptionCurrentPeriodEnd,
+    });
+
+    return this.toResponse(updated);
+  }
+
+  async reactivate(userId: string): Promise<SubscriptionResponseDTO> {
+    const user = await this.users.findUnique({ id: userId });
+    if (!user) {
+      throw new AppError('Usuário não encontrado.', 404);
+    }
+    if (!user.asaasSubscriptionId) {
+      throw new AppError('Nenhuma assinatura para reativar.', 400);
+    }
+
+    await this.gateway.updateSubscription(
+      this.platformApiKey,
+      user.asaasSubscriptionId,
+      { status: 'ACTIVE' },
+    );
+
+    const updated = await this.users.updateSubscription(userId, {
+      subscriptionCancelAt: null,
+    });
+
+    return this.toResponse(updated);
+  }
+
+  // Called only by the platform's own Asaas webhook (server-to-server,
+  // in-process — ADR-010 moves this off the frontend relay the Stripe-era
+  // flow needed). Asaas events are the source of truth for subscription
+  // state; a missing user here means the customer hasn't been linked yet
+  // or was removed — either way there's nothing to update, so this no-ops
+  // rather than erroring, since Asaas retries webhook deliveries that
+  // respond with an error status.
+  async syncFromGateway(
+    input: AsaasSyncInput,
   ): Promise<SubscriptionResponseDTO | null> {
-    const user = await this.resolveSyncUser(dto);
+    const user = await this.resolveSyncUser(input);
 
     if (!user) {
       return null;
     }
 
-    const productId = await this.resolveSyncProductId(dto, user);
-    const newStatus =
-      dto.stripePriceId === null ? 'canceled' : dto.subscriptionStatus;
+    const productId = await this.resolveSyncProductId(input, user);
 
     const updated = await this.users.updateSubscription(user.id, {
       productId,
-      stripeCustomerId: dto.stripeCustomerId,
-      stripeSubscriptionId: dto.stripeSubscriptionId,
-      subscriptionStatus: newStatus,
-      subscriptionCancelAt: dto.subscriptionCancelAt
-        ? new Date(dto.subscriptionCancelAt)
+      asaasCustomerId: input.asaasCustomerId,
+      subscriptionStatus: input.subscriptionStatus,
+      subscriptionCancelAt: input.subscriptionCancelAt
+        ? new Date(input.subscriptionCancelAt)
         : null,
-      // Unlike the cancellation date above, an absent period end means the
-      // event simply didn't report one (the pinned Stripe API keeps it on
-      // the subscription item, which isn't always expanded) — leave the
-      // stored value alone rather than clearing it.
-      ...(dto.subscriptionCurrentPeriodEnd !== undefined && {
-        subscriptionCurrentPeriodEnd: dto.subscriptionCurrentPeriodEnd
-          ? new Date(dto.subscriptionCurrentPeriodEnd)
+      // CHECKOUT_PAID may arrive before Asaas has created the subscription
+      // itself — omitting the key entirely (undefined) leaves the stored
+      // id alone instead of wiping it; only an explicit value (including
+      // null, when the subscription truly ended) overwrites it.
+      ...(input.asaasSubscriptionId !== undefined && {
+        asaasSubscriptionId: input.asaasSubscriptionId,
+      }),
+      // An absent period end means the event simply didn't report one —
+      // leave the stored value alone rather than clearing it.
+      ...(input.subscriptionCurrentPeriodEnd !== undefined && {
+        subscriptionCurrentPeriodEnd: input.subscriptionCurrentPeriodEnd
+          ? new Date(input.subscriptionCurrentPeriodEnd)
           : null,
       }),
     });
 
     // Fire-and-record, after the sync itself has already succeeded: a
-    // notification failure must never fail or retry the webhook (Stripe
+    // notification failure must never fail or retry the webhook (Asaas
     // retries on a non-2xx response). `NotificationsService.create` already
     // catches its own email-send errors; nothing here can throw past the
     // sync's own result.
-    await this.notifyBillingEvent(user.id, user.subscriptionStatus, newStatus);
+    await this.notifyBillingEvent(
+      user.id,
+      user.subscriptionStatus,
+      input.subscriptionStatus,
+    );
 
     await this.academiaProvisioning.provisionForOwner(user.id);
     await this.ensureStarterTemplatesForProfessional(
@@ -212,16 +329,12 @@ export class SubscriptionService {
     return this.toResponse(updated);
   }
 
-  // Neither `invoice.payment_failed` nor `customer.subscription.updated`
-  // carries a distinct "this was a failure" flag by the time it reaches
-  // this DTO — both funnel into the same `subscriptionStatus` field (see
-  // the frontend's Stripe webhook handler). The only real, detectable
-  // billing-event signal available here is the status transition itself:
-  // newly entering `past_due` (a charge just failed, Stripe is retrying)
-  // or `unpaid` (retries exhausted). An "upcoming invoice" event (per the
-  // PRD's own example) is never forwarded to this backend at all — no
-  // `invoice.upcoming` webhook reaches this flow — so it has no real
-  // signal to trigger on and is not implemented; see task tracking notes.
+  // Neither `SUBSCRIPTION_UPDATED` nor `PAYMENT_OVERDUE` carries a distinct
+  // "this was a failure" flag by the time it reaches this input — both
+  // funnel into the same `subscriptionStatus` field. The only real,
+  // detectable billing-event signal available here is the status
+  // transition itself: newly entering `past_due` (a charge just failed,
+  // Asaas is retrying) or `unpaid` (retries exhausted).
   private async notifyBillingEvent(
     userId: string,
     oldStatus: string | null,
@@ -245,14 +358,14 @@ export class SubscriptionService {
   }
 
   private async resolveSyncProductId(
-    dto: SyncSubscriptionDTO,
+    input: AsaasSyncInput,
     user: Users,
   ): Promise<string | null> {
-    if (dto.stripePriceId === null) {
+    if (input.subscriptionStatus === 'canceled') {
       return await this.restoreFreeProductId(user);
     }
-    if (dto.stripePriceId) {
-      return await this.findProductIdByPrice(dto.stripePriceId, user);
+    if (input.productId) {
+      return input.productId;
     }
     return user.productId;
   }
@@ -260,13 +373,13 @@ export class SubscriptionService {
   // The subscription ended, so the user goes back to Gratuito rather than to
   // no plan at all. If the catalog has no free product there is nothing safe
   // to fall back to: keep whatever plan is stored (never null) and let the
-  // webhook succeed, since Stripe retries failures.
+  // webhook succeed, since Asaas retries failures.
   private async restoreFreeProductId(user: Users): Promise<string | null> {
     const freeProduct = await this.products.findFreeProduct();
     if (!freeProduct) {
       this.logger.error(
         'free_product_missing at=webhook_sync — no USER product priced at 0 ' +
-          `without a Stripe price id; leaving productId unchanged for user ${user.id}.`,
+          `leaving productId unchanged for user ${user.id}.`,
       );
       return user.productId;
     }
@@ -274,47 +387,32 @@ export class SubscriptionService {
     return freeProduct.id;
   }
 
-  private async findProductIdByPrice(
-    stripePriceId: string,
-    user: Users,
-  ): Promise<string | null> {
-    const product = await this.products.findByStripeId(stripePriceId);
-    if (!product) {
-      this.logger.warn(
-        `No product matches Stripe price ${stripePriceId} — ` +
-          `leaving productId unchanged for user ${user.id}.`,
-      );
-      return user.productId;
-    }
-    return product.id;
-  }
-
   // The customer id is authoritative; the `userId` hint only exists to make
   // the first link after checkout. It may create a link, never replace one:
   // a user already tied to a different customer id is left alone.
-  private async resolveSyncUser(dto: SyncSubscriptionDTO) {
-    const linked = await this.users.findByStripeCustomerId(
-      dto.stripeCustomerId,
+  private async resolveSyncUser(input: AsaasSyncInput) {
+    const linked = await this.users.findByAsaasCustomerId(
+      input.asaasCustomerId,
     );
     if (linked) {
       return linked;
     }
 
-    const candidate = dto.userId
-      ? await this.users.findUnique({ id: dto.userId })
+    const candidate = input.userId
+      ? await this.users.findUnique({ id: input.userId })
       : null;
     if (!candidate) {
-      this.warnNoUser(dto);
+      this.warnNoUser(input);
       return null;
     }
 
     if (
-      candidate.stripeCustomerId &&
-      candidate.stripeCustomerId !== dto.stripeCustomerId
+      candidate.asaasCustomerId &&
+      candidate.asaasCustomerId !== input.asaasCustomerId
     ) {
       this.logger.warn(
         `subscription_sync_relink_rejected user=${candidate.id} ` +
-          '— already linked to a different Stripe customer.',
+          '— already linked to a different Asaas customer.',
       );
       return null;
     }
@@ -322,10 +420,10 @@ export class SubscriptionService {
     return candidate;
   }
 
-  private warnNoUser(dto: SyncSubscriptionDTO): void {
+  private warnNoUser(input: AsaasSyncInput): void {
     this.logger.warn(
-      `No user found for Stripe customer ${dto.stripeCustomerId} ` +
-        `(userId hint: ${dto.userId ?? 'none'}) — skipping sync.`,
+      `No user found for Asaas customer ${input.asaasCustomerId} ` +
+        `(userId hint: ${input.userId ?? 'none'}) — skipping sync.`,
     );
   }
 

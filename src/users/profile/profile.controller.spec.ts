@@ -184,7 +184,7 @@ describe('ProfileController Tests', () => {
           ...userMock[0],
           productId: 'product-1',
           product: { id: 'product-1', name: 'Plano Premium' },
-          stripeCustomerId: 'cus_123',
+          asaasCustomerId: 'cus_123',
           stripeSubscriptionId: 'sub_123',
           subscriptionStatus: 'active',
           subscriptionCancelAt: null,
@@ -199,8 +199,8 @@ describe('ProfileController Tests', () => {
       expect(profile.productName).toEqual('Plano Premium');
       expect(profile.subscriptionCurrentPeriodEnd).toEqual(periodEnd);
       expect(profile.subscriptionStatus).toEqual('active');
-      expect(profile.hasStripeCustomer).toBe(true);
-      expect(profile).not.toHaveProperty('stripeCustomerId');
+      expect(profile.hasAsaasCustomer).toBe(true);
+      expect(profile).not.toHaveProperty('asaasCustomerId');
       expect(profile).not.toHaveProperty('stripeSubscriptionId');
       expect(JSON.stringify(profile)).not.toContain('cus_123');
       expect(JSON.stringify(profile)).not.toContain('sub_123');
@@ -214,7 +214,7 @@ describe('ProfileController Tests', () => {
           ...userMock[0],
           productId: null,
           product: null,
-          stripeCustomerId: null,
+          asaasCustomerId: null,
           stripeSubscriptionId: null,
           subscriptionStatus: null,
           subscriptionCancelAt: null,
@@ -228,8 +228,8 @@ describe('ProfileController Tests', () => {
 
       expect(profile.productName).toBeNull();
       expect(profile.subscriptionCurrentPeriodEnd).toBeNull();
-      expect(profile.hasStripeCustomer).toBe(false);
-      expect(profile).not.toHaveProperty('stripeCustomerId');
+      expect(profile.hasAsaasCustomer).toBe(false);
+      expect(profile).not.toHaveProperty('asaasCustomerId');
     });
   });
 

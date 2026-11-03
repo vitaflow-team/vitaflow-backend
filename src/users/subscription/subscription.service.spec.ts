@@ -1,43 +1,51 @@
 import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { TemplatesService } from '@/clinical-records/templates/templates.service';
+import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { Clock } from '@/scheduling/clock.service';
 import { AppError } from '@/utils/app.erro';
-import { StripeVerification } from '@/utils/stripeVerification';
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { PLATFORM_ASAAS_API_KEY } from './platformGateway.tokens';
 import { SubscriptionService } from './subscription.service';
 
-const PERIOD_END_ISO = '2026-10-18T15:00:00.000Z';
+const PLATFORM_KEY = 'platform-asaas-key';
+const PERIOD_END = new Date('2026-11-30T00:00:00.000Z');
+const NOW = new Date('2026-11-20T00:00:00.000Z'); // 10 days remaining of 30
 
 const storedUser = {
   id: 'user-1',
   productId: 'product-1',
-  stripeCustomerId: 'cus_123',
-  stripeSubscriptionId: 'sub_123',
+  asaasCustomerId: 'cus_123',
+  asaasSubscriptionId: 'sub_123',
   subscriptionStatus: 'active',
   subscriptionCancelAt: null,
-  subscriptionCurrentPeriodEnd: new Date('2026-09-18T15:00:00.000Z'),
-  product: { id: 'product-1', name: 'Plano Premium' },
+  subscriptionCurrentPeriodEnd: PERIOD_END,
+  product: { id: 'product-1', name: 'Plano Premium', price: 29.9 },
 };
 
-describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () => {
+describe('SubscriptionService', () => {
   let service: SubscriptionService;
   let users: {
     findUnique: jest.Mock;
-    findByStripeCustomerId: jest.Mock;
+    findByAsaasCustomerId: jest.Mock;
     updateSubscription: jest.Mock;
   };
   let products: {
     getProductById: jest.Mock;
-    findByStripeId: jest.Mock;
     findFreeProduct: jest.Mock;
   };
-  let stripeVerification: { verifySubscriptionWithStripe: jest.Mock };
+  let gateway: {
+    createSubscriptionCheckout: jest.Mock;
+    updateSubscription: jest.Mock;
+    createCharge: jest.Mock;
+  };
   let notifications: { create: jest.Mock };
   let academiaProvisioning: { provisionForOwner: jest.Mock };
   let templates: { ensureStarterTemplates: jest.Mock };
+  let clock: { now: jest.Mock };
 
   /** The `data` object the service handed to `updateSubscription`. */
   const updateData = () =>
@@ -46,26 +54,27 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
   beforeEach(async () => {
     users = {
       findUnique: jest.fn().mockResolvedValue(storedUser),
-      findByStripeCustomerId: jest.fn().mockResolvedValue(storedUser),
+      findByAsaasCustomerId: jest.fn().mockResolvedValue(storedUser),
       updateSubscription: jest.fn().mockResolvedValue(storedUser),
     };
     products = {
       getProductById: jest.fn().mockResolvedValue({
         id: 'product-1',
         name: 'Plano Premium',
-        stripeId: 'price_premium',
+        price: 29.9,
+        type: 'USER',
       }),
-      findByStripeId: jest
-        .fn()
-        .mockResolvedValue({ id: 'product-1', name: 'Plano Premium' }),
-      findFreeProduct: jest.fn().mockResolvedValue({ id: 'free-1' }),
+      findFreeProduct: jest.fn().mockResolvedValue({ id: 'free-1', price: 0 }),
     };
-    stripeVerification = {
-      verifySubscriptionWithStripe: jest.fn().mockResolvedValue({
-        status: 'active',
-        priceId: 'price_premium',
-        customerId: 'cus_123',
-        belongsToUser: true,
+    gateway = {
+      createSubscriptionCheckout: jest.fn().mockResolvedValue({
+        checkoutId: 'checkout_1',
+        link: 'https://asaas.test/c/1',
+      }),
+      updateSubscription: jest.fn().mockResolvedValue(undefined),
+      createCharge: jest.fn().mockResolvedValue({
+        externalId: 'pay_1',
+        paymentUrl: 'https://pay.test/1',
       }),
     };
     notifications = { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) };
@@ -75,648 +84,315 @@ describe('SubscriptionService — subscriptionCurrentPeriodEnd semantics', () =>
     templates = {
       ensureStarterTemplates: jest.fn().mockResolvedValue(undefined),
     };
+    clock = { now: jest.fn().mockReturnValue(NOW) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SubscriptionService,
         { provide: UserRepository, useValue: users },
         { provide: ProductsRepository, useValue: products },
-        { provide: StripeVerification, useValue: stripeVerification },
+        { provide: PAYMENT_GATEWAY, useValue: gateway },
+        { provide: PLATFORM_ASAAS_API_KEY, useValue: PLATFORM_KEY },
         { provide: NotificationsService, useValue: notifications },
         {
           provide: AcademiaProvisioningService,
           useValue: academiaProvisioning,
         },
         { provide: TemplatesService, useValue: templates },
+        { provide: Clock, useValue: clock },
       ],
     }).compile();
 
     service = module.get<SubscriptionService>(SubscriptionService);
   });
 
-  describe('updateForUser', () => {
-    const baseDto = {
-      productId: 'product-1',
-      stripeCustomerId: 'cus_123',
-      stripeSubscriptionId: 'sub_123',
-      subscriptionStatus: 'active',
-    };
+  describe('getForUser', () => {
+    it('derives the expiry from the status alone (no product loaded here)', async () => {
+      const result = await service.getForUser('user-1');
 
-    // UT-048
-    it('omits the key entirely when the field is not sent', async () => {
-      await service.updateForUser('user-1', { ...baseDto });
-
-      expect(updateData()).not.toHaveProperty('subscriptionCurrentPeriodEnd');
-    });
-
-    // UT-049
-    it('stores a Date when an ISO timestamp is sent', async () => {
-      await service.updateForUser('user-1', {
-        ...baseDto,
-        subscriptionCurrentPeriodEnd: PERIOD_END_ISO,
-      });
-
-      expect(updateData().subscriptionCurrentPeriodEnd).toEqual(
-        new Date(PERIOD_END_ISO),
-      );
-    });
-
-    // UT-049
-    it('stores null when an explicit null is sent', async () => {
-      await service.updateForUser('user-1', {
-        ...baseDto,
-        subscriptionCurrentPeriodEnd: null,
-      });
-
-      expect(updateData()).toHaveProperty('subscriptionCurrentPeriodEnd', null);
-    });
-
-    it('returns the period end on the response', async () => {
-      const result = await service.updateForUser('user-1', { ...baseDto });
-
-      expect(result.subscriptionCurrentPeriodEnd).toEqual(
-        storedUser.subscriptionCurrentPeriodEnd,
-      );
-    });
-  });
-
-  describe('updateForUser — Stripe verification', () => {
-    let warn: jest.SpyInstance;
-
-    beforeEach(() => {
-      warn = jest
-        .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(() => undefined);
-    });
-
-    afterEach(() => {
-      warn.mockRestore();
-    });
-
-    // UT-005
-    it("persists Stripe's status and customer, never the caller's", async () => {
-      stripeVerification.verifySubscriptionWithStripe.mockResolvedValue({
-        status: 'incomplete',
-        priceId: 'price_premium',
-        customerId: 'cus_from_stripe',
-        belongsToUser: true,
-      });
-
-      await service.updateForUser('user-1', {
-        productId: 'product-1',
-        stripeCustomerId: 'cus_forged',
-        stripeSubscriptionId: 'sub_123',
-        subscriptionStatus: 'active',
-      });
-
-      expect(
-        stripeVerification.verifySubscriptionWithStripe,
-      ).toHaveBeenCalledWith('sub_123', 'user-1');
-      expect(updateData()).toMatchObject({
-        productId: 'product-1',
-        stripeSubscriptionId: 'sub_123',
-        stripeCustomerId: 'cus_from_stripe',
-        subscriptionStatus: 'incomplete',
-      });
-    });
-
-    // UT-006
-    it('rejects with 400 and writes nothing when the subscription belongs to another user', async () => {
-      stripeVerification.verifySubscriptionWithStripe.mockResolvedValue({
-        status: 'active',
-        priceId: 'price_premium',
-        customerId: 'cus_other',
-        belongsToUser: false,
-      });
-
-      const attempt = service.updateForUser('user-1', {
-        productId: 'product-1',
-        stripeCustomerId: 'cus_other',
-        stripeSubscriptionId: 'sub_someone_else',
-        subscriptionStatus: 'active',
-      });
-
-      await expect(attempt).rejects.toBeInstanceOf(AppError);
-      await expect(attempt).rejects.toMatchObject({ status: 400 });
-      expect(users.updateSubscription).not.toHaveBeenCalled();
-      expect(warn).toHaveBeenCalledWith(
-        'subscription_claim_rejected user=user-1',
-      );
-    });
-
-    // UT-007
-    it('rejects with 400 and writes nothing when Stripe cannot confirm the subscription', async () => {
-      stripeVerification.verifySubscriptionWithStripe.mockResolvedValue(null);
-
-      await expect(
-        service.updateForUser('user-1', {
-          productId: 'product-1',
-          stripeCustomerId: 'cus_123',
-          stripeSubscriptionId: 'sub_forged',
-          subscriptionStatus: 'active',
-        }),
-      ).rejects.toMatchObject({ status: 400 });
-      expect(users.updateSubscription).not.toHaveBeenCalled();
-    });
-
-    it('rejects a real subscription used to claim a different paid plan', async () => {
-      products.getProductById.mockResolvedValue({
-        id: 'product-expensive',
-        name: 'Plano Profissional',
-        stripeId: 'price_expensive',
-      });
-
-      await expect(
-        service.updateForUser('user-1', {
-          productId: 'product-expensive',
-          stripeCustomerId: 'cus_123',
-          stripeSubscriptionId: 'sub_123',
-          subscriptionStatus: 'active',
-        }),
-      ).rejects.toMatchObject({ status: 400 });
-      expect(users.updateSubscription).not.toHaveBeenCalled();
-    });
-
-    it('rejects an unknown product before asking Stripe', async () => {
-      products.getProductById.mockResolvedValue(null);
-
-      await expect(
-        service.updateForUser('user-1', {
-          productId: 'missing',
-          stripeCustomerId: 'cus_123',
-          stripeSubscriptionId: 'sub_123',
-          subscriptionStatus: 'active',
-        }),
-      ).rejects.toMatchObject({ status: 404 });
-      expect(
-        stripeVerification.verifySubscriptionWithStripe,
-      ).not.toHaveBeenCalled();
-    });
-  });
-
-  // UT-017 — plan expiry on the subscription responses
-  describe('expiresAt and autoRenew (plan expiry)', () => {
-    const periodEnd = new Date('2026-10-18T15:00:00.000Z');
-    const cancelAt = new Date('2026-10-10T15:00:00.000Z');
-
-    it('toResponse derives a renewing expiry from the stored plan price', async () => {
-      users.updateSubscription.mockResolvedValueOnce({
-        ...storedUser,
-        subscriptionCurrentPeriodEnd: periodEnd,
-        product: { id: 'product-1', name: 'Plano Premium', price: 29.9 },
-      });
-
-      const result = await service.updateForUser('user-1', {
-        productId: 'product-1',
-        stripeCustomerId: 'cus_123',
-        stripeSubscriptionId: 'sub_123',
-        subscriptionStatus: 'active',
-      });
-
-      expect(result.expiresAt).toEqual(periodEnd);
+      expect(result.expiresAt).toEqual(PERIOD_END);
       expect(result.autoRenew).toBe(true);
+      expect(result.asaasSubscriptionId).toBe('sub_123');
     });
 
-    it('toResponse reports the cancellation date with autoRenew false', async () => {
-      users.updateSubscription.mockResolvedValueOnce({
-        ...storedUser,
-        subscriptionCancelAt: cancelAt,
-        subscriptionCurrentPeriodEnd: periodEnd,
-        product: { id: 'product-1', name: 'Plano Premium', price: 29.9 },
+    it('rejects when the user no longer exists', async () => {
+      users.findUnique.mockResolvedValueOnce(null);
+      await expect(service.getForUser('missing')).rejects.toMatchObject({
+        status: 404,
       });
-
-      const result = await service.updateForUser('user-1', {
-        productId: 'product-1',
-        stripeCustomerId: 'cus_123',
-        stripeSubscriptionId: 'sub_123',
-        subscriptionStatus: 'active',
-      });
-
-      expect(result.expiresAt).toEqual(cancelAt);
-      expect(result.autoRenew).toBe(false);
-    });
-
-    it('toResponse reports no expiry for Gratuito', async () => {
-      users.updateSubscription.mockResolvedValueOnce({
-        ...storedUser,
-        subscriptionCurrentPeriodEnd: periodEnd,
-        product: { id: 'free-1', name: 'Gratuito', price: 0 },
-      });
-
-      const result = await service.updateForUser('user-1', {
-        productId: 'free-1',
-        stripeCustomerId: 'cus_123',
-        stripeSubscriptionId: 'sub_123',
-        subscriptionStatus: 'active',
-      });
-
-      expect(result.expiresAt).toBeNull();
-      expect(result.autoRenew).toBe(false);
-    });
-
-    // No product is loaded on this route, so the rule is status-only.
-    it('getForUser derives the expiry from the status alone', async () => {
-      users.findUnique.mockResolvedValueOnce({
-        ...storedUser,
-        subscriptionCurrentPeriodEnd: periodEnd,
-      });
-
-      const renewing = await service.getForUser('user-1');
-
-      expect(renewing.expiresAt).toEqual(periodEnd);
-      expect(renewing.autoRenew).toBe(true);
-      // Existing fields are untouched.
-      expect(renewing.stripeSubscriptionId).toBe('sub_123');
-
-      users.findUnique.mockResolvedValueOnce({
-        ...storedUser,
-        subscriptionStatus: 'canceled',
-        subscriptionCurrentPeriodEnd: periodEnd,
-      });
-
-      const canceled = await service.getForUser('user-1');
-
-      expect(canceled.expiresAt).toBeNull();
-      expect(canceled.autoRenew).toBe(false);
     });
   });
 
-  describe('syncFromWebhook', () => {
-    const baseDto = {
-      stripeCustomerId: 'cus_123',
-      stripePriceId: 'price_123',
-      stripeSubscriptionId: 'sub_123',
-      subscriptionStatus: 'active',
-    };
+  describe('createCheckout (UT-150 integration point)', () => {
+    it('starts an Asaas Checkout with the product name, value and encoded externalReference', async () => {
+      const result = await service.createCheckout('user-1', 'product-1');
 
-    // UT-050
-    it('omits the key entirely when the event does not carry the field', async () => {
-      await service.syncFromWebhook({ ...baseDto });
-
-      expect(updateData()).not.toHaveProperty('subscriptionCurrentPeriodEnd');
-    });
-
-    // UT-050
-    it('stores a Date when an ISO timestamp is sent', async () => {
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionCurrentPeriodEnd: PERIOD_END_ISO,
-      });
-
-      expect(updateData().subscriptionCurrentPeriodEnd).toEqual(
-        new Date(PERIOD_END_ISO),
-      );
-    });
-
-    // UT-050
-    it('stores null when an explicit null is sent (subscription deleted)', async () => {
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'canceled',
-        subscriptionCurrentPeriodEnd: null,
-      });
-
-      expect(updateData()).toHaveProperty('subscriptionCurrentPeriodEnd', null);
-    });
-
-    // UT-050 — a redelivered event must converge on the same stored state.
-    it('produces identical repository arguments when called twice with the same payload', async () => {
-      const dto = {
-        ...baseDto,
-        subscriptionCurrentPeriodEnd: PERIOD_END_ISO,
-      };
-
-      await service.syncFromWebhook({ ...dto });
-      await service.syncFromWebhook({ ...dto });
-
-      expect(users.updateSubscription).toHaveBeenCalledTimes(2);
-      expect(users.updateSubscription.mock.calls[0]).toEqual(
-        users.updateSubscription.mock.calls[1],
-      );
-    });
-
-    // Guards the pre-existing behavior this task must not change: the
-    // cancellation date is still overwritten with null when absent.
-    it('still clears subscriptionCancelAt when the event omits it', async () => {
-      await service.syncFromWebhook({ ...baseDto });
-
-      expect(updateData()).toHaveProperty('subscriptionCancelAt', null);
-    });
-  });
-
-  describe('syncFromWebhook — billing notification trigger (task_02)', () => {
-    const baseDto = {
-      stripeCustomerId: 'cus_123',
-      stripePriceId: 'price_123',
-      stripeSubscriptionId: 'sub_123',
-    };
-
-    // UT-005 analog: a payment failure (active → past_due) creates a
-    // BILLING notification with a message distinct from the unpaid case.
-    it('creates a BILLING notification when the status transitions to past_due', async () => {
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'past_due',
-      });
-
-      expect(notifications.create).toHaveBeenCalledWith(
-        'user-1',
-        'BILLING',
-        expect.stringContaining('pagamento'),
-        expect.any(String),
-      );
-    });
-
-    it('creates a distinctly-worded BILLING notification for unpaid vs. past_due', async () => {
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'unpaid',
-      });
-
-      const unpaidMessage = notifications.create.mock.calls[0][2] as string;
-
-      users.findByStripeCustomerId.mockResolvedValue({
-        ...storedUser,
-        subscriptionStatus: 'active',
-      });
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'past_due',
-      });
-      const pastDueMessage = notifications.create.mock.calls[1][2] as string;
-
-      expect(unpaidMessage).not.toBe(pastDueMessage);
-    });
-
-    // UT-007: two distinct billing events (e.g. a failure then a retry
-    // that fails again) each produce their own notification — never
-    // merged or deduplicated.
-    it('UT-007 creates a separate notification for each of two billing events', async () => {
-      users.findByStripeCustomerId.mockResolvedValueOnce(storedUser);
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'past_due',
-      });
-
-      users.findByStripeCustomerId.mockResolvedValueOnce({
-        ...storedUser,
-        subscriptionStatus: 'past_due',
-      });
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'unpaid',
-      });
-
-      expect(notifications.create).toHaveBeenCalledTimes(2);
-    });
-
-    it('does not notify when the status does not actually change', async () => {
-      users.findByStripeCustomerId.mockResolvedValue({
-        ...storedUser,
-        subscriptionStatus: 'past_due',
-      });
-
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'past_due',
-      });
-
-      expect(notifications.create).not.toHaveBeenCalled();
-    });
-
-    it('does not notify for a transition that is not a billing-failure status', async () => {
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'trialing',
-      });
-
-      expect(notifications.create).not.toHaveBeenCalled();
-    });
-
-    // The task's own requirement: the Notification row is created
-    // regardless of the user's BILLING preference — NotificationsService
-    // itself (task 1) is responsible for the preference check; this
-    // service only needs to call create() unconditionally on a real
-    // billing-failure transition, never pre-checking a preference itself.
-    it('calls create() unconditionally on a billing-failure transition, never checking a preference first', async () => {
-      await service.syncFromWebhook({
-        ...baseDto,
-        subscriptionStatus: 'past_due',
-      });
-
-      expect(notifications.create).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('syncFromWebhook — free plan restore', () => {
-    const endedDto = {
-      stripeCustomerId: 'cus_123',
-      stripePriceId: null,
-      stripeSubscriptionId: 'sub_123',
-      subscriptionStatus: 'incomplete_expired',
-    };
-
-    // UT-007
-    it('restores the free product and marks the subscription canceled', async () => {
-      await service.syncFromWebhook({ ...endedDto });
-
-      expect(updateData()).toMatchObject({
-        productId: 'free-1',
-        subscriptionStatus: 'canceled',
-      });
-    });
-
-    // UT-007
-    it('logs the restore with the user id only', async () => {
-      const logged = jest
-        .spyOn(Logger.prototype, 'log')
-        .mockImplementation(() => undefined);
-
-      await service.syncFromWebhook({ ...endedDto });
-
-      expect(logged).toHaveBeenCalledWith(
-        expect.stringContaining(storedUser.id),
-      );
-      logged.mockRestore();
-    });
-
-    // UT-008
-    it('leaves the stored product untouched and does not throw when the free product is missing', async () => {
-      products.findFreeProduct.mockResolvedValue(null);
-      const logged = jest
-        .spyOn(Logger.prototype, 'error')
-        .mockImplementation(() => undefined);
-
-      await expect(
-        service.syncFromWebhook({ ...endedDto }),
-      ).resolves.toBeTruthy();
-
-      expect(updateData().productId).toBe(storedUser.productId);
-      expect(updateData().productId).not.toBeNull();
-      expect(logged).toHaveBeenCalled();
-      logged.mockRestore();
-    });
-
-    // UT-009
-    it('still maps a known price id to its product', async () => {
-      await service.syncFromWebhook({
-        ...endedDto,
-        stripePriceId: 'price_123',
-        subscriptionStatus: 'active',
-      });
-
-      expect(updateData()).toMatchObject({
-        productId: 'product-1',
-        subscriptionStatus: 'active',
-      });
-      expect(products.findFreeProduct).not.toHaveBeenCalled();
-    });
-
-    // UT-009
-    it('still keeps the current product for an unknown price id', async () => {
-      products.findByStripeId.mockResolvedValue(null);
-
-      await service.syncFromWebhook({
-        ...endedDto,
-        stripePriceId: 'price_unknown',
-        subscriptionStatus: 'active',
-      });
-
-      expect(updateData().productId).toBe(storedUser.productId);
-      expect(products.findFreeProduct).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('syncFromWebhook — relink guard (UT-008, ADR-003)', () => {
-    const newCustomerDto = {
-      stripeCustomerId: 'cus_new',
-      stripePriceId: 'price_123',
-      stripeSubscriptionId: 'sub_new',
-      subscriptionStatus: 'active',
-      userId: 'user-1',
-    };
-
-    beforeEach(() => {
-      // No user owns the incoming customer id yet, so the userId hint is used.
-      users.findByStripeCustomerId.mockResolvedValue(null);
-    });
-
-    it('refuses to relink a user who already has a different customer id', async () => {
-      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      users.findUnique.mockResolvedValue({
-        ...storedUser,
-        stripeCustomerId: 'cus_existing',
-      });
-
-      const result = await service.syncFromWebhook(newCustomerDto);
-
-      expect(result).toBeNull();
-      expect(users.findUnique).toHaveBeenCalledWith({ id: 'user-1' });
-      expect(users.updateSubscription).not.toHaveBeenCalled();
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'subscription_sync_relink_rejected user=user-1',
-        ),
-      );
-      // Ids only: neither customer id is written to the log.
-      expect(String(warn.mock.calls[0][0])).not.toContain('cus_');
-      warn.mockRestore();
-    });
-
-    it('links a brand-new customer id to a user with none yet', async () => {
-      users.findUnique.mockResolvedValue({
-        ...storedUser,
-        stripeCustomerId: null,
-      });
-
-      await service.syncFromWebhook(newCustomerDto);
-
-      expect(users.updateSubscription).toHaveBeenCalledWith(
-        'user-1',
-        expect.objectContaining({ stripeCustomerId: 'cus_new' }),
-      );
-    });
-
-    it('treats a hint for a user already holding this same customer id as a normal sync', async () => {
-      users.findUnique.mockResolvedValue({
-        ...storedUser,
-        stripeCustomerId: 'cus_new',
-      });
-
-      await service.syncFromWebhook(newCustomerDto);
-
-      expect(users.updateSubscription).toHaveBeenCalledTimes(1);
-    });
-
-    it('is a no-op, not an error, for a retried delivery of an already-linked pair (EC-1)', async () => {
-      users.findByStripeCustomerId.mockResolvedValue(storedUser);
-
-      await expect(
-        service.syncFromWebhook({
-          ...newCustomerDto,
-          stripeCustomerId: 'cus_123',
+      expect(gateway.createSubscriptionCheckout).toHaveBeenCalledWith(
+        PLATFORM_KEY,
+        expect.objectContaining({
+          itemName: 'Plano Premium',
+          valueCents: 2990,
+          externalReference: 'user-1:product-1',
         }),
-      ).resolves.not.toBeNull();
-      await service.syncFromWebhook({
-        ...newCustomerDto,
-        stripeCustomerId: 'cus_123',
-      });
-
-      expect(users.findUnique).not.toHaveBeenCalled();
-      expect(users.updateSubscription.mock.calls[0]).toEqual(
-        users.updateSubscription.mock.calls[1],
       );
+      expect(result).toEqual({ link: 'https://asaas.test/c/1' });
+      // Nothing is written locally yet — only the webhook confirms it.
+      expect(users.updateSubscription).not.toHaveBeenCalled();
     });
 
-    it('still skips quietly when neither the customer nor the hinted user exists', async () => {
-      users.findUnique.mockResolvedValue(null);
+    it('rejects a free product — nothing to subscribe to', async () => {
+      products.getProductById.mockResolvedValueOnce({
+        id: 'free-1',
+        name: 'Gratuito',
+        price: 0,
+      });
 
-      await expect(service.syncFromWebhook(newCustomerDto)).resolves.toBeNull();
       await expect(
-        service.syncFromWebhook({ ...newCustomerDto, userId: undefined }),
-      ).resolves.toBeNull();
-      expect(users.updateSubscription).not.toHaveBeenCalled();
+        service.createCheckout('user-1', 'free-1'),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it('rejects an unknown product', async () => {
+      products.getProductById.mockResolvedValueOnce(null);
+
+      await expect(
+        service.createCheckout('user-1', 'missing'),
+      ).rejects.toMatchObject({ status: 404 });
     });
   });
 
-  describe('starter-template seeding on activation (nutritionist-module)', () => {
-    it('seeds starter templates when the claimed product is NUTRITIONIST or PHYSICAL_EDUCATOR', async () => {
-      products.getProductById.mockResolvedValue({
-        id: 'product-1',
-        name: 'Nutricionista Premium',
-        stripeId: 'price_premium',
-        type: 'NUTRITIONIST',
+  describe('changePlan', () => {
+    it('rejects a user with no active subscription, pointing to checkout instead', async () => {
+      users.findUnique.mockResolvedValueOnce({
+        ...storedUser,
+        asaasSubscriptionId: null,
       });
 
-      await service.updateForUser('user-1', {
-        productId: 'product-1',
-        stripeCustomerId: 'cus_123',
-        stripeSubscriptionId: 'sub_123',
-        subscriptionStatus: 'active',
+      await expect(
+        service.changePlan('user-1', 'product-2'),
+      ).rejects.toBeInstanceOf(AppError);
+    });
+
+    it('rejects moving to the free plan — must cancel instead', async () => {
+      products.getProductById.mockResolvedValueOnce({
+        id: 'free-1',
+        name: 'Gratuito',
+        price: 0,
       });
+
+      await expect(
+        service.changePlan('user-1', 'free-1'),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    // UT-153 — upgrade issues a one-off adjustment charge at the moment of
+    // the change, and updates the subscription's recurring value.
+    it('issues a proration charge and updates the subscription value for an upgrade', async () => {
+      products.getProductById
+        .mockResolvedValueOnce({
+          id: 'product-2',
+          name: 'Plano Profissional',
+          price: 59.9,
+          type: 'USER',
+        })
+        .mockResolvedValueOnce({ id: 'product-1', price: 29.9 });
+
+      await service.changePlan('user-1', 'product-2');
+
+      // (5990 - 2990) * (10/30) = 1000
+      expect(gateway.createCharge).toHaveBeenCalledWith(
+        PLATFORM_KEY,
+        expect.objectContaining({ amountCents: 1000 }),
+      );
+      expect(gateway.updateSubscription).toHaveBeenCalledWith(
+        PLATFORM_KEY,
+        'sub_123',
+        { valueCents: 5990 },
+      );
+      expect(updateData()).toMatchObject({ productId: 'product-2' });
+    });
+
+    // UT-152/153 — a downgrade's negative delta is never charged.
+    it('skips the adjustment charge for a downgrade', async () => {
+      products.getProductById
+        .mockResolvedValueOnce({
+          id: 'product-cheap',
+          name: 'Plano Básico',
+          price: 19.9,
+          type: 'USER',
+        })
+        .mockResolvedValueOnce({ id: 'product-1', price: 29.9 });
+
+      await service.changePlan('user-1', 'product-cheap');
+
+      expect(gateway.createCharge).not.toHaveBeenCalled();
+      expect(gateway.updateSubscription).toHaveBeenCalledWith(
+        PLATFORM_KEY,
+        'sub_123',
+        { valueCents: 1990 },
+      );
+    });
+
+    it('seeds starter templates when the new product is NUTRITIONIST or PHYSICAL_EDUCATOR', async () => {
+      products.getProductById
+        .mockResolvedValueOnce({
+          id: 'product-nutri',
+          name: 'Nutricionista Premium',
+          price: 59.9,
+          type: 'NUTRITIONIST',
+        })
+        .mockResolvedValueOnce({ id: 'product-1', price: 29.9 });
+
+      await service.changePlan('user-1', 'product-nutri');
 
       expect(templates.ensureStarterTemplates).toHaveBeenCalledWith(
         { professionalId: 'user-1' },
         'NUTRITIONIST',
       );
     });
+  });
 
-    it('does not seed for a USER or ACADEMIA product change', async () => {
-      products.getProductById.mockResolvedValue({
-        id: 'product-1',
-        name: 'Academia',
-        stripeId: 'price_premium',
-        type: 'ACADEMIA',
+  describe('cancel', () => {
+    it('sets the subscription INACTIVE on the gateway and schedules the local cancellation at the period end', async () => {
+      await service.cancel('user-1');
+
+      expect(gateway.updateSubscription).toHaveBeenCalledWith(
+        PLATFORM_KEY,
+        'sub_123',
+        { status: 'INACTIVE' },
+      );
+      expect(updateData()).toEqual({ subscriptionCancelAt: PERIOD_END });
+    });
+
+    it('rejects a user with no active subscription', async () => {
+      users.findUnique.mockResolvedValueOnce({
+        ...storedUser,
+        asaasSubscriptionId: null,
       });
 
-      await service.updateForUser('user-1', {
-        productId: 'product-1',
-        stripeCustomerId: 'cus_123',
-        stripeSubscriptionId: 'sub_123',
+      await expect(service.cancel('user-1')).rejects.toMatchObject({
+        status: 400,
+      });
+    });
+  });
+
+  describe('reactivate', () => {
+    it('sets the subscription ACTIVE again and clears the local cancellation', async () => {
+      await service.reactivate('user-1');
+
+      expect(gateway.updateSubscription).toHaveBeenCalledWith(
+        PLATFORM_KEY,
+        'sub_123',
+        { status: 'ACTIVE' },
+      );
+      expect(updateData()).toEqual({ subscriptionCancelAt: null });
+    });
+  });
+
+  describe('syncFromGateway', () => {
+    const baseInput = {
+      asaasCustomerId: 'cus_123',
+      asaasSubscriptionId: 'sub_123',
+      subscriptionStatus: 'active',
+    };
+
+    it('syncs the subscription fields from the event', async () => {
+      await service.syncFromGateway({ ...baseInput });
+
+      expect(updateData()).toMatchObject({
+        asaasCustomerId: 'cus_123',
+        asaasSubscriptionId: 'sub_123',
         subscriptionStatus: 'active',
       });
+    });
 
-      expect(templates.ensureStarterTemplates).not.toHaveBeenCalled();
+    // UT-155 — SUBSCRIPTION_DELETED restores the free plan and marks the
+    // subscription canceled, same business rule the Stripe-era webhook had.
+    it('restores the free product and marks the subscription canceled when the subscription ends', async () => {
+      await service.syncFromGateway({
+        asaasCustomerId: 'cus_123',
+        asaasSubscriptionId: null,
+        subscriptionStatus: 'canceled',
+      });
+
+      expect(updateData()).toMatchObject({
+        productId: 'free-1',
+        subscriptionStatus: 'canceled',
+      });
+    });
+
+    it('uses the productId hint on first link (from externalReference)', async () => {
+      users.findByAsaasCustomerId.mockResolvedValueOnce(null);
+      users.findUnique.mockResolvedValueOnce({
+        ...storedUser,
+        asaasCustomerId: null,
+      });
+
+      await service.syncFromGateway({
+        ...baseInput,
+        asaasCustomerId: 'cus_new',
+        userId: 'user-1',
+        productId: 'product-2',
+      });
+
+      expect(updateData()).toMatchObject({ productId: 'product-2' });
+    });
+
+    it('refuses to relink a user already tied to a different Asaas customer', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      users.findByAsaasCustomerId.mockResolvedValueOnce(null);
+      users.findUnique.mockResolvedValueOnce({
+        ...storedUser,
+        asaasCustomerId: 'cus_existing',
+      });
+
+      const result = await service.syncFromGateway({
+        ...baseInput,
+        asaasCustomerId: 'cus_new',
+        userId: 'user-1',
+      });
+
+      expect(result).toBeNull();
+      expect(users.updateSubscription).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('is a no-op, not an error, when neither the customer nor the hinted user exists', async () => {
+      users.findByAsaasCustomerId.mockResolvedValueOnce(null);
+      users.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.syncFromGateway({
+          ...baseInput,
+          asaasCustomerId: 'cus_unknown',
+        }),
+      ).resolves.toBeNull();
+      expect(users.updateSubscription).not.toHaveBeenCalled();
+    });
+
+    describe('billing notification on status transition', () => {
+      it('creates a BILLING notification when the status transitions to past_due', async () => {
+        await service.syncFromGateway({
+          ...baseInput,
+          subscriptionStatus: 'past_due',
+        });
+
+        expect(notifications.create).toHaveBeenCalledWith(
+          'user-1',
+          'BILLING',
+          expect.stringContaining('pagamento'),
+          expect.any(String),
+        );
+      });
+
+      it('does not notify when the status does not actually change', async () => {
+        await service.syncFromGateway({
+          ...baseInput,
+          subscriptionStatus: 'active',
+        });
+
+        expect(notifications.create).not.toHaveBeenCalled();
+      });
     });
   });
 });

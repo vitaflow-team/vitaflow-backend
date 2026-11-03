@@ -1,3 +1,4 @@
+import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { createValidationPipe } from '@/config/validationPipe';
 import { AuditLogger } from '@/auth/auditLogger.service';
 import { AuthController } from '@/auth/auth.controller';
@@ -5,25 +6,33 @@ import { AuthGuard } from '@/auth/auth.guard';
 import { AuthService } from '@/auth/auth.service';
 import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
 import { GoogleAuthService } from '@/auth/googleAuth.service';
+import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { MailService } from '@/mail/mail.service';
+import { NotificationsService } from '@/notifications/notifications.service';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
+import { Clock } from '@/scheduling/clock.service';
 import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
 import { SignUpController } from '@/users/signup/signup.controller';
 import { SignUpService } from '@/users/signup/signup.service';
 import { UserTokenService } from '@/users/token/userToken.service';
 import { SubscriptionController } from '@/users/subscription/subscription.controller';
-import { SubscriptionSyncController } from '@/users/subscription/subscriptionSync.controller';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
+import { SubscriptionWebhookController } from '@/users/subscription/subscriptionWebhook.controller';
+import { SubscriptionWebhookService } from '@/users/subscription/subscriptionWebhook.service';
+import {
+  PLATFORM_ASAAS_API_KEY,
+  PLATFORM_WEBHOOK_TOKEN,
+} from '@/users/subscription/platformGateway.tokens';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
-import { StripeVerification } from '@/utils/stripeVerification';
 import { UploadService } from '@/utils/upload.service';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -41,6 +50,7 @@ jest.setTimeout(60_000);
 const MARKER = 'free-plan-e2e';
 const applicationSecret = 'free-plan-e2e-secret';
 const jwtSecret = 'free-plan-e2e-jwt-secret';
+const webhookToken = 'free-plan-e2e-webhook-token';
 
 describe('Gratuito as a stored plan (free plan)', () => {
   let app: INestApplication<App>;
@@ -85,7 +95,7 @@ describe('Gratuito as a stored plan (free plan)', () => {
         SignUpController,
         AuthController,
         SubscriptionController,
-        SubscriptionSyncController,
+        SubscriptionWebhookController,
         ProfileController,
       ],
       providers: [
@@ -100,7 +110,27 @@ describe('Gratuito as a stored plan (free plan)', () => {
         UserTokenService,
         ProfileService,
         SubscriptionService,
-        StripeVerification,
+        SubscriptionWebhookService,
+        Clock,
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+        {
+          provide: AcademiaProvisioningService,
+          useValue: { provisionForOwner: jest.fn() },
+        },
+        {
+          provide: TemplatesService,
+          useValue: { ensureStarterTemplates: jest.fn() },
+        },
+        {
+          provide: PAYMENT_GATEWAY,
+          useValue: {
+            createSubscriptionCheckout: jest.fn(),
+            updateSubscription: jest.fn(),
+            createCharge: jest.fn(),
+          },
+        },
+        { provide: PLATFORM_ASAAS_API_KEY, useValue: 'test-platform-key' },
+        { provide: PLATFORM_WEBHOOK_TOKEN, useValue: webhookToken },
         AuthService,
         AuthGuard,
         DualBucketThrottlerGuard,
@@ -123,7 +153,7 @@ describe('Gratuito as a stored plan (free plan)', () => {
               key === 'APPLICATION_SECRET' ? applicationSecret : undefined,
           },
         },
-        // The real app registers this globally and the webhook sync route
+        // The real app registers this globally and the webhook route
         // relies on it instead of a user JWT.
         { provide: APP_GUARD, useClass: ApiKeyGuard },
       ],
@@ -141,11 +171,11 @@ describe('Gratuito as a stored plan (free plan)', () => {
     // rows that afterAll removes, so the catalog is left as it was found —
     // and in particular never gains a second product matching the free rule.
     const freeProduct = await prisma.product.findFirst({
-      where: { type: 'USER', price: 0, stripeId: null },
+      where: { type: 'USER', price: 0 },
     });
     freeProductId = freeProduct
       ? freeProduct.id
-      : await createTemporaryProduct('Gratuito', 0, 'USER', null);
+      : await createTemporaryProduct('Gratuito', 0, 'USER');
 
     const nutritionist = await prisma.product.findFirst({
       where: { type: 'NUTRITIONIST' },
@@ -158,7 +188,6 @@ describe('Gratuito as a stored plan (free plan)', () => {
         'Profissional',
         59.9,
         'NUTRITIONIST',
-        `price_${MARKER}_nutri`,
       );
       nutritionistGroupId = temporaryGroupId as string;
     }
@@ -168,7 +197,6 @@ describe('Gratuito as a stored plan (free plan)', () => {
     name: string,
     price: number,
     type: 'USER' | 'NUTRITIONIST',
-    stripeId: string | null,
   ) {
     if (!temporaryGroupId) {
       const group = await prisma.productGroup.create({
@@ -177,7 +205,7 @@ describe('Gratuito as a stored plan (free plan)', () => {
       temporaryGroupId = group.id;
     }
     const product = await prisma.product.create({
-      data: { name, price, type, stripeId, groupId: temporaryGroupId },
+      data: { name, price, type, groupId: temporaryGroupId },
     });
     temporaryProductIds.push(product.id);
     return product.id;
@@ -286,22 +314,22 @@ describe('Gratuito as a stored plan (free plan)', () => {
         password: 'hash',
         active: true,
         productId: nutritionistProductId,
-        stripeCustomerId: `cus_${MARKER}_${++requestIndex}`,
-        stripeSubscriptionId: `sub_${MARKER}_${requestIndex}`,
+        asaasCustomerId: `cus_${MARKER}_${++requestIndex}`,
+        asaasSubscriptionId: `sub_${MARKER}_${requestIndex}`,
         subscriptionStatus: 'active',
       },
     });
     createdUserIds.push(user.id);
 
     await request(app.getHttpServer())
-      .patch('/users/subscription/sync')
-      .set('x-application-secret', applicationSecret)
+      .post('/users/subscription/webhook')
+      .set('asaas-access-token', webhookToken)
       .send({
-        stripeCustomerId: user.stripeCustomerId,
-        stripePriceId: null,
-        stripeSubscriptionId: null,
-        subscriptionStatus: 'canceled',
-        subscriptionCancelAt: null,
+        event: 'SUBSCRIPTION_DELETED',
+        subscription: {
+          id: user.asaasSubscriptionId,
+          customer: user.asaasCustomerId,
+        },
       })
       .expect(200);
 

@@ -44,6 +44,26 @@ export interface ChargeInput {
   externalReference: string;
 }
 
+// Platform subscription billing (ADR-010) — Asaas Checkout (`assinaturas`),
+// a different endpoint family from the `cobranças` one-off charges above,
+// but the same gateway/credential-agnostic shape: every method still takes
+// the caller's own `apiKey`, so one `AsaasGateway` instance serves both the
+// per-professional invoice flow and the platform's own subscriptions.
+export interface SubscriptionCheckoutInput {
+  successUrl: string;
+  cancelUrl: string;
+  itemName: string;
+  valueCents: number;
+  /** YYYY-MM-DD — the first charge's due date. */
+  nextDueDate: string;
+  externalReference: string;
+}
+
+export interface SubscriptionChanges {
+  valueCents?: number;
+  status?: 'ACTIVE' | 'INACTIVE';
+}
+
 export interface PaymentGateway {
   verifyAccount(apiKey: string): Promise<{ accountName: string }>;
   registerWebhook(
@@ -67,6 +87,15 @@ export interface PaymentGateway {
     changes: { amountCents?: number; dueDate?: string },
   ): Promise<void>;
   cancelCharge(apiKey: string, externalId: string): Promise<void>;
+  createSubscriptionCheckout(
+    apiKey: string,
+    input: SubscriptionCheckoutInput,
+  ): Promise<{ checkoutId: string; link: string }>;
+  updateSubscription(
+    apiKey: string,
+    subscriptionId: string,
+    changes: SubscriptionChanges,
+  ): Promise<void>;
 }
 
 export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');

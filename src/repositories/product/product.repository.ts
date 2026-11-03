@@ -50,20 +50,13 @@ export class ProductsRepository {
     });
   }
 
-  async findByStripeId(stripeId: string): Promise<ProductWithInfos | null> {
-    return await this.prisma.product.findFirst({
-      where: { stripeId },
-      include: PRODUCT_INCLUDE,
-    });
-  }
-
   // Gratuito has no fixed id and no unique name (two products are called
   // Premium and two Profissional), so it is identified by what makes it the
-  // free personal plan: a USER product that costs nothing and was never
-  // wired to a Stripe price. Exactly one product is expected to match.
+  // free personal plan: a USER product that costs nothing. Exactly one
+  // product is expected to match.
   async findFreeProduct(): Promise<Product | null> {
     return await this.prisma.product.findFirst({
-      where: { type: 'USER', price: 0, stripeId: null },
+      where: { type: 'USER', price: 0 },
     });
   }
 }

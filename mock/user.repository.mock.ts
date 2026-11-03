@@ -54,8 +54,8 @@ export const userRepositoryMock = {
         active: data.active ?? false,
         termsAcceptedAt: (data.termsAcceptedAt as Date | null) ?? null,
         healthDataConsentAt: (data.healthDataConsentAt as Date | null) ?? null,
-        stripeCustomerId: null,
-        stripeSubscriptionId: null,
+        asaasCustomerId: null,
+        asaasSubscriptionId: null,
         subscriptionStatus: null,
         subscriptionCancelAt: null,
         subscriptionCurrentPeriodEnd: null,
@@ -172,13 +172,13 @@ export const userRepositoryMock = {
         return Promise.resolve(null);
       }
     }),
-    findByStripeCustomerId: jest
+    findByAsaasCustomerId: jest
       .fn()
-      .mockImplementation((stripeCustomerId: string) => {
+      .mockImplementation((asaasCustomerId: string) => {
         const user = userMock.find(
           (user) =>
-            (user as Users & { stripeCustomerId?: string }).stripeCustomerId ===
-            stripeCustomerId,
+            (user as Users & { asaasCustomerId?: string }).asaasCustomerId ===
+            asaasCustomerId,
         );
         return Promise.resolve(user ?? null);
       }),

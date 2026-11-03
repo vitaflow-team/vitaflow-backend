@@ -1,16 +1,25 @@
+import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { createValidationPipe } from '@/config/validationPipe';
 import { AuthGuard } from '@/auth/auth.guard';
+import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
+import { NotificationsService } from '@/notifications/notifications.service';
 import { PrismaService } from '@/database/prisma.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { Clock } from '@/scheduling/clock.service';
 import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
 import { SubscriptionController } from '@/users/subscription/subscription.controller';
-import { SubscriptionSyncController } from '@/users/subscription/subscriptionSync.controller';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
-import { StripeVerification } from '@/utils/stripeVerification';
+import { SubscriptionWebhookController } from '@/users/subscription/subscriptionWebhook.controller';
+import { SubscriptionWebhookService } from '@/users/subscription/subscriptionWebhook.service';
+import {
+  PLATFORM_ASAAS_API_KEY,
+  PLATFORM_WEBHOOK_TOKEN,
+} from '@/users/subscription/platformGateway.tokens';
 import { UploadService } from '@/utils/upload.service';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -53,6 +62,7 @@ describe('Account deletion integration', () => {
   let deleteImage: jest.SpyInstance<Promise<void>, [fileUrl: string]>;
   const jwtSecret = 'profile-delete-integration-jwt-secret';
   const applicationSecret = 'profile-delete-integration-application-secret';
+  const webhookToken = 'profile-delete-integration-webhook-token';
   const createdUserIds = new Set<string>();
   let sequence = 0;
 
@@ -68,7 +78,7 @@ describe('Account deletion integration', () => {
       controllers: [
         ProfileController,
         SubscriptionController,
-        SubscriptionSyncController,
+        SubscriptionWebhookController,
       ],
       providers: [
         PrismaService,
@@ -78,7 +88,27 @@ describe('Account deletion integration', () => {
         UploadService,
         ProfileService,
         SubscriptionService,
-        StripeVerification,
+        SubscriptionWebhookService,
+        Clock,
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+        {
+          provide: AcademiaProvisioningService,
+          useValue: { provisionForOwner: jest.fn() },
+        },
+        {
+          provide: TemplatesService,
+          useValue: { ensureStarterTemplates: jest.fn() },
+        },
+        {
+          provide: PAYMENT_GATEWAY,
+          useValue: {
+            createSubscriptionCheckout: jest.fn(),
+            updateSubscription: jest.fn(),
+            createCharge: jest.fn(),
+          },
+        },
+        { provide: PLATFORM_ASAAS_API_KEY, useValue: 'test-platform-key' },
+        { provide: PLATFORM_WEBHOOK_TOKEN, useValue: webhookToken },
         AuthGuard,
         {
           provide: ConfigService,
@@ -87,7 +117,7 @@ describe('Account deletion integration', () => {
               key === 'APPLICATION_SECRET' ? applicationSecret : undefined,
           },
         },
-        // The real app registers this globally, and the webhook sync route
+        // The real app registers this globally, and the webhook route
         // relies on it instead of a user JWT — so it has to be here for
         // IT-009 to exercise the same gate production does.
         { provide: APP_GUARD, useClass: ApiKeyGuard },
@@ -385,20 +415,24 @@ describe('Account deletion integration', () => {
       .expect(401);
   });
 
-  it('IT-009 no-ops a late subscription sync for a customer that no longer exists', async () => {
+  it('IT-009 no-ops a late subscription webhook for a customer that no longer exists', async () => {
     const survivor = await createUser('sync-survivor');
     const before = await prisma.users.findUnique({
       where: { id: survivor.id },
     });
 
-    const response = await call('patch', '/users/subscription/sync')
+    await request(app.getHttpServer())
+      .post('/users/subscription/webhook')
+      .set('asaas-access-token', webhookToken)
       .send({
-        stripeCustomerId: `cus_deleted_${survivor.id}`,
-        subscriptionStatus: 'canceled',
+        event: 'SUBSCRIPTION_DELETED',
+        subscription: {
+          id: 'sub_whatever',
+          customer: `cus_deleted_${survivor.id}`,
+        },
       })
       .expect(200);
 
-    expect(response.body).toEqual({});
     expect(
       await prisma.users.findUnique({ where: { id: survivor.id } }),
     ).toEqual(before);

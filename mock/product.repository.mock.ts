@@ -11,7 +11,6 @@ export const productsMock = [
     price: 19.9,
     type: 'USER',
     groupId: 'group-1',
-    stripeId: 'st_123',
     tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -31,7 +30,6 @@ export const productsMock = [
     price: 29.9,
     type: 'USER',
     groupId: 'group-1',
-    stripeId: 'st_456',
     tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -51,7 +49,6 @@ export const productsMock = [
     price: 39.9,
     type: 'USER',
     groupId: 'group-1',
-    stripeId: 'st_123',
     tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -77,7 +74,6 @@ export const planProductsMock = [
     price: 0,
     type: 'USER',
     groupId: 'group-1',
-    stripeId: null,
     tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -89,7 +85,6 @@ export const planProductsMock = [
     price: 29.9,
     type: 'USER',
     groupId: 'group-1',
-    stripeId: 'st_premium',
     tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -101,7 +96,6 @@ export const planProductsMock = [
     price: 59.9,
     type: 'NUTRITIONIST',
     groupId: 'group-2',
-    stripeId: 'st_nutri_basic',
     tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -113,7 +107,6 @@ export const planProductsMock = [
     price: 59.9,
     type: 'NUTRITIONIST',
     groupId: 'group-2',
-    stripeId: 'st_nutri_pro',
     tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -125,7 +118,6 @@ export const planProductsMock = [
     price: 79.9,
     type: 'PHYSICAL_EDUCATOR',
     groupId: 'group-3',
-    stripeId: 'st_edu',
     tier: 'STANDARD',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -134,14 +126,13 @@ export const planProductsMock = [
 ] as unknown as ProductWithInfos[];
 
 // The Gratuito row every signup path now connects new users to: a USER
-// product priced at zero with no Stripe price id.
+// product priced at zero.
 export const freeProductMock = {
   id: 'free-1',
   name: 'Gratuito',
   price: 0,
   type: 'USER',
   groupId: 'group-1',
-  stripeId: null,
   tier: 'STANDARD',
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -158,12 +149,6 @@ export const ProductsRepositoryMock = {
     }),
     getAllProducts: jest.fn().mockImplementation(() => {
       return Promise.resolve(productsMock);
-    }),
-    findByStripeId: jest.fn().mockImplementation((stripeId: string) => {
-      const product = productsMock.find(
-        (product: Product) => product.stripeId === stripeId,
-      );
-      return Promise.resolve(product ?? null);
     }),
     listPlans: jest.fn().mockImplementation((type?: string) => {
       const plans = type

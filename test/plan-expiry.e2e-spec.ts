@@ -1,16 +1,20 @@
+import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { createValidationPipe } from '@/config/validationPipe';
 import { AuthGuard } from '@/auth/auth.guard';
+import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { PrismaService } from '@/database/prisma.service';
+import { NotificationsService } from '@/notifications/notifications.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { Clock } from '@/scheduling/clock.service';
 import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
 import { SubscriptionController } from '@/users/subscription/subscription.controller';
-import { SubscriptionSyncController } from '@/users/subscription/subscriptionSync.controller';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
-import { StripeVerification } from '@/utils/stripeVerification';
+import { PLATFORM_ASAAS_API_KEY } from '@/users/subscription/platformGateway.tokens';
 import { UploadService } from '@/utils/upload.service';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -51,11 +55,7 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
 
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: jwtSecret })],
-      controllers: [
-        ProfileController,
-        SubscriptionController,
-        SubscriptionSyncController,
-      ],
+      controllers: [ProfileController, SubscriptionController],
       providers: [
         PrismaService,
         UserRepository,
@@ -63,32 +63,26 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
         ProductsRepository,
         ProfileService,
         SubscriptionService,
+        Clock,
         AuthGuard,
-        // Stripe reports exactly what the seeded user holds: a live
-        // subscription on the stored plan, created for that user.
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
         {
-          provide: StripeVerification,
+          provide: AcademiaProvisioningService,
+          useValue: { provisionForOwner: jest.fn() },
+        },
+        {
+          provide: TemplatesService,
+          useValue: { ensureStarterTemplates: jest.fn() },
+        },
+        {
+          provide: PAYMENT_GATEWAY,
           useValue: {
-            verifySubscriptionWithStripe: async (
-              stripeSubscriptionId: string,
-              userId: string,
-            ) => {
-              const owner = await prisma.users.findUnique({
-                where: { stripeSubscriptionId },
-                include: { product: true },
-              });
-              if (!owner?.stripeCustomerId) {
-                return null;
-              }
-              return {
-                status: 'active',
-                priceId: owner.product?.stripeId ?? null,
-                customerId: owner.stripeCustomerId,
-                belongsToUser: owner.id === userId,
-              };
-            },
+            createSubscriptionCheckout: jest.fn(),
+            updateSubscription: jest.fn().mockResolvedValue(undefined),
+            createCharge: jest.fn(),
           },
         },
+        { provide: PLATFORM_ASAAS_API_KEY, useValue: 'test-platform-key' },
         {
           provide: UploadService,
           useValue: { getSignedUrl: jest.fn().mockResolvedValue(null) },
@@ -113,25 +107,21 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
     // Reuse the catalog when the database is seeded; otherwise add throwaway
     // rows that afterAll removes, so the catalog is left as it was found.
     const freeProduct = await prisma.product.findFirst({
-      where: { type: 'USER', price: 0, stripeId: null },
+      where: { type: 'USER', price: 0 },
     });
     freeProductId = freeProduct
       ? freeProduct.id
-      : await createTemporaryProduct('Gratuito', 0, null);
+      : await createTemporaryProduct('Gratuito', 0);
 
     const paidProduct = await prisma.product.findFirst({
       where: { type: 'USER', price: { gt: 0 } },
     });
     paidProductId = paidProduct
       ? paidProduct.id
-      : await createTemporaryProduct('Premium', 29.9, `price_${MARKER}`);
+      : await createTemporaryProduct('Premium', 29.9);
   });
 
-  async function createTemporaryProduct(
-    name: string,
-    price: number,
-    stripeId: string | null,
-  ) {
+  async function createTemporaryProduct(name: string, price: number) {
     if (!temporaryGroupId) {
       const group = await prisma.productGroup.create({
         data: { name: `${MARKER} group` },
@@ -139,7 +129,7 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
       temporaryGroupId = group.id;
     }
     const product = await prisma.product.create({
-      data: { name, price, type: 'USER', stripeId, groupId: temporaryGroupId },
+      data: { name, price, type: 'USER', groupId: temporaryGroupId },
     });
     temporaryProductIds.push(product.id);
     return product.id;
@@ -186,8 +176,8 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
         email: `${caseId}-${Date.now()}-${++requestIndex}@${MARKER}.test`,
         password: 'hash',
         active: true,
-        stripeCustomerId: `cus_${MARKER}_${requestIndex}`,
-        stripeSubscriptionId: `sub_${MARKER}_${requestIndex}`,
+        asaasCustomerId: `cus_${MARKER}_${requestIndex}`,
+        asaasSubscriptionId: `sub_${MARKER}_${requestIndex}`,
         ...data,
       },
     });
@@ -259,7 +249,7 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
       .expect(401);
   });
 
-  it('IT-007 returns expiresAt and autoRenew true after a reactivation payload', async () => {
+  it('IT-007 returns expiresAt and autoRenew true after reactivating', async () => {
     const user = await createUser('it-007', {
       productId: paidProductId,
       subscriptionStatus: 'active',
@@ -268,18 +258,9 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
     });
 
     const response = await request(app.getHttpServer())
-      .patch('/users/subscription')
+      .patch('/users/subscription/reactivate')
       .set('x-application-secret', applicationSecret)
       .set('Authorization', `Bearer ${await tokenFor(user)}`)
-      .send({
-        productId: paidProductId,
-        stripeCustomerId: user.stripeCustomerId,
-        stripeSubscriptionId: user.stripeSubscriptionId,
-        subscriptionStatus: 'active',
-        // Reactivation clears the scheduled cancellation.
-        subscriptionCancelAt: null,
-        subscriptionCurrentPeriodEnd: PERIOD_END.toISOString(),
-      })
       .expect(200);
 
     const body = response.body as {

@@ -25,9 +25,16 @@ interface StoredCharge {
   deleted: boolean;
 }
 
+interface StoredSubscription {
+  id: string;
+  value: number;
+  status: string;
+}
+
 export class FakeAsaasServer {
   readonly requests: RecordedRequest[] = [];
   readonly charges = new Map<string, StoredCharge>();
+  readonly subscriptions = new Map<string, StoredSubscription>();
   private server: Server | null = null;
   private counter = 0;
   slowMs = 1_500;
@@ -113,9 +120,61 @@ export class FakeAsaasServer {
         body,
         response,
       );
+    if (method === 'POST' && path === '/checkouts')
+      return this.createCheckout(body ?? {}, response);
+    if (path.startsWith('/subscriptions/'))
+      return this.subscriptionRoute(
+        method,
+        path.slice('/subscriptions/'.length),
+        body,
+        response,
+      );
     return this.send(response, 404, {
       errors: [{ description: 'Rota não encontrada.' }],
     });
+  }
+
+  // Mirrors the checkout's `items[0].value` and `subscription.cycle` onto a
+  // stored subscription straight away, same as Asaas creating the real
+  // subscription on checkout completion — tests drive the webhook
+  // separately (IT-030), this only needs to exist for `updateSubscription`
+  // (IT-031) to have something to act on.
+  private createCheckout(
+    body: Record<string, unknown>,
+    response: ServerResponse,
+  ): void {
+    const items = body.items as Array<{ value: number }> | undefined;
+    const id = this.nextId('checkout');
+    const subscriptionId = this.nextId('sub');
+    this.subscriptions.set(subscriptionId, {
+      id: subscriptionId,
+      value: items?.[0]?.value ?? 0,
+      status: 'ACTIVE',
+    });
+    return this.send(response, 200, {
+      id,
+      link: `https://sandbox.asaas.test/checkoutSession/show?id=${id}`,
+      subscription: subscriptionId,
+    });
+  }
+
+  private subscriptionRoute(
+    method: string,
+    id: string,
+    body: Record<string, unknown> | undefined,
+    response: ServerResponse,
+  ): void {
+    const subscription = this.subscriptions.get(id);
+    if (!subscription)
+      return this.send(response, 404, {
+        errors: [{ description: 'Assinatura não encontrada.' }],
+      });
+    if (method === 'PUT') {
+      if (body?.value !== undefined) subscription.value = Number(body.value);
+      if (typeof body?.status === 'string') subscription.status = body.status;
+      return this.send(response, 200, subscription);
+    }
+    return this.send(response, 405, {});
   }
 
   private createCharge(

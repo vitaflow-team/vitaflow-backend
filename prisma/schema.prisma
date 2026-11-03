@@ -38,17 +38,18 @@ model Users {
   termsAcceptedAt     DateTime?
   healthDataConsentAt DateTime?
 
-  // Mirrors Stripe's own state so the app can answer "is this user
-  // subscribed" without calling Stripe on every request. Stripe (via
+  // Mirrors Asaas's own state so the app can answer "is this user
+  // subscribed" without calling Asaas on every request. Asaas (via
   // webhooks) is still the source of truth — these are a cache of it.
-  stripeCustomerId     String?   @unique
-  stripeSubscriptionId String?   @unique
+  // (ADR-010: platform subscriptions moved here from Stripe.)
+  asaasCustomerId      String?   @unique
+  asaasSubscriptionId  String?   @unique
   subscriptionStatus   String?
   subscriptionCancelAt DateTime?
 
   // End of the current billing period, so the app can answer "when does
-  // this renew?" without calling Stripe. Null means unknown — either no
-  // subscription, or a subscriber whose next Stripe event hasn't filled
+  // this renew?" without calling Asaas. Null means unknown — either no
+  // subscription, or a subscriber whose next Asaas event hasn't filled
   // it in yet.
   subscriptionCurrentPeriodEnd DateTime?
 
@@ -385,7 +386,6 @@ model Product {
   groupId      String
   type         ProductType   @default(USER)
   tier         ProductTier   @default(STANDARD)
-  stripeId     String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   productInfos ProductInfo[]

@@ -5,18 +5,23 @@
  * NotificationsService/NotificationsRepository against an isolated
  * database — module-level integration, not an HTTP call, since
  * `NotificationsService.create()` has no public route (TechSpec). Only
- * `MailService` and `StripeVerification` are mocked.
+ * `MailService` and the Asaas gateway are mocked (ADR-010: platform
+ * subscriptions moved from Stripe to Asaas).
  *
  * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
  */
+import { AcademiaProvisioningService } from '@/academia/academia.service';
+import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
+import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { MailService } from '@/mail/mail.service';
 import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { NotificationsService } from '@/notifications/notifications.service';
 import { PrismaService } from '@/database/prisma.service';
-import { StripeVerification } from '@/utils/stripeVerification';
+import { Clock } from '@/scheduling/clock.service';
 import { SubscriptionService } from '@/users/subscription/subscription.service';
+import { PLATFORM_ASAAS_API_KEY } from '@/users/subscription/platformGateway.tokens';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProductType, Users } from '@prisma/client';
 
@@ -48,11 +53,25 @@ describe('Notifications billing trigger integration (IT-003)', () => {
         NotificationsRepository,
         NotificationsService,
         SubscriptionService,
+        Clock,
         { provide: MailService, useValue: { sendNotificationEmail } },
         {
-          provide: StripeVerification,
-          useValue: { verifySubscriptionWithStripe: jest.fn() },
+          provide: AcademiaProvisioningService,
+          useValue: { provisionForOwner: jest.fn() },
         },
+        {
+          provide: TemplatesService,
+          useValue: { ensureStarterTemplates: jest.fn() },
+        },
+        {
+          provide: PAYMENT_GATEWAY,
+          useValue: {
+            createSubscriptionCheckout: jest.fn(),
+            updateSubscription: jest.fn(),
+            createCharge: jest.fn(),
+          },
+        },
+        { provide: PLATFORM_ASAAS_API_KEY, useValue: 'test-platform-key' },
       ],
     }).compile();
     moduleFixture.useLogger(false);
@@ -83,7 +102,7 @@ describe('Notifications billing trigger integration (IT-003)', () => {
         password: 'unused-in-integration-test',
         active: true,
         productId: premiumProductId,
-        stripeCustomerId: `cus_${RUN_TAG}`,
+        asaasCustomerId: `cus_${RUN_TAG}`,
         subscriptionStatus: 'active',
       },
     });
@@ -112,10 +131,9 @@ describe('Notifications billing trigger integration (IT-003)', () => {
   });
 
   it('IT-003 creates an in-app row and attempts an email when the BILLING preference is enabled (default)', async () => {
-    await subscriptionService.syncFromWebhook({
-      stripeCustomerId: user.stripeCustomerId!,
-      stripePriceId: 'price_whatever',
-      stripeSubscriptionId: 'sub_1',
+    await subscriptionService.syncFromGateway({
+      asaasCustomerId: user.asaasCustomerId!,
+      asaasSubscriptionId: 'sub_1',
       subscriptionStatus: 'past_due',
     });
 
@@ -131,10 +149,9 @@ describe('Notifications billing trigger integration (IT-003)', () => {
       data: { userId: user.id, category: 'BILLING', enabled: false },
     });
 
-    await subscriptionService.syncFromWebhook({
-      stripeCustomerId: user.stripeCustomerId!,
-      stripePriceId: 'price_whatever',
-      stripeSubscriptionId: 'sub_1',
+    await subscriptionService.syncFromGateway({
+      asaasCustomerId: user.asaasCustomerId!,
+      asaasSubscriptionId: 'sub_1',
       subscriptionStatus: 'past_due',
     });
 

@@ -1,34 +1,41 @@
 import { AuthGuard } from '@/auth/auth.guard';
-import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
-import { academiaProvisioningServiceMock } from 'mock/academiaProvisioning.service.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
-import { notificationsServiceMock } from 'mock/notifications.service.mock';
-import { ProductsRepositoryMock } from 'mock/product.repository.mock';
-import { stripeVerificationMock } from 'mock/stripeVerification.mock';
-import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
+import { userRepositoryMock } from 'mock/user.repository.mock';
 import { SubscriptionController } from './subscription.controller';
 import { SubscriptionService } from './subscription.service';
 
 describe('SubscriptionController Tests', () => {
   let controller: SubscriptionController;
+  let service: {
+    getForUser: jest.Mock;
+    createCheckout: jest.Mock;
+    changePlan: jest.Mock;
+    cancel: jest.Mock;
+    reactivate: jest.Mock;
+  };
 
-  beforeAll(async () => {
+  beforeEach(async () => {
+    service = {
+      getForUser: jest.fn().mockResolvedValue({ productId: null }),
+      createCheckout: jest
+        .fn()
+        .mockResolvedValue({ link: 'https://asaas.test/c/1' }),
+      changePlan: jest.fn().mockResolvedValue({
+        productId: 'product-2',
+        subscriptionStatus: 'active',
+      }),
+      cancel: jest.fn().mockResolvedValue({ subscriptionStatus: 'active' }),
+      reactivate: jest.fn().mockResolvedValue({ subscriptionStatus: 'active' }),
+    };
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [SubscriptionController],
       providers: [
+        { provide: SubscriptionService, useValue: service },
         userRepositoryMock,
-        ProductsRepositoryMock,
         jwtServiceMock,
-        stripeVerificationMock,
-        notificationsServiceMock,
-        academiaProvisioningServiceMock,
-        {
-          provide: TemplatesService,
-          useValue: { ensureStarterTemplates: jest.fn() },
-        },
-        SubscriptionService,
       ],
     }).compile();
 
@@ -41,65 +48,45 @@ describe('SubscriptionController Tests', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('GET /users/subscription', () => {
-    it('returns the raw subscription state for the authenticated user', async () => {
-      const result = await controller.getSubscription({
-        user: { id: userMock[0].id },
-      });
-
-      expect(result.productId).toBeFalsy();
+  it('GET /users/subscription delegates to getForUser', async () => {
+    const result = await controller.getSubscription({
+      user: { id: 'user-1' },
     });
 
-    it('rejects when the user no longer exists', async () => {
-      await expect(
-        controller.getSubscription({ user: { id: 'idUserNotExists' } }),
-      ).rejects.toThrow('Usuário não encontrado.');
-    });
+    expect(service.getForUser).toHaveBeenCalledWith('user-1');
+    expect(result.productId).toBeFalsy();
   });
 
-  describe('PATCH /users/subscription', () => {
-    it('updates the productId and Stripe fields for the authenticated user', async () => {
-      const result = await controller.patchSubscription(
-        {
-          productId: '1',
-          stripeCustomerId: 'cus_123',
-          stripeSubscriptionId: 'sub_123',
-          subscriptionStatus: 'active',
-        },
-        { user: { id: userMock[0].id } },
-      );
+  it('POST /users/subscription/checkout delegates to createCheckout', async () => {
+    const result = await controller.createCheckout(
+      { productId: 'product-1' },
+      { user: { id: 'user-1' } },
+    );
 
-      expect(result.productId).toEqual('1');
-      expect(result.subscriptionStatus).toEqual('active');
-    });
+    expect(service.createCheckout).toHaveBeenCalledWith('user-1', 'product-1');
+    expect(result.link).toBe('https://asaas.test/c/1');
+  });
 
-    it('rejects a subscription Stripe does not know', async () => {
-      await expect(
-        controller.patchSubscription(
-          {
-            productId: '1',
-            stripeCustomerId: 'cus_123',
-            stripeSubscriptionId: 'sub_forged',
-            subscriptionStatus: 'active',
-          },
-          { user: { id: userMock[0].id } },
-        ),
-      ).rejects.toThrow('Assinatura inválida.');
-    });
+  it('PATCH /users/subscription/plan delegates to changePlan', async () => {
+    const result = await controller.changePlan(
+      { productId: 'product-2' },
+      { user: { id: 'user-1' } },
+    );
 
-    it('rejects an unknown productId', async () => {
-      await expect(
-        controller.patchSubscription(
-          {
-            productId: 'idProductNotExists',
-            stripeCustomerId: 'cus_123',
-            stripeSubscriptionId: 'sub_123',
-            subscriptionStatus: 'active',
-          },
-          { user: { id: userMock[0].id } },
-        ),
-      ).rejects.toThrow('Produto não encontrado.');
-    });
+    expect(service.changePlan).toHaveBeenCalledWith('user-1', 'product-2');
+    expect(result.productId).toEqual('product-2');
+  });
+
+  it('PATCH /users/subscription/cancel delegates to cancel', async () => {
+    await controller.cancel({ user: { id: 'user-1' } });
+
+    expect(service.cancel).toHaveBeenCalledWith('user-1');
+  });
+
+  it('PATCH /users/subscription/reactivate delegates to reactivate', async () => {
+    await controller.reactivate({ user: { id: 'user-1' } });
+
+    expect(service.reactivate).toHaveBeenCalledWith('user-1');
   });
 
   // standards-enforcement US-006: the class is guarded as a whole.
