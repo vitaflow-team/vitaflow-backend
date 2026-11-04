@@ -16,7 +16,9 @@ import { ConversationState, ConversationTurn } from './llmExplanation.types';
 import { OPENAI_CLIENT } from './openaiClient.provider';
 import { GeneratedPlan } from './ruleEngine.types';
 
-export const OPENAI_MODEL = 'gpt-5-mini';
+// LLM_MODEL overrides the default for dev/test against a non-OpenAI
+// endpoint (paired with LLM_BASE_URL in openaiClient.provider.ts).
+export const OPENAI_MODEL = process.env.LLM_MODEL || 'gpt-5-mini';
 
 const GENERATION_FAILED =
   'Não foi possível gerar o treino no momento. Tente novamente.';

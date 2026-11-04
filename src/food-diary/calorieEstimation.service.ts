@@ -4,7 +4,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { CALORIE_ESTIMATE_JSON_SCHEMA } from './calorieEstimation.schema';
 
-export const OPENAI_MODEL = 'gpt-5-mini';
+// Shares LLM_MODEL with LlmExplanationService: both inject the same
+// OPENAI_CLIENT (see the class comment below), so they must agree on
+// which model that client's endpoint actually serves.
+export const OPENAI_MODEL = process.env.LLM_MODEL || 'gpt-5-mini';
 
 const ESTIMATE_FAILED = 'Não foi possível estimar as calorias.';
 

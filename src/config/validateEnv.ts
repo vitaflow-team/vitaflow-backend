@@ -89,6 +89,12 @@ function assertWellFormed(env: NodeJS.ProcessEnv): void {
     );
   }
 
+  if (isPresent(env.LLM_BASE_URL) && !isHttpUrl(env.LLM_BASE_URL!)) {
+    throw new Error(
+      'Invalid environment variable: LLM_BASE_URL must be an absolute http(s) URL',
+    );
+  }
+
   decodeCipherKey(env.BILLING_ENCRYPTION_KEY!);
 }
 
