@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AcademiaModule } from './academia/academia.module';
 import { AuthModule } from './auth/auth.module';
@@ -8,6 +8,8 @@ import { BackofficeModule } from './backoffice/backoffice.module';
 import { BillingModule } from './billing/billing.module';
 import { ClientsModule } from './clients/clients.module';
 import { ClinicalRecordsModule } from './clinical-records/clinicalRecords.module';
+import { ErrorMonitoringModule } from './error-monitoring/errorMonitoring.module';
+import { SentryExceptionFilter } from './error-monitoring/sentryExceptionFilter';
 import { MealPlansModule } from './meal-plans/mealPlans.module';
 import { NutritionistPatientsModule } from './nutritionist-patients/nutritionistPatients.module';
 import { ProfessionalFoodDiaryModule } from './professional-food-diary/professionalFoodDiary.module';
@@ -68,6 +70,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     MealPlansModule,
     ProfessionalFoodDiaryModule,
     BillingModule,
+    ErrorMonitoringModule,
   ],
   controllers: [],
   providers: [
@@ -81,6 +84,10 @@ import { WorkoutsModule } from './workouts/workouts.module';
     {
       provide: APP_GUARD,
       useClass: ViewAsWriteBlockGuard,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: SentryExceptionFilter,
     },
   ],
 })
