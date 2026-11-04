@@ -18,6 +18,12 @@ const requiredEnv = {
   MAIL_PASS: 'mail-password',
   BILLING_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
   API_PUBLIC_URL: 'https://api.vitaflow.test',
+  SENTRY_DSN: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+  SENTRY_API_TOKEN: 'sentry-api-token',
+  SENTRY_ORG_SLUG: 'vitaflow-org',
+  SENTRY_BACKEND_PROJECT_SLUG: 'vitaflow-backend',
+  SENTRY_FRONTEND_PROJECT_SLUG: 'vitaflow-frontend',
+  ERROR_ALERT_EMAIL: 'ops@vitaflow.app',
 };
 
 describe('validateEnv', () => {
@@ -128,6 +134,12 @@ describe('validateEnv', () => {
       'MAIL_PORT',
       'MAIL_USER',
       'MAIL_PASS',
+      'SENTRY_DSN',
+      'SENTRY_API_TOKEN',
+      'SENTRY_ORG_SLUG',
+      'SENTRY_BACKEND_PROJECT_SLUG',
+      'SENTRY_FRONTEND_PROJECT_SLUG',
+      'ERROR_ALERT_EMAIL',
     ])('names a missing %s', (variable) => {
       expect(() =>
         validateEnv({ ...requiredEnv, [variable]: undefined }),
@@ -144,6 +156,12 @@ describe('validateEnv', () => {
           CORS_ALLOWED_ORIGINS: 'https://a.example.com, not a url',
         }),
       ).toThrow('CORS_ALLOWED_ORIGINS');
+    });
+
+    it('rejects a non-URL SENTRY_DSN', () => {
+      expect(() =>
+        validateEnv({ ...requiredEnv, SENTRY_DSN: 'not-a-url' }),
+      ).toThrow('SENTRY_DSN');
     });
 
     it('rejects a TRUST_PROXY_HOPS that is not a non-negative integer', () => {

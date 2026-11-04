@@ -18,6 +18,12 @@ const REQUIRED_VARIABLES = [
   'MAIL_PASS',
   'BILLING_ENCRYPTION_KEY',
   'API_PUBLIC_URL',
+  'SENTRY_DSN',
+  'SENTRY_API_TOKEN',
+  'SENTRY_ORG_SLUG',
+  'SENTRY_BACKEND_PROJECT_SLUG',
+  'SENTRY_FRONTEND_PROJECT_SLUG',
+  'ERROR_ALERT_EMAIL',
 ] as const;
 
 export const JWT_SECRET_MIN_LENGTH = 32;
@@ -92,6 +98,12 @@ function assertWellFormed(env: NodeJS.ProcessEnv): void {
   if (isPresent(env.LLM_BASE_URL) && !isHttpUrl(env.LLM_BASE_URL!)) {
     throw new Error(
       'Invalid environment variable: LLM_BASE_URL must be an absolute http(s) URL',
+    );
+  }
+
+  if (!isHttpUrl(env.SENTRY_DSN!)) {
+    throw new Error(
+      'Invalid environment variable: SENTRY_DSN must be an absolute http(s) URL',
     );
   }
 
