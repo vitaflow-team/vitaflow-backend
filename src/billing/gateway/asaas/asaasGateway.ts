@@ -30,6 +30,20 @@ const WEBHOOK_EVENTS = [
   'PAYMENT_DELETED',
 ] as const;
 
+const PAYMENTS_PAGE_LIMIT = 100;
+
+// RECEIVED/CONFIRMED are Asaas's own "money actually collected" statuses —
+// the same ones `mapChargeStatus` below treats as PAID. PENDING/OVERDUE
+// (and anything else) never count toward the platform's own collected
+// revenue (platform-metrics-dashboard ADR-001/ADR-004).
+const COLLECTED_PAYMENT_STATUSES = ['RECEIVED', 'CONFIRMED'];
+
+export interface AsaasPaymentsPage {
+  payments: { value: number; status: string; paymentDate: string }[];
+  hasMore: boolean;
+  offset: number;
+}
+
 interface AsaasRequest {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string;
@@ -276,6 +290,40 @@ export class AsaasGateway implements PaymentGateway {
       },
       retryable: false,
     });
+  }
+
+  // The platform's own collected revenue for a date range (platform-
+  // metrics-dashboard ADR-001/ADR-004) — loops Asaas's own pagination
+  // internally so callers only ever see the final total, and sums only
+  // RECEIVED/CONFIRMED payments (money actually collected), never
+  // PENDING/OVERDUE. Same retry/timeout/GatewayError shape as every other
+  // read on this gateway.
+  async listPayments(
+    apiKey: string,
+    { from, to }: { from: string; to: string },
+  ): Promise<number> {
+    let total = 0;
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const page = await this.call<AsaasPaymentsPage>(apiKey, {
+        method: 'GET',
+        path:
+          `/payments?paymentDate[ge]=${from}&paymentDate[lt]=${to}` +
+          `&limit=${PAYMENTS_PAGE_LIMIT}&offset=${offset}`,
+        retryable: true,
+      });
+      total += page.payments
+        .filter((payment) =>
+          COLLECTED_PAYMENT_STATUSES.includes(payment.status),
+        )
+        .reduce((sum, payment) => sum + payment.value, 0);
+      hasMore = page.hasMore;
+      offset += PAYMENTS_PAGE_LIMIT;
+    }
+
+    return total;
   }
 
   private async call<T = unknown>(

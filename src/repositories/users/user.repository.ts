@@ -1,16 +1,30 @@
 import { PrismaService } from '@/database/prisma.service';
 import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
+import { PAID_STATUSES } from '@/users/subscription/subscriptionExpiry';
 import { escapeLikePattern } from '@/utils/escapeLikePattern';
+import { startOfMonth, startOfNextMonth } from '@/utils/monthRange';
 import { Injectable } from '@nestjs/common';
 import {
   BackofficeTier,
   Prisma,
   Product,
+  ProductTier,
   ProductType,
   UserAddress,
   Users,
   UsersToken,
 } from '@prisma/client';
+
+export interface RegisteredByRoleAndPlanCount {
+  role: ProductType;
+  free: number;
+  premium: number;
+}
+
+export interface RoleCount {
+  role: ProductType;
+  count: number;
+}
 
 @Injectable()
 export class UserRepository {
@@ -338,6 +352,99 @@ export class UserRepository {
       include: { product: { select: { type: true } } },
       orderBy: { name: 'asc' },
     });
+  }
+
+  // Platform metrics dashboard (task_01): every registered user has exactly
+  // one product at all times (PRD Business Rules), so one count() per
+  // role×plan cell is used instead of groupBy — unlike groupBy, it never
+  // silently omits a cell with zero users, the exact gap UT-002 guards
+  // against. "Premium" collapses ProductTier.STANDARD and PREMIUM (any paid
+  // plan); only FREE is "free" — the PRD's Free/Premium framing only has
+  // two buckets even though ProductTier itself has three values.
+  async countRegisteredByRoleAndPlan(): Promise<
+    RegisteredByRoleAndPlanCount[]
+  > {
+    return await Promise.all(
+      Object.values(ProductType).map(async (role) => {
+        const [free, premium] = await Promise.all([
+          this.prisma.users.count({
+            where: {
+              isBackoffice: false,
+              product: { type: role, tier: ProductTier.FREE },
+            },
+          }),
+          this.prisma.users.count({
+            where: {
+              isBackoffice: false,
+              product: { type: role, tier: { not: ProductTier.FREE } },
+            },
+          }),
+        ]);
+        return { role, free, premium };
+      }),
+    );
+  }
+
+  // New registrations this month, grouped the same role-by-role way as
+  // countRegisteredByRoleAndPlan above (see its comment for why not groupBy).
+  async countNewRegistrationsThisMonth(): Promise<RoleCount[]> {
+    const now = new Date();
+    const createdAt = { gte: startOfMonth(now), lt: startOfNextMonth(now) };
+    return await Promise.all(
+      Object.values(ProductType).map(async (role) => ({
+        role,
+        count: await this.prisma.users.count({
+          where: { isBackoffice: false, product: { type: role }, createdAt },
+        }),
+      })),
+    );
+  }
+
+  // "Canceled this month" reads subscriptionCancelAt's *current* value, so a
+  // cancel-then-reactivate within the month (which clears it back to null)
+  // is never counted (PRD Business Rules, UT-006) — a null value never
+  // satisfies a gte/lt range, so this needs no extra "not null" check.
+  async countCanceledThisMonth(): Promise<RoleCount[]> {
+    const now = new Date();
+    const subscriptionCancelAt = {
+      gte: startOfMonth(now),
+      lt: startOfNextMonth(now),
+    };
+    return await Promise.all(
+      Object.values(ProductType).map(async (role) => ({
+        role,
+        count: await this.prisma.users.count({
+          where: {
+            isBackoffice: false,
+            product: { type: role },
+            subscriptionCancelAt,
+          },
+        }),
+      })),
+    );
+  }
+
+  // Sums each active subscriber's own product price (ADR-001: platform
+  // subscriptions only, "active" = PAID_STATUSES, the same definition
+  // premium access already uses). `price` lives on `Product`, not `Users`,
+  // so a per-subscriber-weighted total can't come from a single-model
+  // `_sum`/`groupBy` aggregate the way `countAdmins` uses `count` — a
+  // product-level aggregate would sum each product's price once, not once
+  // per active subscriber. This reads every active user's product price
+  // directly and reduces client-side instead.
+  async sumActiveSubscriptionRevenue(): Promise<number> {
+    const activeUsers = await this.prisma.users.findMany({
+      where: {
+        isBackoffice: false,
+        subscriptionStatus: { in: PAID_STATUSES },
+      },
+      select: { product: { select: { price: true } } },
+    });
+
+    return activeUsers.reduce(
+      (total, user) => total + (user.product?.price ?? 0),
+      0,
+    );
   }
 
   async updateUserProfile(

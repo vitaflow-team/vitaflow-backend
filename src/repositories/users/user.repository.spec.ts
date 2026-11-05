@@ -1,7 +1,8 @@
 import { PrismaService } from '@/database/prisma.service';
 import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
+import { startOfMonth, startOfNextMonth } from '@/utils/monthRange';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Prisma, Users } from '@prisma/client';
+import { Prisma, ProductTier, ProductType, Users } from '@prisma/client';
 import { userMock } from 'mock/user.repository.mock';
 import { UserRepository } from './user.repository';
 
@@ -466,6 +467,182 @@ describe('UserRepository Tests', () => {
       });
       expect(calls.indexOf('client.updateMany')).toBeLessThan(
         calls.indexOf('users.delete'),
+      );
+    });
+  });
+
+  // platform-metrics-dashboard task_01, UT-001..UT-007 — the 4 new
+  // aggregate methods. Built with their own Prisma double exposing only
+  // `count`/`findMany`, the two primitives these methods use.
+  describe('Platform metrics aggregates', () => {
+    let repository: UserRepository;
+    let count: jest.Mock;
+    let findMany: jest.Mock;
+
+    beforeEach(async () => {
+      count = jest.fn().mockResolvedValue(0);
+      findMany = jest.fn().mockResolvedValue([]);
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          UserRepository,
+          { provide: PrismaService, useValue: { users: { count, findMany } } },
+        ],
+      }).compile();
+
+      repository = module.get<UserRepository>(UserRepository);
+    });
+
+    function byRoleAndTier(
+      counts: Partial<Record<ProductType, { free: number; premium: number }>>,
+    ) {
+      return ({
+        where,
+      }: {
+        where: { product: { type: ProductType; tier: unknown } };
+      }) => {
+        const { type, tier } = where.product;
+        const entry = counts[type] ?? { free: 0, premium: 0 };
+        return Promise.resolve(
+          tier === ProductTier.FREE ? entry.free : entry.premium,
+        );
+      };
+    }
+
+    // UT-001
+    it('countRegisteredByRoleAndPlan returns the correct count for every role×plan cell', async () => {
+      count.mockImplementation(
+        byRoleAndTier({
+          [ProductType.USER]: { free: 3, premium: 2 },
+          [ProductType.NUTRITIONIST]: { free: 1, premium: 5 },
+          [ProductType.PHYSICAL_EDUCATOR]: { free: 0, premium: 4 },
+          [ProductType.ACADEMIA]: { free: 0, premium: 1 },
+        }),
+      );
+
+      const result = await repository.countRegisteredByRoleAndPlan();
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          { role: ProductType.USER, free: 3, premium: 2 },
+          { role: ProductType.NUTRITIONIST, free: 1, premium: 5 },
+          { role: ProductType.PHYSICAL_EDUCATOR, free: 0, premium: 4 },
+          { role: ProductType.ACADEMIA, free: 0, premium: 1 },
+        ]),
+      );
+    });
+
+    // UT-002
+    it('includes a role with zero users as 0, never omitted from the array', async () => {
+      count.mockResolvedValue(0);
+
+      const result = await repository.countRegisteredByRoleAndPlan();
+
+      expect(result).toHaveLength(4);
+      expect(result.map((entry) => entry.role).sort()).toEqual(
+        Object.values(ProductType).sort(),
+      );
+      expect(
+        result.every((entry) => entry.free === 0 && entry.premium === 0),
+      ).toBe(true);
+    });
+
+    // UT-003
+    it('countNewRegistrationsThisMonth counts only this month, grouped by role', async () => {
+      count.mockImplementation(
+        ({ where }: { where: { product: { type: ProductType } } }) =>
+          Promise.resolve(where.product.type === ProductType.USER ? 7 : 0),
+      );
+
+      const result = await repository.countNewRegistrationsThisMonth();
+
+      expect(result).toEqual(
+        expect.arrayContaining([{ role: ProductType.USER, count: 7 }]),
+      );
+      expect(result).toHaveLength(4);
+    });
+
+    // UT-004 — a user at the last instant of the previous month must fail
+    // this filter and one at the first instant of this month must pass it.
+    // Proven directly against the exact boundaries the method sends to
+    // Prisma: `gte` is inclusive of this month's first instant, `lt` is
+    // exclusive of next month's first instant, so nothing from the
+    // previous month can ever satisfy it.
+    it('countNewRegistrationsThisMonth filters with an inclusive start and exclusive end of the current month', async () => {
+      const now = new Date();
+      const expectedGte = startOfMonth(now);
+      const expectedLt = startOfNextMonth(now);
+      const lastInstantOfPreviousMonth = new Date(expectedGte.getTime() - 1);
+
+      await repository.countNewRegistrationsThisMonth();
+
+      const [{ where }] = count.mock.calls[0] as [
+        { where: { createdAt: { gte: Date; lt: Date } } },
+      ];
+      expect(where.createdAt.gte.getTime()).toBe(expectedGte.getTime());
+      expect(where.createdAt.lt.getTime()).toBe(expectedLt.getTime());
+      expect(lastInstantOfPreviousMonth.getTime()).toBeLessThan(
+        where.createdAt.gte.getTime(),
+      );
+    });
+
+    // UT-005
+    it('countCanceledThisMonth counts only this month, grouped by role', async () => {
+      count.mockImplementation(
+        ({ where }: { where: { product: { type: ProductType } } }) =>
+          Promise.resolve(
+            where.product.type === ProductType.NUTRITIONIST ? 2 : 0,
+          ),
+      );
+
+      const result = await repository.countCanceledThisMonth();
+
+      expect(result).toEqual(
+        expect.arrayContaining([{ role: ProductType.NUTRITIONIST, count: 2 }]),
+      );
+      expect(result).toHaveLength(4);
+    });
+
+    // UT-006 — a reactivation clears `subscriptionCancelAt` to null, and a
+    // null value never satisfies a `gte`/`lt` range filter (proven at the
+    // real-database level by IT-004); this only confirms the method filters
+    // solely on that range, with no separate boolean this null-clearing
+    // could bypass.
+    it('countCanceledThisMonth filters only on the subscriptionCancelAt range', async () => {
+      await repository.countCanceledThisMonth();
+
+      const [{ where }] = count.mock.calls[0] as [
+        { where: { subscriptionCancelAt: { gte: Date; lt: Date } } },
+      ];
+      expect(Object.keys(where.subscriptionCancelAt).sort()).toEqual([
+        'gte',
+        'lt',
+      ]);
+    });
+
+    // UT-007
+    it("sumActiveSubscriptionRevenue sums active subscribers' product price, and 0 with none", async () => {
+      findMany.mockResolvedValueOnce([]);
+      expect(await repository.sumActiveSubscriptionRevenue()).toBe(0);
+
+      const manyActiveUsers = Array.from({ length: 500 }, (_, i) => ({
+        product: { price: i % 2 === 0 ? 19.9 : 99.9 },
+      }));
+      findMany.mockResolvedValueOnce(manyActiveUsers);
+
+      const total = await repository.sumActiveSubscriptionRevenue();
+
+      const expected = manyActiveUsers.reduce(
+        (sum, user) => sum + user.product.price,
+        0,
+      );
+      expect(total).toBeCloseTo(expected, 5);
+
+      const [{ where }] = findMany.mock.calls[1] as [
+        { where: { subscriptionStatus: { in: string[] } } },
+      ];
+      expect(where.subscriptionStatus.in).toEqual(
+        expect.arrayContaining(['active', 'trialing', 'past_due']),
       );
     });
   });

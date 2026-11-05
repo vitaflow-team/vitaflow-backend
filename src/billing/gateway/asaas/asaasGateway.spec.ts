@@ -289,6 +289,104 @@ describe('Asaas subscription update/cancel errors (UT-151)', () => {
   });
 });
 
+describe('Asaas platform payments list (UT-008..UT-012)', () => {
+  it('UT-008 sums a single page of RECEIVED payments', async () => {
+    const { gateway, fetchImpl } = gatewayWith([
+      reply(200, {
+        payments: [
+          { value: 10, status: 'RECEIVED', paymentDate: '2026-10-05' },
+          { value: 20, status: 'RECEIVED', paymentDate: '2026-10-10' },
+        ],
+        hasMore: false,
+        offset: 0,
+      }),
+    ]);
+
+    const total = await gateway.listPayments(KEY, {
+      from: '2026-10-01',
+      to: '2026-11-01',
+    });
+
+    expect(total).toBe(30);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('UT-009 sums across every page of a multi-page response', async () => {
+    const { gateway, fetchImpl } = gatewayWith([
+      reply(200, {
+        payments: [
+          { value: 10, status: 'RECEIVED', paymentDate: '2026-10-05' },
+        ],
+        hasMore: true,
+        offset: 0,
+      }),
+      reply(200, {
+        payments: [
+          { value: 15, status: 'CONFIRMED', paymentDate: '2026-10-20' },
+        ],
+        hasMore: false,
+        offset: 100,
+      }),
+    ]);
+
+    const total = await gateway.listPayments(KEY, {
+      from: '2026-10-01',
+      to: '2026-11-01',
+    });
+
+    expect(total).toBe(25);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('UT-010 sums only RECEIVED/CONFIRMED, never PENDING/OVERDUE', async () => {
+    const { gateway } = gatewayWith([
+      reply(200, {
+        payments: [
+          { value: 10, status: 'RECEIVED', paymentDate: '2026-10-05' },
+          { value: 999, status: 'PENDING', paymentDate: '2026-10-06' },
+          { value: 20, status: 'CONFIRMED', paymentDate: '2026-10-10' },
+          { value: 999, status: 'OVERDUE', paymentDate: '2026-10-11' },
+        ],
+        hasMore: false,
+        offset: 0,
+      }),
+    ]);
+
+    const total = await gateway.listPayments(KEY, {
+      from: '2026-10-01',
+      to: '2026-11-01',
+    });
+
+    expect(total).toBe(30);
+  });
+
+  it('UT-011 throws GatewayError(auth) on a 401', async () => {
+    const { gateway } = gatewayWith([reply(401, {})]);
+
+    await expect(
+      gateway.listPayments(KEY, { from: '2026-10-01', to: '2026-11-01' }),
+    ).rejects.toMatchObject({ kind: 'auth' });
+  });
+
+  it('UT-012 throws GatewayError(unavailable) when the request times out', async () => {
+    const never: typeof fetch = (_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        (init!.signal as AbortSignal).addEventListener('abort', () =>
+          reject(new Error('aborted')),
+        );
+      });
+    const slow = new AsaasGateway(BASE, {
+      fetchImpl: never,
+      timeoutMs: 20,
+      sleep: () => Promise.resolve(),
+    });
+
+    await expect(
+      slow.listPayments(KEY, { from: '2026-10-01', to: '2026-11-01' }),
+    ).rejects.toMatchObject({ kind: 'unavailable' });
+  });
+});
+
 describe('Asaas charge statuses (UT-023)', () => {
   it('maps paid, overdue, pending, deleted and unhandled statuses', () => {
     for (const status of ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']) {

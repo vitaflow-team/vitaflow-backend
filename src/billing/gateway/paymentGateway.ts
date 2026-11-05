@@ -96,6 +96,13 @@ export interface PaymentGateway {
     subscriptionId: string,
     changes: SubscriptionChanges,
   ): Promise<void>;
+  // The platform's own collected revenue for a date range (platform-
+  // metrics-dashboard ADR-001/ADR-004) — sums only payments actually
+  // collected (never a pending/overdue one), looping pagination internally.
+  listPayments(
+    apiKey: string,
+    range: { from: string; to: string },
+  ): Promise<number>;
 }
 
 export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
