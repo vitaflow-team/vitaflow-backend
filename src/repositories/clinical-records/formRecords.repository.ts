@@ -8,7 +8,19 @@ import {
   TemplatePurpose,
 } from '@prisma/client';
 
-export type FormRecordWithValues = FormRecord & { values: FormRecordValue[] };
+export type FormRecordWithValues = FormRecord & {
+  values: FormRecordValue[];
+  // Optional: only `findOwned`/`findHistory` actually select it (pdf-export,
+  // ADR-010 — the template's own name/owner, needed for the PDF header).
+  // Kept optional so every other caller of this type (whose queries never
+  // include it) keeps compiling unchanged.
+  template?: {
+    id: string;
+    name: string;
+    professional: { id: string; name: string } | null;
+    academia: { id: string; name: string } | null;
+  };
+};
 
 export type FormRecordWithRecorder = FormRecordWithValues & {
   client: { professional: { id: string; name: string } | null };
@@ -30,6 +42,21 @@ const NEWEST_FIRST: Prisma.FormRecordOrderByWithRelationInput[] = [
   { recordedAt: 'desc' },
   { createdAt: 'desc' },
 ];
+
+// pdf-export (ADR-010): the template's own name/owner, for the PDF header —
+// never used to re-derive a value (values are a frozen snapshot, see
+// FormRecordValue's own comment); additive, so findOwned/findHistory's
+// existing callers keep compiling unchanged (IT-009).
+const TEMPLATE_OWNER_INCLUDE = {
+  template: {
+    select: {
+      id: true,
+      name: true,
+      professional: { select: { id: true, name: true } },
+      academia: { select: { id: true, name: true } },
+    },
+  },
+} satisfies Prisma.FormRecordInclude;
 
 function valuesCreateInput(
   values: FormRecordValueInput[],
@@ -76,7 +103,10 @@ export class FormRecordsRepository {
   ): Promise<FormRecordWithValues | null> {
     return await this.prisma.formRecord.findFirst({
       where: { id, clientId },
-      include: { values: { orderBy: { position: 'asc' } } },
+      include: {
+        values: { orderBy: { position: 'asc' } },
+        ...TEMPLATE_OWNER_INCLUDE,
+      },
     });
   }
 
@@ -102,7 +132,10 @@ export class FormRecordsRepository {
   ): Promise<FormRecordWithValues[]> {
     return await this.prisma.formRecord.findMany({
       where: { clientId, template: { purpose } },
-      include: { values: { orderBy: { position: 'asc' } } },
+      include: {
+        values: { orderBy: { position: 'asc' } },
+        ...TEMPLATE_OWNER_INCLUDE,
+      },
       orderBy: NEWEST_FIRST,
     });
   }

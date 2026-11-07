@@ -19,6 +19,9 @@ import { MealPlansService } from './mealPlans.service';
     MealPlansRepository,
     MealPlansService,
   ],
-  exports: [MealPlansService],
+  // MealPlansRepository is also exported for pdf-export (ADR-010): it needs
+  // the raw MealPlanWithDays shape (e.g. `status`), which MealPlansService's
+  // DTO-mapped return types strip.
+  exports: [MealPlansService, MealPlansRepository],
 })
 export class MealPlansModule {}

@@ -59,6 +59,9 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     StudentWorkoutsService,
     Clock,
   ],
-  exports: [StudentsService],
+  // EducatorWorkoutsRepository is also exported for pdf-export (ADR-010).
+  // FormRecordsRepository is a provider here too but is NOT exported from
+  // this module — ClinicalRecordsModule is the intended export point for it.
+  exports: [StudentsService, EducatorWorkoutsRepository],
 })
 export class EducatorStudentsModule {}
