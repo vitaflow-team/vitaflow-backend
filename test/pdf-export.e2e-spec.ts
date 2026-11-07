@@ -484,7 +484,7 @@ describe('PDF export integration', () => {
   describe('GET /professionals/clients/:clientId/form-records/:id/pdf', () => {
     it('IT-007 401 without a token; 403/404 for a non-owned client/record; 200 success', async () => {
       const student = await makeClient({ professionalId: nutritionist.id });
-      const { template, record } = await seedFormRecord({
+      const { record } = await seedFormRecord({
         professionalId: nutritionist.id,
         clientId: student.id,
       });
@@ -500,8 +500,6 @@ describe('PDF export integration', () => {
       const success = await owner.get(base);
       expect(success.status).toBe(200);
       expect(success.headers['content-type']).toContain('application/pdf');
-
-      await prisma.assessmentTemplate.delete({ where: { id: template.id } });
     });
   });
 
@@ -511,7 +509,7 @@ describe('PDF export integration', () => {
         academiaId: academia.id,
         professionalId: educatorB.id,
       });
-      const { template, record } = await seedFormRecord({
+      const { record } = await seedFormRecord({
         academiaId: academia.id,
         clientId: student.id,
       });
@@ -530,8 +528,6 @@ describe('PDF export integration', () => {
       const employedEducator = await as(educatorB);
       const employedSuccess = await employedEducator.get(base);
       expect(employedSuccess.status).toBe(200);
-
-      await prisma.assessmentTemplate.delete({ where: { id: template.id } });
     });
   });
 
@@ -553,8 +549,6 @@ describe('PDF export integration', () => {
     // Additive-only: the new field is present without displacing anything
     // findHistory's existing callers (toFormRecordResponse) already read.
     expect(history[0].template?.name).toBe(template.name);
-
-    await prisma.assessmentTemplate.delete({ where: { id: template.id } });
   });
 
   async function seedFormRecord(owner: {
