@@ -1,10 +1,10 @@
+import { ConversationStore } from '@/common/conversation/conversationStore';
 import { PrismaService } from '@/database/prisma.service';
 import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
 import { FitnessProfileRepository } from '@/repositories/fitness-profile/fitnessProfile.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { WorkoutsRepository } from '@/repositories/workouts/workouts.repository';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConversationStore } from './conversationStore';
 import { LlmExplanationService } from './llmExplanation.service';
 import { RuleEngineService } from './ruleEngine.service';
 import { WorkoutsController } from './workouts.controller';

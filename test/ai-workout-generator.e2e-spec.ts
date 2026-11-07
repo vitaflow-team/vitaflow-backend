@@ -17,7 +17,7 @@ import { ExercisesRepository } from '@/repositories/exercise-library/exercises.r
 import { FitnessProfileRepository } from '@/repositories/fitness-profile/fitnessProfile.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { WorkoutsRepository } from '@/repositories/workouts/workouts.repository';
-import { ConversationStore } from '@/workouts/conversationStore';
+import { ConversationStore } from '@/common/conversation/conversationStore';
 import { LlmExplanationService } from '@/workouts/llmExplanation.service';
 import { OPENAI_CLIENT } from '@/workouts/openaiClient.provider';
 import { RuleEngineService } from '@/workouts/ruleEngine.service';

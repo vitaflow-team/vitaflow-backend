@@ -14,7 +14,7 @@ import {
   FitnessProfile,
   MuscleFocus,
 } from '@prisma/client';
-import { ConversationStore, OrchestrationState } from './conversationStore';
+import { ConversationStore } from '@/common/conversation/conversationStore';
 import { isPlanUsable, toWorkoutInput } from './generatedPlan.util';
 import {
   ConversationAnswers,
@@ -24,7 +24,11 @@ import {
 import { LlmExplanationService } from './llmExplanation.service';
 import { PremiumGuard } from '@/common/guards/premium.guard';
 import { RuleEngineService } from './ruleEngine.service';
-import { ConversationTurnResult, DeterministicField } from './workouts.types';
+import {
+  ConversationTurnResult,
+  DeterministicField,
+  OrchestrationState,
+} from './workouts.types';
 
 const NOT_FOUND = 'Recurso não encontrado.';
 const CONVERSATION_NOT_FOUND = 'Conversa não encontrada ou expirada.';
@@ -102,7 +106,7 @@ export class WorkoutsService {
     private readonly ruleEngine: RuleEngineService,
     private readonly llm: LlmExplanationService,
     private readonly workouts: WorkoutsRepository,
-    private readonly conversations: ConversationStore,
+    private readonly conversations: ConversationStore<OrchestrationState>,
     private readonly premiumGuard: PremiumGuard,
   ) {}
 

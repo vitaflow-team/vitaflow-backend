@@ -141,6 +141,36 @@ export class MealPlansRepository {
     return (await this.findById(mealPlanId))!;
   }
 
+  // Replaces all 7 weekdays' meals in ONE transaction (AI meal-plan
+  // generation, PRD's full-week atomicity rule) — unlike `replaceDayMeals`,
+  // which is scoped to exactly one weekday per call and is not atomic
+  // across multiple calls. A mid-write failure (e.g. the 4th day) rolls
+  // back every day touched so far, leaving the draft exactly as it was.
+  async replaceAllDaysMeals(
+    mealPlanId: string,
+    days: Array<{ weekday: Weekday; meals: MealInput[] }>,
+  ): Promise<MealPlanWithDays> {
+    await this.prisma.$transaction(async (tx) => {
+      for (const day of days) {
+        const row = await tx.mealPlanDay.upsert({
+          where: { mealPlanId_weekday: { mealPlanId, weekday: day.weekday } },
+          create: { mealPlanId, weekday: day.weekday },
+          update: {},
+        });
+        await tx.mealPlanMeal.deleteMany({ where: { dayId: row.id } });
+        await tx.mealPlanMeal.createMany({
+          data: day.meals.map((meal, position) => ({
+            dayId: row.id,
+            position,
+            label: meal.label,
+            text: meal.text,
+          })),
+        });
+      }
+    });
+    return (await this.findById(mealPlanId))!;
+  }
+
   // Lock-swap publish (ADR-013), mirroring EducatorWorkout.activate()'s exact
   // shape — except nothing is archived: every PUBLISHED version accumulates.
   // Returns null if the draft no longer exists or is already published
