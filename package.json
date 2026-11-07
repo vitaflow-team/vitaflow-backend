@@ -27,6 +27,7 @@
   "dependencies": {
     "@google-cloud/storage": "^7.18.0",
     "@nestjs-modules/mailer": "^2.0.2",
+    "@react-pdf/renderer": "3.4.5",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -47,6 +48,7 @@
     "multer": "^2.0.2",
     "nodemailer": "^7.0.10",
     "openai": "^4.104.0",
+    "react": "^18.3.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1"
@@ -64,6 +66,7 @@
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.10.7",
+    "@types/react": "^18.3.12",
     "@types/supertest": "^6.0.2",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
@@ -93,11 +96,12 @@
     "moduleFileExtensions": [
       "js",
       "json",
-      "ts"
+      "ts",
+      "tsx"
     ],
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)sx?$": "ts-jest"
     },
     "collectCoverageFrom": [
       "src/**/*.{ts,js}",

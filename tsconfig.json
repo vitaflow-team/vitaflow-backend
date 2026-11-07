@@ -11,6 +11,9 @@
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "target": "ES2023",
+    // pdf-export (task_01): first JSX/.tsx usage in this backend —
+    // @react-pdf/renderer's component tree is authored as JSX.
+    "jsx": "react-jsx",
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",

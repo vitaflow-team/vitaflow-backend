@@ -39,6 +39,7 @@ import { FormRecordsService } from './records/formRecords.service';
     TemplatesService,
     FormRecordsService,
   ],
-  exports: [TemplatesService],
+  // FormRecordsRepository is also exported for pdf-export (ADR-010).
+  exports: [TemplatesService, FormRecordsRepository],
 })
 export class ClinicalRecordsModule {}

@@ -12,6 +12,7 @@ import { ErrorMonitoringModule } from './error-monitoring/errorMonitoring.module
 import { SentryExceptionFilter } from './error-monitoring/sentryExceptionFilter';
 import { MealPlansModule } from './meal-plans/mealPlans.module';
 import { NutritionistPatientsModule } from './nutritionist-patients/nutritionistPatients.module';
+import { PdfExportModule } from './pdf-export/pdfExport.module';
 import { ProfessionalFoodDiaryModule } from './professional-food-diary/professionalFoodDiary.module';
 import { ApiKeyGuard } from './common/guards/apiKey.guard';
 import { ViewAsWriteBlockGuard } from './common/guards/viewAsWriteBlock.guard';
@@ -71,6 +72,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ProfessionalFoodDiaryModule,
     BillingModule,
     ErrorMonitoringModule,
+    PdfExportModule,
   ],
   controllers: [],
   providers: [
