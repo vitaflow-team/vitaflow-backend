@@ -246,6 +246,11 @@ describe('Churn-risk alert integration', () => {
       );
 
       expect(response.status).toBe(404);
+
+      // This client has zero check-ins, which computeAtRisk treats as
+      // always at-risk — left in place it would silently inflate later
+      // tests' first-ever-evaluation notification counts for academiaB.
+      await prisma.client.delete({ where: { id: clientB.id } });
     });
 
     it('200 for the owning academia, including the no-open-episode no-op case', async () => {
@@ -258,6 +263,11 @@ describe('Churn-risk alert integration', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ dismissed: 0 });
+
+      // Same reason as the clientB cleanup above: zero check-ins reads as
+      // always-at-risk and would otherwise pollute academiaA's first-ever
+      // evaluation in later tests.
+      await prisma.client.delete({ where: { id: client.id } });
     });
   });
 
