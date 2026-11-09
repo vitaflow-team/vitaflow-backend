@@ -1,7 +1,9 @@
 import { PrismaService } from '@/database/prisma.service';
 import { CheckInRepository } from '@/repositories/academia/checkIn.repository';
+import { ChurnRiskEpisodeRepository } from '@/repositories/academia/churnRiskEpisode.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { Injectable } from '@nestjs/common';
+import { ChurnRiskReason } from '@prisma/client';
 import {
   computeAtRisk,
   computeRecentFeed,
@@ -28,6 +30,7 @@ export class EngajamentoService {
     private readonly prisma: PrismaService,
     private readonly checkIns: CheckInRepository,
     private readonly clients: ClientsRepository,
+    private readonly churnRiskEpisodes: ChurnRiskEpisodeRepository,
   ) {}
 
   async summary(academiaId: string, now: Date): Promise<EngajamentoSummary> {
@@ -40,11 +43,16 @@ export class EngajamentoService {
       : WEEKLY_LOOKBACK_DAYS;
     const since = new Date(now.getTime() - lookbackDays * DAY_MS);
 
-    const [students, windowed, lastCheckInByClient] = await Promise.all([
-      this.clients.findAllGymStudentNames(academiaId),
-      this.checkIns.findByAcademiaSince(academiaId, since),
-      this.checkIns.findLastCheckInByClient(academiaId),
-    ]);
+    const [students, windowed, lastCheckInByClient, dismissedClientIds] =
+      await Promise.all([
+        this.clients.findAllGymStudentNames(academiaId),
+        this.checkIns.findByAcademiaSince(academiaId, since),
+        this.checkIns.findLastCheckInByClient(academiaId),
+        this.churnRiskEpisodes.findDismissedClientIds(
+          academiaId,
+          ChurnRiskReason.CHECK_IN_INACTIVITY,
+        ),
+      ]);
 
     const checkInFixtures = windowed.map((checkIn) => ({
       clientId: checkIn.clientId,
@@ -54,6 +62,14 @@ export class EngajamentoService {
       planValidAtCheckIn: checkIn.planValidAtCheckIn,
     }));
 
+    // Additive filter only (ADR-010): computeAtRisk itself, and every other
+    // output below, is untouched — a dismissed-and-not-recovered student
+    // simply stops appearing in this one list (UT-020/UT-021).
+    const dismissed = new Set(dismissedClientIds);
+    const atRisk = computeAtRisk(students, lastCheckInByClient, now).filter(
+      (student) => !dismissed.has(student.clientId),
+    );
+
     return {
       todayCheckInCount: computeTodayCount(checkInFixtures, now),
       weeklyFrequencyAverage: computeWeeklyFrequency(
@@ -61,7 +77,7 @@ export class EngajamentoService {
         lookbackDays,
         students.length,
       ),
-      atRisk: computeAtRisk(students, lastCheckInByClient, now),
+      atRisk,
       recentFeed: computeRecentFeed(checkInFixtures),
     };
   }

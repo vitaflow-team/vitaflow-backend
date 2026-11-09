@@ -24,6 +24,7 @@ const DEFAULT_PREFERENCES: Record<NotificationCategory, boolean> = {
   WORKOUT_PLAN: true,
   SCHEDULE_CHANGE: true,
   ACADEMIA_ACTIVITY: true,
+  CHURN_RISK_ALERT: true,
 };
 
 @Injectable()

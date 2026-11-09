@@ -249,7 +249,17 @@ describe('NotificationsService', () => {
         WORKOUT_PLAN: true,
         SCHEDULE_CHANGE: true,
         ACADEMIA_ACTIVITY: true,
+        CHURN_RISK_ALERT: true,
       });
+    });
+
+    it('UT-024 (churn-risk-alert) CHURN_RISK_ALERT defaults to enabled with no explicit preference row', async () => {
+      notificationsFindAllPreferences.mockResolvedValue([]);
+
+      const preferences = await service.getPreferences('user-1');
+
+      expect(Object.keys(NotificationCategory)).toContain('CHURN_RISK_ALERT');
+      expect(preferences.CHURN_RISK_ALERT).toBe(true);
     });
 
     it('UT-074 WORKOUT_PLAN is a category and its default is enabled', async () => {

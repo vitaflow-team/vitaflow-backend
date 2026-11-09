@@ -1,4 +1,5 @@
 import { PrismaService } from '@/database/prisma.service';
+import { brtDateKey } from '@/utils/brtDate';
 import { Injectable } from '@nestjs/common';
 import {
   AccessPlanValidityType,
@@ -13,6 +14,43 @@ export interface StudentAccessPlanData {
   validityValue: number;
   referencePrice: number;
   expiresAt: Date | null;
+}
+
+// Mirrors StudentAccessPlanService's own AccessPlanStatus union (ADR-008):
+// duplicated, not imported, since a repository never depends on a domain
+// service, and the TechSpec's Known Risks explicitly accepts this as the
+// one place the two classifications could drift, mitigated by the parity
+// test (UT-019) rather than shared code.
+export type AcademiaPlanStatusValue =
+  | 'NO_PLAN'
+  | 'VALID'
+  | 'EXPIRED'
+  | 'EXHAUSTED';
+
+export interface AcademiaPlanStatus {
+  clientId: string;
+  status: AcademiaPlanStatusValue;
+}
+
+interface ActivePlanRow {
+  clientId: string;
+  validityType: AccessPlanValidityType;
+  validityValue: number;
+  expiresAt: Date | null;
+  assignedAt: Date;
+}
+
+function classifyAcademiaPlanStatus(
+  plan: ActivePlanRow | undefined,
+  distinctVisitDays: number,
+  now: Date,
+): AcademiaPlanStatusValue {
+  if (!plan) return 'NO_PLAN';
+  if (plan.validityType === AccessPlanValidityType.DAYS) {
+    return plan.expiresAt && plan.expiresAt < now ? 'EXPIRED' : 'VALID';
+  }
+  const remaining = plan.validityValue - distinctVisitDays;
+  return remaining <= 0 ? 'EXHAUSTED' : 'VALID';
 }
 
 @Injectable()
@@ -92,5 +130,74 @@ export class StudentAccessPlanRepository {
       select: { createdAt: true },
     });
     return rows.map((row) => row.createdAt);
+  }
+
+  // Batch counterpart to StudentAccessPlanService.currentForClient (ADR-008):
+  // classifies every student of an academia in a small, fixed number of
+  // queries (not one `currentForClient` call per student) — currentForClient
+  // itself is unchanged, this is purely additive alongside it.
+  async findStatusesByAcademia(
+    academiaId: string,
+    now: Date,
+  ): Promise<AcademiaPlanStatus[]> {
+    const clients = await this.prisma.client.findMany({
+      where: { academiaId },
+      select: { id: true },
+    });
+    const activePlans = await this.prisma.studentAccessPlan.findMany({
+      where: { status: StudentAccessPlanStatus.ACTIVE, client: { academiaId } },
+      select: {
+        clientId: true,
+        validityType: true,
+        validityValue: true,
+        expiresAt: true,
+        assignedAt: true,
+      },
+    });
+    const planByClient = new Map(
+      activePlans.map((plan) => [plan.clientId, plan]),
+    );
+    const visitDaysByClient =
+      await this.findDistinctVisitDaysByClient(activePlans);
+
+    return clients.map((client) => ({
+      clientId: client.id,
+      status: classifyAcademiaPlanStatus(
+        planByClient.get(client.id),
+        visitDaysByClient.get(client.id) ?? 0,
+        now,
+      ),
+    }));
+  }
+
+  // One query covering every VISITS-plan client at this academia (each with
+  // its own since-assignedAt threshold via OR), not one query per client.
+  private async findDistinctVisitDaysByClient(
+    activePlans: ActivePlanRow[],
+  ): Promise<Map<string, number>> {
+    const visitsPlans = activePlans.filter(
+      (plan) => plan.validityType === AccessPlanValidityType.VISITS,
+    );
+    if (visitsPlans.length === 0) return new Map();
+
+    const checkIns = await this.prisma.checkIn.findMany({
+      where: {
+        OR: visitsPlans.map((plan) => ({
+          clientId: plan.clientId,
+          createdAt: { gte: plan.assignedAt },
+        })),
+      },
+      select: { clientId: true, createdAt: true },
+    });
+
+    const daysByClient = new Map<string, Set<string>>();
+    for (const checkIn of checkIns) {
+      const days = daysByClient.get(checkIn.clientId) ?? new Set<string>();
+      days.add(brtDateKey(checkIn.createdAt));
+      daysByClient.set(checkIn.clientId, days);
+    }
+    return new Map(
+      [...daysByClient].map(([clientId, days]) => [clientId, days.size]),
+    );
   }
 }
