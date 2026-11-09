@@ -25,6 +25,7 @@ import { EngajamentoService } from '@/academia/engajamento/engajamento.service';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
 import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
 import { CheckInRepository } from '@/repositories/academia/checkIn.repository';
+import { ChurnRiskEpisodeRepository } from '@/repositories/academia/churnRiskEpisode.repository';
 import { StudentAccessPlanRepository } from '@/repositories/academia/studentAccessPlan.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
@@ -89,6 +90,7 @@ describe('Gym check-in integration', () => {
         AcademiaStaffMemberRepository,
         CheckInRepository,
         StudentAccessPlanRepository,
+        ChurnRiskEpisodeRepository,
         CheckInService,
         StudentAccessPlanService,
         EngajamentoService,

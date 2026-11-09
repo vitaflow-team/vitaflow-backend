@@ -49,6 +49,7 @@ import { CheckInService } from './checkin/checkin.service';
 import { ReceptionistCheckInController } from './checkin/receptionistCheckin.controller';
 import { StudentAccessPlanController } from './checkin/studentAccessPlan.controller';
 import { StudentAccessPlanService } from './checkin/studentAccessPlan.service';
+import { ChurnRiskModule } from './churn-risk/churnRisk.module';
 import { EngajamentoController } from './engajamento/engajamento.controller';
 import { EngajamentoService } from './engajamento/engajamento.service';
 import { StudentTurmasController } from './turmas/studentTurmas.controller';
@@ -64,6 +65,7 @@ import { TurmasService } from './turmas/turmas.service';
     NotificationsModule,
     EducatorStudentsModule,
     FixedTimesModule,
+    ChurnRiskModule,
   ],
   controllers: [
     AcademiaEmploymentController,

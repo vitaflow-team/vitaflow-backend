@@ -173,14 +173,15 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  educatorWorkouts EducatorWorkout[]
-  fixedTimes       FixedTime[]
-  fixedSessions    FixedSession[]
-  checkIns         CheckIn[]
-  accessPlans      StudentAccessPlan[]
-  turmaEnrollments TurmaEnrollment[]
-  formRecords      FormRecord[]
-  mealPlans        MealPlan[]
+  educatorWorkouts  EducatorWorkout[]
+  fixedTimes        FixedTime[]
+  fixedSessions     FixedSession[]
+  checkIns          CheckIn[]
+  accessPlans       StudentAccessPlan[]
+  churnRiskEpisodes ChurnRiskEpisode[]
+  turmaEnrollments  TurmaEnrollment[]
+  formRecords       FormRecord[]
+  mealPlans         MealPlan[]
 
   invoices         Invoice[]
   billingCustomers BillingCustomer[]
@@ -257,6 +258,15 @@ model Academia {
   createdAt   DateTime             @default(now())
 
   assessmentTemplates AssessmentTemplate[]
+
+  // null = never evaluated by the churn-risk feature; set after that
+  // academia's first-ever evaluation completes, regardless of whether any
+  // student matched a risk condition that first time — the exact mechanism
+  // behind the no-notification-storm-at-launch rule (churn-risk-alert
+  // ADR-005), not an inference from episode-row presence (zero rows is
+  // otherwise ambiguous between "never evaluated" and "evaluated repeatedly
+  // with genuinely zero at-risk students").
+  churnRiskBaselineAt DateTime?
 }
 
 enum AccessPlanValidityType {
@@ -726,6 +736,7 @@ enum NotificationCategory {
   WORKOUT_PLAN
   SCHEDULE_CHANGE
   ACADEMIA_ACTIVITY
+  CHURN_RISK_ALERT
 }
 
 // A missing `NotificationPreference` row for a (userId, category) pair is
@@ -1222,6 +1233,35 @@ model StudentAccessPlan {
   updatedAt      DateTime                @updatedAt
 
   @@index([clientId])
+}
+
+enum ChurnRiskReason {
+  CHECK_IN_INACTIVITY
+  ACCESS_PLAN_LAPSED
+}
+
+// A churn-risk episode: one row per (clientId, reason) — not one row per
+// client with a reasons set — so each reason's notify-once state (PRD
+// ADR-002) is tracked independently (churn-risk-alert ADR-009). Mirrors
+// BackofficeViewAsSession's nullable-timestamp lifecycle: startedAt when the
+// condition first began, notifiedAt set once the one notification for this
+// episode was sent (or, on an academia's first-ever run, set immediately
+// with no notification — PRD ADR-005's silent baseline), dismissedAt set by
+// staff (PRD ADR-003), endedAt set on recovery — independent of dismissal. A
+// hand-authored partial unique index (see the migration) enforces at most
+// one OPEN (endedAt IS NULL) episode per (clientId, reason).
+model ChurnRiskEpisode {
+  id          String          @id @default(uuid(7))
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId    String
+  reason      ChurnRiskReason
+  startedAt   DateTime        @default(now())
+  notifiedAt  DateTime?
+  dismissedAt DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@index([clientId, reason, endedAt])
 }
 
 // A weekly recurring group class owned by an academia (gym-classes
