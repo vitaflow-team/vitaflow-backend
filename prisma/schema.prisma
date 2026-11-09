@@ -185,6 +185,7 @@ model Client {
   invoices         Invoice[]
   billingCustomers BillingCustomer[]
   taxId            StudentTaxId?
+  nutritionProfile ClientNutritionProfile?
 
   @@index([email])
   @@index([academiaId])
@@ -1094,6 +1095,23 @@ model MealPlanMeal {
   text     String
 
   @@index([dayId, position])
+}
+
+// Minimal per-Client AI-generation intake record (PRD ADR-007): pre-fills a
+// later intake's questions for this client, but is never read directly by
+// generation itself — the confirmed, just-answered values from the current
+// conversation are what's sent (PRD ADR-006). FK-as-PK + cascade-delete,
+// mirroring StudentTaxId's shape (ADR-012), not FitnessProfile/
+// ProfessionalProfile's separate-id+@unique shape: exactly one profile per
+// client, deleted automatically with the client.
+model ClientNutritionProfile {
+  clientId       String   @id
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  goal           String
+  restrictions   String
+  targetCalories Int?
+  mealsPerDay    Int
+  updatedAt      DateTime @updatedAt
 }
 
 // Workouts an educator builds for a student record (E2). They live in their

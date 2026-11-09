@@ -7,14 +7,20 @@
  * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
  */
 import { AuthGuard } from '@/auth/auth.guard';
+import { ConversationStore } from '@/common/conversation/conversationStore';
 import { ProfessionalGuard } from '@/common/guards/professional.guard';
+import { ProfessionalPremiumGuard } from '@/common/guards/professionalPremium.guard';
 import { createValidationPipe } from '@/config/validationPipe';
 import { PrismaService } from '@/database/prisma.service';
 import { MealPlansController } from '@/meal-plans/mealPlans.controller';
+import { MealPlanGenerationService } from '@/meal-plans/mealPlanGeneration.service';
+import { MealPlanLlmService } from '@/meal-plans/mealPlanLlm.service';
 import { MealPlansService } from '@/meal-plans/mealPlans.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { ClientNutritionProfileRepository } from '@/repositories/meal-plans/clientNutritionProfile.repository';
 import { MealPlansRepository } from '@/repositories/meal-plans/mealPlans.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { OPENAI_CLIENT } from '@/workouts/openaiClient.provider';
 import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -54,8 +60,17 @@ describe('Meal plans integration', () => {
         ClientsRepository,
         MealPlansRepository,
         MealPlansService,
+        ClientNutritionProfileRepository,
+        ConversationStore,
+        MealPlanLlmService,
+        MealPlanGenerationService,
         ProfessionalGuard,
+        ProfessionalPremiumGuard,
         AuthGuard,
+        {
+          provide: OPENAI_CLIENT,
+          useValue: { chat: { completions: { create: jest.fn() } } },
+        },
       ],
     }).compile();
     moduleFixture.useLogger(false);

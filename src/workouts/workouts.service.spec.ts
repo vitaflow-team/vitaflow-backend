@@ -4,9 +4,9 @@ import { FitnessProfileRepository } from '@/repositories/fitness-profile/fitness
 import { UserRepository } from '@/repositories/users/user.repository';
 import { WorkoutsRepository } from '@/repositories/workouts/workouts.repository';
 import { AppError } from '@/utils/app.erro';
+import { ConversationStore } from '@/common/conversation/conversationStore';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Exercise, FitnessProfile, Users } from '@prisma/client';
-import { ConversationStore } from './conversationStore';
 import { LlmExplanationService } from './llmExplanation.service';
 import { ConversationTurn } from './llmExplanation.types';
 import { RuleEngineService } from './ruleEngine.service';
