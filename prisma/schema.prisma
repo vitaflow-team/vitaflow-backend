@@ -103,6 +103,7 @@ model Users {
   turmasAsProfessional        Turma[]                  @relation("TurmaProfessional")
   viewAsSessionsAsStaff       BackofficeViewAsSession[] @relation("BackofficeViewAsStaff")
   assessmentTemplates         AssessmentTemplate[]
+  servicePackages             ServicePackage[]
 
   billingAccounts BillingAccount[]
 
@@ -397,6 +398,7 @@ model Product {
   groupId      String
   type         ProductType   @default(USER)
   tier         ProductTier   @default(STANDARD)
+  active       Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   productInfos ProductInfo[]
@@ -410,6 +412,25 @@ model ProductInfo {
   productId   String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// A professional's own (NUTRITIONIST or PHYSICAL_EDUCATOR) session/consultation
+// package catalog — purely informational pricing reference, no billing or
+// checkout flow of its own. Deliberately has no relation to Product/
+// ProductGroup/AcademiaAccessPlan or any billing model (ADR-002/ADR-009):
+// each professional manages their own catalog, scoped by professionalId.
+model ServicePackage {
+  id             String   @id @default(uuid(7))
+  professional   Users    @relation(fields: [professionalId], references: [id])
+  professionalId String
+  name           String
+  sessionCount   Int
+  referencePrice Float
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([professionalId])
 }
 
 enum ExerciseEquipment {

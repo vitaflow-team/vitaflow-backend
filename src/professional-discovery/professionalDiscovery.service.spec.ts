@@ -53,6 +53,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     groupId: 'group-1',
     type: 'NUTRITIONIST',
     tier: 'STANDARD',
+    active: true,
     createdAt: new Date('2026-10-01T09:00:00.000Z'),
     updatedAt: new Date('2026-10-01T09:00:00.000Z'),
     ...overrides,

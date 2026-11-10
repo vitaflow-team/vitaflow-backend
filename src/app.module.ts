@@ -32,6 +32,7 @@ import { ProfessionalMirrorModule } from './professional-mirror/professionalMirr
 import { ProgressModule } from './progress/progress.module';
 import { ProgressPhotosModule } from './progress-photos/progressPhotos.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
+import { ServicePackageModule } from './service-packages/servicePackage.module';
 import { UsersModule } from './users/users.module';
 import { WorkoutsModule } from './workouts/workouts.module';
 
@@ -73,6 +74,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     BillingModule,
     ErrorMonitoringModule,
     PdfExportModule,
+    ServicePackageModule,
   ],
   controllers: [],
   providers: [
