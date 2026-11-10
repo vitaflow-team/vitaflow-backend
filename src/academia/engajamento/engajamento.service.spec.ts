@@ -116,5 +116,63 @@ describe('EngajamentoService', () => {
         'client-2',
       ]);
     });
+
+    it('UT-048 returns a zero-filled heatmap and a null-safe monthOverMonth without any extra data', async () => {
+      const deps = makeDeps();
+      const service = makeService(deps);
+
+      const result = await service.summary('academia-1', NOW);
+
+      expect(result.checkInHeatmap).toHaveLength(168);
+      expect(result.checkInHeatmap.every((cell) => cell.count === 0)).toBe(
+        true,
+      );
+      expect(result.monthOverMonth).toEqual({
+        currentMonthCount: 0,
+        previousMonthCount: null,
+        isCurrentMonthPartial: true,
+      });
+    });
+
+    it('UT-048 degrades checkInHeatmap/monthOverMonth to a safe zero-state, leaving every pre-existing field unaffected, when the extra month-window query fails', async () => {
+      const deps = makeDeps();
+      const checkIns = [
+        checkInRow({ clientId: 'client-1', createdAt: NOW }),
+        checkInRow({ clientId: 'client-2', createdAt: NOW }),
+      ];
+      // First call (the original Promise.all) succeeds; the second call,
+      // made only for the new heatmap/monthOverMonth widgets, fails.
+      deps.checkIns.findByAcademiaSince
+        .mockResolvedValueOnce(checkIns)
+        .mockRejectedValueOnce(new Error('db unavailable'));
+      const oldLastCheckIn = new Date(NOW.getTime() - 14 * 24 * 60 * 60 * 1000);
+      deps.checkIns.findLastCheckInByClient.mockResolvedValue(
+        new Map([
+          ['client-1', oldLastCheckIn],
+          ['client-2', oldLastCheckIn],
+        ]),
+      );
+
+      const degraded = makeService(deps);
+      const result = await degraded.summary('academia-1', NOW);
+
+      // Pre-existing fields: byte-identical to what they'd be without the
+      // failure, since they never depend on the second (failing) call.
+      expect(result.todayCheckInCount).toBe(2);
+      expect(result.atRisk).toHaveLength(2);
+      expect(result.recentFeed).toHaveLength(2);
+
+      // New fields degrade to a safe, explicit zero-state instead of
+      // throwing or leaving the whole response unresolved.
+      expect(result.checkInHeatmap).toHaveLength(168);
+      expect(result.checkInHeatmap.every((cell) => cell.count === 0)).toBe(
+        true,
+      );
+      expect(result.monthOverMonth).toEqual({
+        currentMonthCount: 0,
+        previousMonthCount: null,
+        isCurrentMonthPartial: true,
+      });
+    });
   });
 });

@@ -131,6 +131,9 @@ describe('Gym check-in integration', () => {
     await prisma.academiaStaffMember.deleteMany({
       where: { academiaId: academiaA.id },
     });
+    await prisma.employment.deleteMany({
+      where: { academiaId: { in: [academiaA.id, academiaB.id] } },
+    });
     await prisma.academia.deleteMany({
       where: { id: { in: [academiaA.id, academiaB.id] } },
     });
@@ -492,12 +495,18 @@ describe('Gym check-in integration', () => {
     });
     const fresh = await asUser(freshOwner);
     const emptyState = await fresh.get('/academia/engajamento');
-    expect(emptyState.body).toEqual({
-      todayCheckInCount: 0,
-      weeklyFrequencyAverage: 0,
-      atRisk: [],
-      recentFeed: [],
-    });
+    expect(emptyState.body.todayCheckInCount).toBe(0);
+    expect(emptyState.body.weeklyFrequencyAverage).toBe(0);
+    expect(emptyState.body.atRisk).toEqual([]);
+    expect(emptyState.body.recentFeed).toEqual([]);
+    expect(emptyState.body.checkInHeatmap).toHaveLength(168);
+    expect(
+      emptyState.body.checkInHeatmap.every(
+        (cell: { count: number }) => cell.count === 0,
+      ),
+    ).toBe(true);
+    expect(emptyState.body.monthOverMonth.currentMonthCount).toBe(0);
+    expect(emptyState.body.monthOverMonth.previousMonthCount).toBeNull();
 
     const s = await asUser(studentA);
     await s.post('/checkins');
@@ -536,5 +545,40 @@ describe('Gym check-in integration', () => {
 
     const painel = await r.get('/academia/engajamento');
     expect(painel.status).toBe(401);
+  });
+
+  it('role-management-dashboards IT-007: checkInHeatmap and monthOverMonth are correctly populated, isolated per academia, and a non-owner gets 403', async () => {
+    const owner = await asUser(ownerA);
+    const sumHeatmap = (heatmap: { count: number }[]) =>
+      heatmap.reduce((sum, cell) => sum + cell.count, 0);
+
+    const before = await owner.get('/academia/engajamento');
+    expect(before.status).toBe(200);
+    const heatmapBefore = sumHeatmap(before.body.checkInHeatmap);
+    const currentMonthBefore = before.body.monthOverMonth.currentMonthCount;
+
+    const studentAUser = await asUser(studentA);
+    await studentAUser.post('/checkins');
+
+    const afterA = await owner.get('/academia/engajamento');
+    expect(sumHeatmap(afterA.body.checkInHeatmap)).toBe(heatmapBefore + 1);
+    expect(afterA.body.monthOverMonth.currentMonthCount).toBe(
+      currentMonthBefore + 1,
+    );
+
+    // A check-in at a different academia must never leak into academia A's
+    // heatmap or month-over-month totals.
+    const studentBUser = await asUser(studentB);
+    await studentBUser.post('/checkins');
+
+    const afterB = await owner.get('/academia/engajamento');
+    expect(sumHeatmap(afterB.body.checkInHeatmap)).toBe(heatmapBefore + 1);
+    expect(afterB.body.monthOverMonth.currentMonthCount).toBe(
+      currentMonthBefore + 1,
+    );
+
+    const nonOwner = await asUser(studentA);
+    const refused = await nonOwner.get('/academia/engajamento');
+    expect(refused.status).toBe(403);
   });
 });
