@@ -1,6 +1,8 @@
 import type { FormRecordWithRecorder } from '@/repositories/clinical-records/formRecords.repository';
 import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
+import { MealsRepository } from '@/repositories/food-diary/meals.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
+import { WorkoutsRepository } from '@/repositories/workouts/workouts.repository';
 import { MeasurementRecord } from '@prisma/client';
 import { ProgressService } from './progress.service';
 
@@ -78,6 +80,8 @@ describe('ProgressService — professional points (clinical-records)', () => {
     delete: jest.fn(),
   };
   const formRecords = { findWeightPointsByLinkedUser: jest.fn() };
+  const meals = { findByUserAndDateRange: jest.fn() };
+  const workouts = { existsForUser: jest.fn() };
   let service: ProgressService;
 
   function givenProfessionalRecords(list: FormRecordWithRecorder[]) {
@@ -91,9 +95,13 @@ describe('ProgressService — professional points (clinical-records)', () => {
     records.findByUserSince.mockResolvedValue([]);
     records.findLatestByUser.mockResolvedValue(null);
     givenProfessionalRecords([]);
+    meals.findByUserAndDateRange.mockResolvedValue([]);
+    workouts.existsForUser.mockResolvedValue(false);
     service = new ProgressService(
       records as unknown as MeasurementRecordsRepository,
       formRecords as unknown as FormRecordsRepository,
+      meals as unknown as MealsRepository,
+      workouts as unknown as WorkoutsRepository,
     );
   });
 
@@ -272,14 +280,17 @@ describe('ProgressService — professional points (clinical-records)', () => {
     expect(dashboard.history.map((p) => p.id)).toEqual(['recent', 'old']);
   });
 
-  it('asks the repository for the professional records since the period start, no margin needed', async () => {
+  it('asks the repository for the professional records since the wider of the period start or the previous calendar month start', async () => {
     await service.getDashboard('user-1', 4);
 
     const periodCall = formRecords.findWeightPointsByLinkedUser.mock.calls.find(
       (call) => call[2] !== undefined,
     ) as [string, number, Date];
     expect(periodCall[0]).toBe('user-1');
-    expect(periodCall[2].toISOString()).toBe('2026-08-22T12:00:00.000Z');
+    // The 4-week window (2026-08-22) is narrower than the previous BRT
+    // calendar month start (2026-08-01), needed for periodComparison
+    // (role-management-dashboards US-002), so the wider boundary wins.
+    expect(periodCall[2].toISOString()).toBe('2026-08-01T03:00:00.000Z');
   });
 
   it('UT-073 merges own points with weight points from a linked nutritionist', async () => {

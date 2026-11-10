@@ -1,7 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { AdherenceSummaryDTO } from './adherenceSummary.Dto';
 import { BmiPointDTO } from './bmiPoint.Dto';
+import { CorrelationPointDTO } from './correlationPoint.Dto';
 import { DashboardPeriodDTO } from './dashboardPeriod.Dto';
 import { MeasurementRecordResponseDTO } from './measurementRecordResponse.Dto';
+import { PeriodComparisonMetricDTO } from './periodComparisonMetric.Dto';
+import { StreakSummaryDTO } from './streakSummary.Dto';
+import { TrendPointDTO } from './trendPoint.Dto';
 import { WeightPointDTO } from './weightPoint.Dto';
 
 export class DashboardResponseDTO {
@@ -22,4 +27,19 @@ export class DashboardResponseDTO {
 
   @ApiProperty({ type: DashboardPeriodDTO })
   period: DashboardPeriodDTO;
+
+  @ApiProperty({ type: [TrendPointDTO] })
+  smoothedTrend: TrendPointDTO[];
+
+  @ApiProperty({ type: [PeriodComparisonMetricDTO] })
+  periodComparison: PeriodComparisonMetricDTO[];
+
+  @ApiProperty({ type: StreakSummaryDTO })
+  streak: StreakSummaryDTO;
+
+  @ApiProperty({ type: AdherenceSummaryDTO })
+  adherence: AdherenceSummaryDTO;
+
+  @ApiProperty({ type: [CorrelationPointDTO] })
+  correlation: CorrelationPointDTO[];
 }
