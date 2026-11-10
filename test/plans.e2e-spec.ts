@@ -1,6 +1,7 @@
 import { createValidationPipe } from '@/config/validationPipe';
 import { ApiKeyGuard } from '@/common/guards/apiKey.guard';
 import { PrismaService } from '@/database/prisma.service';
+import { ProductsController } from '@/product/product.controller';
 import { PlansController } from '@/product/plans.controller';
 import { ProductsService } from '@/product/product.service';
 import { ProductsRepository } from '@/repositories/product/product.repository';
@@ -8,6 +9,7 @@ import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { Product, ProductGroup } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -179,5 +181,114 @@ describe('plan categories — GET /plans with an empty category', () => {
       .expect(200);
 
     expect(response.body).toEqual([]);
+  });
+});
+
+// IT-004 (plan-pricing-management, task_02): a deactivated Product must
+// never surface on either public read endpoint, while a direct id lookup
+// (used to render an existing subscriber's own current plan) still resolves
+// it regardless of its active state (ADR-008).
+describe('plan-pricing-management IT-004 — public endpoints narrow to active: true', () => {
+  let app: INestApplication<App>;
+  let prisma: PrismaService;
+  let group: ProductGroup;
+  let activeProduct: Product;
+  let deactivatedProduct: Product;
+
+  const RUN_TAG = `plan-pricing-it004-${Date.now()}`;
+
+  beforeAll(async () => {
+    if (!process.env.TEST_DATABASE_URL) {
+      throw new Error(
+        'TEST_DATABASE_URL must point to an isolated migrated test database',
+      );
+    }
+    process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+
+    const module = await Test.createTestingModule({
+      controllers: [ProductsController, PlansController],
+      providers: [
+        PrismaService,
+        ProductsRepository,
+        ProductsService,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) =>
+              key === 'APPLICATION_SECRET' ? applicationSecret : undefined,
+          },
+        },
+        { provide: APP_GUARD, useClass: ApiKeyGuard },
+      ],
+    }).compile();
+
+    app = module.createNestApplication<App>();
+    app.useGlobalPipes(createValidationPipe());
+    await app.init();
+    prisma = module.get(PrismaService);
+
+    group = await prisma.productGroup.create({
+      data: { name: `${RUN_TAG} group` },
+    });
+    activeProduct = await prisma.product.create({
+      data: {
+        groupId: group.id,
+        name: `${RUN_TAG} active`,
+        price: 29.9,
+        type: 'USER',
+        active: true,
+      },
+    });
+    deactivatedProduct = await prisma.product.create({
+      data: {
+        groupId: group.id,
+        name: `${RUN_TAG} deactivated`,
+        price: 19.9,
+        type: 'USER',
+        active: false,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.product.deleteMany({ where: { groupId: group.id } });
+    await prisma.productGroup.delete({ where: { id: group.id } });
+    await prisma.$disconnect();
+    await app.close();
+  });
+
+  const withSecret = (path: string) =>
+    request(app.getHttpServer())
+      .get(path)
+      .set('x-application-secret', applicationSecret);
+
+  it('GET /products omits the deactivated product from its group', async () => {
+    const response = await withSecret('/products').expect(200);
+    const body = response.body as Array<{
+      id: string;
+      products: Array<{ id: string }>;
+    }>;
+    const seededGroup = body.find((g) => g.id === group.id)!;
+
+    const ids = seededGroup.products.map((p) => p.id);
+    expect(ids).toContain(activeProduct.id);
+    expect(ids).not.toContain(deactivatedProduct.id);
+  });
+
+  it('GET /plans omits the deactivated product', async () => {
+    const response = await withSecret('/plans').expect(200);
+    const body = response.body as Array<{ id: string }>;
+    const ids = body.map((p) => p.id);
+
+    expect(ids).toContain(activeProduct.id);
+    expect(ids).not.toContain(deactivatedProduct.id);
+  });
+
+  it("GET /products/:id still resolves the deactivated product (an existing subscriber's own lookup)", async () => {
+    const response = await withSecret(
+      `/products/${deactivatedProduct.id}`,
+    ).expect(200);
+
+    expect((response.body as { id: string }).id).toBe(deactivatedProduct.id);
   });
 });

@@ -4,8 +4,9 @@ import { Product } from '@prisma/client';
 import { planProductsMock, productsMock } from 'mock/product.repository.mock';
 import {
   ProductGroupWithDetails,
-  ProductWithInfos,
   ProductsRepository,
+  ProductWithGroup,
+  ProductWithInfos,
 } from './product.repository';
 
 const productGroupsMock: ProductGroupWithDetails[] = [
@@ -51,6 +52,28 @@ const freeProductMock: Product = {
   updatedAt: new Date(),
 };
 
+const existingProductMock: Product = {
+  id: 'prod-existing',
+  name: 'Premium',
+  price: 29.9,
+  type: 'USER',
+  groupId: 'group-1',
+  tier: 'STANDARD',
+  active: true,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+const productWithGroupMock: ProductWithGroup = {
+  ...existingProductMock,
+  group: {
+    id: 'group-1',
+    name: 'Usuário',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+};
+
 describe('ProductsRepository Tests', () => {
   let productsRepository: ProductsRepository;
   let prismaService: PrismaService;
@@ -77,7 +100,15 @@ describe('ProductsRepository Tests', () => {
                         product.id === args.where.id,
                     ) || null,
                 ),
+              create: jest.fn().mockResolvedValue(productWithGroupMock),
+              update: jest.fn().mockResolvedValue(existingProductMock),
+              updateMany: jest.fn().mockResolvedValue({ count: 1 }),
             },
+            $transaction: jest
+              .fn()
+              .mockImplementation((callback: (tx: unknown) => unknown) =>
+                callback(prismaService),
+              ),
           },
         },
       ],
@@ -108,12 +139,22 @@ describe('ProductsRepository Tests', () => {
       expect(prismaService.productGroup.findMany).toHaveBeenCalledWith({
         include: {
           products: {
+            where: { active: true },
             include: {
               productInfos: true,
             },
           },
         },
       });
+    });
+
+    // UT-010
+    it('narrows nested products to active: true only (ADR-008)', async () => {
+      await productsRepository.getAllProducts();
+
+      const [args] = (prismaService.productGroup.findMany as jest.Mock).mock
+        .calls[0] as [{ include: { products: { where: unknown } } }];
+      expect(args.include.products.where).toEqual({ active: true });
     });
 
     it('should return an empty array if no groups are found', async () => {
@@ -141,6 +182,15 @@ describe('ProductsRepository Tests', () => {
 
       expect(result).toEqual(null);
     });
+
+    // UT-011
+    it('is never filtered by active — resolves regardless of active state', async () => {
+      await productsRepository.getProductById('1');
+
+      const [args] = (prismaService.product.findUnique as jest.Mock).mock
+        .calls[0] as [Record<string, unknown>];
+      expect(args).not.toHaveProperty('where.active');
+    });
   });
 
   describe('listPlans (plan categories)', () => {
@@ -151,25 +201,22 @@ describe('ProductsRepository Tests', () => {
       expect(result).toEqual(planProductsMock);
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prismaService.product.findMany).toHaveBeenCalledWith({
-        where: { type: 'NUTRITIONIST' },
+        where: { active: true, type: 'NUTRITIONIST' },
         orderBy: [{ price: 'asc' }, { name: 'asc' }],
         include: { productInfos: true },
       });
     });
 
     // UT-006
-    it('asks for every plan when no type is given', async () => {
+    it('asks for every active plan when no type is given', async () => {
       await productsRepository.listPlans();
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prismaService.product.findMany).toHaveBeenCalledWith({
+        where: { active: true },
         orderBy: [{ price: 'asc' }, { name: 'asc' }],
         include: { productInfos: true },
       });
-
-      const [args] = (prismaService.product.findMany as jest.Mock).mock
-        .calls[0] as [Record<string, unknown>];
-      expect(args).not.toHaveProperty('where');
     });
 
     // UT-006
@@ -179,6 +226,15 @@ describe('ProductsRepository Tests', () => {
       await expect(
         productsRepository.listPlans('PHYSICAL_EDUCATOR'),
       ).resolves.toEqual([]);
+    });
+
+    // UT-010
+    it('never returns an inactive row (active: true always applied)', async () => {
+      await productsRepository.listPlans('NUTRITIONIST');
+
+      const [args] = (prismaService.product.findMany as jest.Mock).mock
+        .calls[0] as [{ where: { active: boolean } }];
+      expect(args.where.active).toBe(true);
     });
   });
 
@@ -207,6 +263,123 @@ describe('ProductsRepository Tests', () => {
       const result = await productsRepository.findFreeProduct();
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('listCatalog (backoffice full catalog)', () => {
+    it('returns every product unfiltered, with its group, regardless of active state', async () => {
+      jest
+        .spyOn(prismaService.product, 'findMany')
+        .mockResolvedValueOnce([productWithGroupMock]);
+
+      const result = await productsRepository.listCatalog();
+
+      expect(result).toEqual([productWithGroupMock]);
+
+      const [args] = (prismaService.product.findMany as jest.Mock).mock
+        .calls[0] as [Record<string, unknown>];
+      expect(args).not.toHaveProperty('where');
+      expect(args).toEqual({
+        include: { group: true },
+        orderBy: [{ type: 'asc' }, { tier: 'asc' }, { price: 'asc' }],
+      });
+    });
+  });
+
+  describe('createProduct', () => {
+    it('creates a new row with active: true', async () => {
+      const result = await productsRepository.createProduct({
+        groupId: 'group-1',
+        name: 'Premium',
+        price: 29.9,
+        type: 'USER',
+        tier: 'STANDARD',
+      });
+
+      expect(result).toEqual(productWithGroupMock);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.create).toHaveBeenCalledWith({
+        data: {
+          groupId: 'group-1',
+          name: 'Premium',
+          price: 29.9,
+          type: 'USER',
+          tier: 'STANDARD',
+          active: true,
+        },
+        include: { group: true },
+      });
+    });
+  });
+
+  describe('repriceProduct (ADR-004 versioning)', () => {
+    it('creates a new active row and deactivates the original, in one transaction', async () => {
+      jest
+        .spyOn(prismaService.product, 'findUnique')
+        .mockResolvedValueOnce(existingProductMock);
+
+      const result = await productsRepository.repriceProduct(
+        existingProductMock.id,
+        39.9,
+      );
+
+      expect(result).toEqual(productWithGroupMock);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.update).toHaveBeenCalledWith({
+        where: { id: existingProductMock.id },
+        data: { active: false },
+      });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.create).toHaveBeenCalledWith({
+        data: {
+          groupId: existingProductMock.groupId,
+          name: existingProductMock.name,
+          price: 39.9,
+          type: existingProductMock.type,
+          tier: existingProductMock.tier,
+          active: true,
+        },
+        include: { group: true },
+      });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns null and touches nothing else when the product does not exist', async () => {
+      jest
+        .spyOn(prismaService.product, 'findUnique')
+        .mockResolvedValueOnce(null);
+
+      const result = await productsRepository.repriceProduct('missing', 39.9);
+
+      expect(result).toBeNull();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.update).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deactivateProduct', () => {
+    it('sets active: false and reports success without deleting the row', async () => {
+      const result = await productsRepository.deactivateProduct('prod-1');
+
+      expect(result).toBe(true);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(prismaService.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1' },
+        data: { active: false },
+      });
+    });
+
+    it('returns false when the product does not exist', async () => {
+      jest
+        .spyOn(prismaService.product, 'updateMany')
+        .mockResolvedValueOnce({ count: 0 });
+
+      const result = await productsRepository.deactivateProduct('missing');
+
+      expect(result).toBe(false);
     });
   });
 });
