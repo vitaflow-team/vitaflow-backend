@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AcademiaModule } from './academia/academia.module';
+import { AcademiaMirrorModule } from './academia-mirror/academiaMirror.module';
 import { AuthModule } from './auth/auth.module';
 import { BackofficeModule } from './backoffice/backoffice.module';
 import { BillingModule } from './billing/billing.module';
@@ -63,6 +64,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     ClinicalRecordsModule,
     ProfessionalDiscoveryModule,
     ProfessionalMirrorModule,
+    AcademiaMirrorModule,
     MessagesModule,
     SchedulingModule,
     EducatorStudentsModule,

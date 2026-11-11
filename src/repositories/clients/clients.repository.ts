@@ -204,6 +204,20 @@ export class ClientsRepository {
     });
   }
 
+  // Same filter/order as findAcademiaOwnedByUserId, plus the gym's own name
+  // for the student-access-plan-profile mirror (TechSpec § Core
+  // Interfaces) — additive, that method is otherwise unused by this
+  // feature and stays untouched.
+  async findAcademiaMembershipsByUserId(
+    userId: string,
+  ): Promise<(Client & { academia: { name: string } })[]> {
+    return (await this.prisma.client.findMany({
+      where: { userId, academiaId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      include: { academia: { select: { name: true } } },
+    })) as (Client & { academia: { name: string } })[];
+  }
+
   async findByUserAndAcademiaId(
     userId: string,
     academiaId: string,

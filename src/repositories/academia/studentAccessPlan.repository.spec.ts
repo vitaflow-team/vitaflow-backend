@@ -114,4 +114,63 @@ describe('StudentAccessPlanRepository', () => {
       expect(prisma.checkIn.findMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('findHistoryByClient', () => {
+    it('UT-015 returns only ARCHIVED rows, joined with the catalog plan’s name', async () => {
+      const prisma = makePrisma();
+      prisma.studentAccessPlan.findMany.mockResolvedValue([
+        {
+          id: 'plan-2',
+          status: 'ARCHIVED',
+          assignedAt: new Date('2026-10-01T00:00:00Z'),
+          accessPlan: { name: 'Plano Mensal' },
+        },
+        {
+          id: 'plan-1',
+          status: 'ARCHIVED',
+          assignedAt: new Date('2026-09-01T00:00:00Z'),
+          accessPlan: { name: 'Plano Trimestral' },
+        },
+      ]);
+      const repository = makeRepository(prisma);
+
+      const history = await repository.findHistoryByClient('client-1', 20);
+
+      expect(prisma.studentAccessPlan.findMany).toHaveBeenCalledWith({
+        where: { clientId: 'client-1', status: 'ARCHIVED' },
+        orderBy: { assignedAt: 'desc' },
+        take: 20,
+        include: { accessPlan: { select: { name: true } } },
+      });
+      expect(history).toEqual([
+        expect.objectContaining({
+          id: 'plan-2',
+          accessPlan: { name: 'Plano Mensal' },
+        }),
+        expect.objectContaining({
+          id: 'plan-1',
+          accessPlan: { name: 'Plano Trimestral' },
+        }),
+      ]);
+    });
+
+    it('UT-016 caps at the given limit, delegating ordering/truncation to the database', async () => {
+      const prisma = makePrisma();
+      const rows = Array.from({ length: 20 }, (_, i) => ({
+        id: `plan-${i}`,
+        status: 'ARCHIVED',
+        assignedAt: new Date(2026, 0, 20 - i),
+        accessPlan: { name: 'Plano' },
+      }));
+      prisma.studentAccessPlan.findMany.mockResolvedValue(rows);
+      const repository = makeRepository(prisma);
+
+      const history = await repository.findHistoryByClient('client-1', 20);
+
+      expect(prisma.studentAccessPlan.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 20 }),
+      );
+      expect(history).toHaveLength(20);
+    });
+  });
 });
