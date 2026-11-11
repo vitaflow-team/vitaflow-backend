@@ -6,8 +6,12 @@
 -- schema qualifier), and asserts:
 --   IT-005  only the plan-less rows move to Gratuito, rows that already had
 --           a product are untouched, and a second run changes nothing.
---   IT-006  with no free product in the catalog the migration raises
---           'Free product not found' and no user row changes.
+--   IT-006  with no free product in the catalog and plan-less users
+--           present, the migration raises 'Free product not found' and no
+--           user row changes.
+--   IT-007  with no free product and no plan-less users — a freshly built
+--           shadow database included — the migration is a no-op: it
+--           completes without raising.
 -- Then drops the schema. Never touches public data.
 --
 -- Run:
@@ -69,16 +73,21 @@ BEGIN
 
   ---------------------------------------------------------------- IT-005 --
   -- First run: the migration body.
-  EXECUTE format($f$
-    SELECT id FROM %I."Product"
-     WHERE type = 'USER' AND price = 0 AND "stripeId" IS NULL
-     LIMIT 1$f$, v_schema) INTO free_id;
-  IF free_id IS NULL THEN
-    RAISE EXCEPTION 'Free product not found';
-  END IF;
   EXECUTE format(
-    'UPDATE %I."Users" SET "productId" = $1 WHERE "productId" IS NULL',
-    v_schema) USING free_id;
+    'SELECT count(*) FROM %I."Users" WHERE "productId" IS NULL',
+    v_schema) INTO v_count;
+  IF v_count > 0 THEN
+    EXECUTE format($f$
+      SELECT id FROM %I."Product"
+       WHERE type = 'USER' AND price = 0 AND "stripeId" IS NULL
+       LIMIT 1$f$, v_schema) INTO free_id;
+    IF free_id IS NULL THEN
+      RAISE EXCEPTION 'Free product not found';
+    END IF;
+    EXECUTE format(
+      'UPDATE %I."Users" SET "productId" = $1 WHERE "productId" IS NULL',
+      v_schema) USING free_id;
+  END IF;
 
   EXECUTE format(
     'SELECT count(*) FROM %I."Users" WHERE "productId" = ''free-1''',
@@ -110,16 +119,21 @@ BEGIN
     'CREATE TABLE %I."UsersAfterFirstRun" AS SELECT * FROM %I."Users"',
     v_schema, v_schema);
 
-  EXECUTE format($f$
-    SELECT id FROM %I."Product"
-     WHERE type = 'USER' AND price = 0 AND "stripeId" IS NULL
-     LIMIT 1$f$, v_schema) INTO free_id;
-  IF free_id IS NULL THEN
-    RAISE EXCEPTION 'Free product not found';
-  END IF;
   EXECUTE format(
-    'UPDATE %I."Users" SET "productId" = $1 WHERE "productId" IS NULL',
-    v_schema) USING free_id;
+    'SELECT count(*) FROM %I."Users" WHERE "productId" IS NULL',
+    v_schema) INTO v_count;
+  IF v_count > 0 THEN
+    EXECUTE format($f$
+      SELECT id FROM %I."Product"
+       WHERE type = 'USER' AND price = 0 AND "stripeId" IS NULL
+       LIMIT 1$f$, v_schema) INTO free_id;
+    IF free_id IS NULL THEN
+      RAISE EXCEPTION 'Free product not found';
+    END IF;
+    EXECUTE format(
+      'UPDATE %I."Users" SET "productId" = $1 WHERE "productId" IS NULL',
+      v_schema) USING free_id;
+  END IF;
 
   EXECUTE format($f$
     SELECT count(*) FROM (
@@ -151,16 +165,21 @@ BEGIN
 
   v_error := NULL;
   BEGIN
-    EXECUTE format($f$
-      SELECT id FROM %I."Product"
-       WHERE type = 'USER' AND price = 0 AND "stripeId" IS NULL
-       LIMIT 1$f$, v_schema) INTO free_id;
-    IF free_id IS NULL THEN
-      RAISE EXCEPTION 'Free product not found';
-    END IF;
     EXECUTE format(
-      'UPDATE %I."Users" SET "productId" = $1 WHERE "productId" IS NULL',
-      v_schema) USING free_id;
+      'SELECT count(*) FROM %I."Users" WHERE "productId" IS NULL',
+      v_schema) INTO v_count;
+    IF v_count > 0 THEN
+      EXECUTE format($f$
+        SELECT id FROM %I."Product"
+         WHERE type = 'USER' AND price = 0 AND "stripeId" IS NULL
+         LIMIT 1$f$, v_schema) INTO free_id;
+      IF free_id IS NULL THEN
+        RAISE EXCEPTION 'Free product not found';
+      END IF;
+      EXECUTE format(
+        'UPDATE %I."Users" SET "productId" = $1 WHERE "productId" IS NULL',
+        v_schema) USING free_id;
+    END IF;
   EXCEPTION WHEN OTHERS THEN
     v_error := SQLERRM;
   END;
@@ -181,6 +200,39 @@ BEGIN
   IF v_count <> 0 THEN
     RAISE EXCEPTION 'IT-006 FAILED: % row(s) changed despite the abort',
       v_count;
+  END IF;
+
+  ---------------------------------------------------------------- IT-007 --
+  -- An empty database — no products, no users at all — the shape of a
+  -- freshly built shadow database. No free product and nothing pending:
+  -- the migration must complete without raising.
+  EXECUTE format('DELETE FROM %I."Users"', v_schema);
+  EXECUTE format('DELETE FROM %I."Product"', v_schema);
+
+  v_error := NULL;
+  BEGIN
+    EXECUTE format(
+      'SELECT count(*) FROM %I."Users" WHERE "productId" IS NULL',
+      v_schema) INTO v_count;
+    IF v_count > 0 THEN
+      EXECUTE format($f$
+        SELECT id FROM %I."Product"
+         WHERE type = 'USER' AND price = 0 AND "stripeId" IS NULL
+         LIMIT 1$f$, v_schema) INTO free_id;
+      IF free_id IS NULL THEN
+        RAISE EXCEPTION 'Free product not found';
+      END IF;
+      EXECUTE format(
+        'UPDATE %I."Users" SET "productId" = $1 WHERE "productId" IS NULL',
+        v_schema) USING free_id;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    v_error := SQLERRM;
+  END;
+
+  IF v_error IS NOT NULL THEN
+    RAISE EXCEPTION 'IT-007 FAILED: migration raised % on an empty database',
+      v_error;
   END IF;
 
   EXECUTE format('DROP SCHEMA %I CASCADE', v_schema);
