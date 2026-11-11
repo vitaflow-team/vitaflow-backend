@@ -1,13 +1,17 @@
 import {
   computeAtRisk,
+  computeCheckInHeatmap,
+  computeMonthOverMonth,
   computeRecentFeed,
   computeTodayCount,
   computeWeeklyFrequency,
   resolveLookbackDays,
+  resolvePreviousMonthStart,
   type CheckInFixture,
 } from './engajamentoAggregation.util';
 
-const NOW = new Date('2026-11-15T15:00:00Z'); // 12:00 BRT
+const NOW = new Date('2026-11-15T15:00:00Z'); // Sun 12:00 BRT
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function checkIn(
   clientId: string,
@@ -137,5 +141,75 @@ describe('computeRecentFeed', () => {
     const result = computeRecentFeed(checkIns, 50);
 
     expect(result).toHaveLength(50);
+  });
+});
+
+describe('computeCheckInHeatmap', () => {
+  it('UT-041 buckets check-ins into the matching BRT weekday x hour cell', () => {
+    const checkIns = [
+      checkIn('c1', NOW.toISOString()), // Sun 12:00 BRT
+      checkIn('c2', NOW.toISOString()), // same cell
+      checkIn('c3', new Date(NOW.getTime() - DAY_MS).toISOString()), // Sat 12:00 BRT
+    ];
+
+    const grid = computeCheckInHeatmap(checkIns);
+
+    expect(grid).toHaveLength(168);
+    expect(grid.find((c) => c.weekday === 0 && c.hour === 12)?.count).toBe(2);
+    expect(grid.find((c) => c.weekday === 6 && c.hour === 12)?.count).toBe(1);
+    expect(grid.reduce((sum, c) => sum + c.count, 0)).toBe(3);
+  });
+
+  it('UT-042 returns the full 168-cell grid zero-filled when there are no check-ins', () => {
+    const grid = computeCheckInHeatmap([]);
+
+    expect(grid).toHaveLength(168);
+    expect(grid.every((cell) => cell.count === 0)).toBe(true);
+  });
+});
+
+describe('resolvePreviousMonthStart', () => {
+  it('returns BRT midnight on day 1 of the previous month', () => {
+    expect(resolvePreviousMonthStart(NOW).toISOString()).toBe(
+      '2026-10-01T03:00:00.000Z',
+    );
+  });
+
+  it('rolls the year back when the current month is January', () => {
+    const jan = new Date('2026-01-15T15:00:00Z');
+    expect(resolvePreviousMonthStart(jan).toISOString()).toBe(
+      '2025-12-01T03:00:00.000Z',
+    );
+  });
+});
+
+describe('computeMonthOverMonth', () => {
+  it('UT-043 counts current and previous calendar month separately', () => {
+    const rows = [
+      { createdAt: NOW }, // Nov (current)
+      { createdAt: new Date('2026-11-01T13:00:00Z') }, // Nov (current)
+      { createdAt: new Date('2026-10-20T13:00:00Z') }, // Oct (previous)
+    ];
+
+    const result = computeMonthOverMonth(rows, NOW);
+
+    expect(result.currentMonthCount).toBe(2);
+    expect(result.previousMonthCount).toBe(1);
+  });
+
+  it('UT-044 returns previousMonthCount null, not 0, when the previous month has no rows', () => {
+    const result = computeMonthOverMonth([{ createdAt: NOW }], NOW);
+
+    expect(result.previousMonthCount).toBeNull();
+    expect(result.currentMonthCount).toBe(1);
+  });
+
+  it('isCurrentMonthPartial is false only on the last calendar day of the month', () => {
+    const lastDayOfNovember = new Date('2026-11-30T15:00:00Z');
+
+    expect(
+      computeMonthOverMonth([], lastDayOfNovember).isCurrentMonthPartial,
+    ).toBe(false);
+    expect(computeMonthOverMonth([], NOW).isCurrentMonthPartial).toBe(true);
   });
 });

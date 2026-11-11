@@ -1,5 +1,7 @@
 import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
+import { MealsRepository } from '@/repositories/food-diary/meals.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
+import { WorkoutsRepository } from '@/repositories/workouts/workouts.repository';
 import { AppError } from '@/utils/app.erro';
 import { MeasurementRecord } from '@prisma/client';
 import { ProgressService } from './progress.service';
@@ -38,15 +40,21 @@ describe('ProgressService', () => {
     delete: jest.fn(),
   };
   const formRecordsRepository = { findWeightPointsByLinkedUser: jest.fn() };
+  const mealsRepository = { findByUserAndDateRange: jest.fn() };
+  const workoutsRepository = { existsForUser: jest.fn() };
   let service: ProgressService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     formRecordsRepository.findWeightPointsByLinkedUser.mockResolvedValue([]);
+    mealsRepository.findByUserAndDateRange.mockResolvedValue([]);
+    workoutsRepository.existsForUser.mockResolvedValue(false);
     jest.useFakeTimers().setSystemTime(FIXED_NOW);
     service = new ProgressService(
       repository as unknown as MeasurementRecordsRepository,
       formRecordsRepository as unknown as FormRecordsRepository,
+      mealsRepository as unknown as MealsRepository,
+      workoutsRepository as unknown as WorkoutsRepository,
     );
   });
 
@@ -77,11 +85,16 @@ describe('ProgressService', () => {
 
     const dashboard = await service.getDashboard('user-1', 4);
 
+    // The repository is queried from the wider of {4-week window, previous
+    // BRT calendar month start} — needed for periodComparison (role-
+    // management-dashboards US-002) — while the *reported* period boundary
+    // stays the exact 4-week window.
     expect(repository.findByUserSince).toHaveBeenCalledWith(
       'user-1',
-      new Date('2026-08-22T12:00:00.000Z'),
+      new Date('2026-08-01T03:00:00.000Z'),
     );
     expect(dashboard.period.weeks).toBe(4);
+    expect(dashboard.period.start).toBe('2026-08-22T12:00:00.000Z');
   });
 
   it('UT-009 uses and reports an exact 12-week window', async () => {
@@ -108,14 +121,14 @@ describe('ProgressService', () => {
       repository.findByUserSince.mockResolvedValue([]);
 
       const dashboard = await service.getDashboard('user-1', weeks);
-      const since = repository.findByUserSince.mock.calls.at(-1)?.[1] as Date;
 
+      // Reported period boundary is the exact weeks-based window — distinct
+      // from the (possibly wider) repository query window, see UT-008.
       expect(dashboard.period).toEqual({
         weeks,
-        start: since.toISOString(),
+        start: expectedStart,
         end: FIXED_NOW.toISOString(),
       });
-      expect(dashboard.period.start).toBe(expectedStart);
     },
   );
 
@@ -227,6 +240,24 @@ describe('ProgressService', () => {
         start: '2026-07-25T12:00:00.000Z',
         end: '2026-09-19T12:00:00.000Z',
       },
+      smoothedTrend: [],
+      periodComparison: [
+        { metric: 'weight', current: null, previous: null, deltaPercent: null },
+        {
+          metric: 'diaryLoggedDays',
+          current: 0,
+          previous: 0,
+          deltaPercent: null,
+        },
+      ],
+      streak: { currentDays: 0, personalBestDays: 0 },
+      adherence: {
+        workoutPercent: null,
+        workoutTrackingUnavailable: true,
+        hasWorkoutPlan: false,
+        diaryPercent: 0,
+      },
+      correlation: [],
     });
   });
 
@@ -322,6 +353,18 @@ describe('ProgressService', () => {
     expect(error.message).toBe('Registro não encontrado.');
     expect(error.getStatus()).toBe(404);
     expect(repository.update).not.toHaveBeenCalled();
+  });
+
+  it('UT-045 propagates a parallel data-source failure, consistent with this method having no partial-degradation convention today', async () => {
+    repository.findRecentByUser.mockResolvedValue([]);
+    repository.findByUserSince.mockResolvedValue([]);
+    mealsRepository.findByUserAndDateRange.mockRejectedValue(
+      new Error('db unavailable'),
+    );
+
+    await expect(service.getDashboard('user-1')).rejects.toThrow(
+      'db unavailable',
+    );
   });
 
   describe('latest record', () => {

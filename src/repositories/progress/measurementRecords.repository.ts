@@ -7,6 +7,13 @@ export type MeasurementRecordInput = Pick<
   'weightKg' | 'heightCm' | 'waistCm' | 'hipCm'
 >;
 
+export interface MonthlyWeightPoint {
+  userId: string;
+  year: number;
+  month: number;
+  avgWeightKg: number;
+}
+
 @Injectable()
 export class MeasurementRecordsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -64,5 +71,26 @@ export class MeasurementRecordsRepository {
 
   async delete(id: string): Promise<void> {
     await this.prisma.measurementRecord.delete({ where: { id } });
+  }
+
+  // DB-side aggregation (ADR-006): avg weight per (userId, calendar month).
+  // Prisma's typed `groupBy` can't group by a computed expression on
+  // `recordedAt` (unlike Invoice's literal competenceYear/competenceMonth
+  // columns), so this uses a parameterized raw query instead — the database
+  // still does 100% of the averaging; the caller only buckets the already-
+  // aggregated rows by months-in-care and normalizes them.
+  async aggregateByClientAndMonth(
+    userIds: string[],
+  ): Promise<MonthlyWeightPoint[]> {
+    if (userIds.length === 0) return [];
+    return await this.prisma.$queryRaw<MonthlyWeightPoint[]>(Prisma.sql`
+      SELECT "userId",
+             EXTRACT(YEAR FROM "recordedAt")::int AS "year",
+             EXTRACT(MONTH FROM "recordedAt")::int AS "month",
+             AVG("weightKg")::float AS "avgWeightKg"
+      FROM "MeasurementRecord"
+      WHERE "userId" IN (${Prisma.join(userIds)})
+      GROUP BY "userId", "year", "month"
+    `);
   }
 }

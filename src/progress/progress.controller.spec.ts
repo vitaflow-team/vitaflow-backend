@@ -1,6 +1,8 @@
 import { AuthGuard } from '@/auth/auth.guard';
 import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
+import { MealsRepository } from '@/repositories/food-diary/meals.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
+import { WorkoutsRepository } from '@/repositories/workouts/workouts.repository';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -27,6 +29,18 @@ describe('ProgressController', () => {
           provide: FormRecordsRepository,
           useValue: {
             findWeightPointsByLinkedUser: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: MealsRepository,
+          useValue: {
+            findByUserAndDateRange: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: WorkoutsRepository,
+          useValue: {
+            existsForUser: jest.fn().mockResolvedValue(false),
           },
         },
       ],

@@ -1,4 +1,9 @@
-import { brtDateKey } from '@/utils/brtDate';
+import {
+  BRT_OFFSET_MS,
+  brtDateKey,
+  brtHour,
+  brtWeekday,
+} from '@/utils/brtDate';
 import { CheckInSource } from '@prisma/client';
 
 export const WEEKLY_LOOKBACK_DAYS = 28;
@@ -31,6 +36,18 @@ export interface FeedEntry {
   createdAt: string;
   source: CheckInSource;
   planValidAtCheckIn: boolean;
+}
+
+export interface HeatmapCell {
+  weekday: number;
+  hour: number;
+  count: number;
+}
+
+export interface MonthOverMonth {
+  currentMonthCount: number;
+  previousMonthCount: number | null;
+  isCurrentMonthPartial: boolean;
 }
 
 /** The lookback window, clamped to the academia's own age (ADR-008/UT-017). */
@@ -117,4 +134,68 @@ export function computeRecentFeed(
       source: checkIn.source,
       planValidAtCheckIn: checkIn.planValidAtCheckIn,
     }));
+}
+
+/** Zero-filled 7x24 (weekday x BRT hour) grid; never sparse (UT-041/UT-042). */
+export function computeCheckInHeatmap(
+  checkIns: CheckInFixture[],
+): HeatmapCell[] {
+  const grid: HeatmapCell[] = [];
+  const byKey = new Map<string, HeatmapCell>();
+  for (let weekday = 0; weekday < 7; weekday++) {
+    for (let hour = 0; hour < 24; hour++) {
+      const cell: HeatmapCell = { weekday, hour, count: 0 };
+      grid.push(cell);
+      byKey.set(`${weekday}|${hour}`, cell);
+    }
+  }
+  for (const checkIn of checkIns) {
+    const key = `${brtWeekday(checkIn.createdAt)}|${brtHour(checkIn.createdAt)}`;
+    const cell = byKey.get(key);
+    if (cell) cell.count += 1;
+  }
+  return grid;
+}
+
+/** BRT midnight on day 1 of the calendar month before `now`'s. */
+export function resolvePreviousMonthStart(now: Date): Date {
+  const [year, month] = brtDateKey(now).split('-').map(Number);
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  return new Date(
+    Date.UTC(prevYear, prevMonth - 1, 1, 0, 0, 0) + BRT_OFFSET_MS,
+  );
+}
+
+/** `checkIns` must cover at least from `resolvePreviousMonthStart(now)` onward. */
+export function computeMonthOverMonth(
+  checkIns: { createdAt: Date }[],
+  now: Date,
+): MonthOverMonth {
+  const [year, month] = brtDateKey(now).split('-').map(Number);
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+
+  let currentMonthCount = 0;
+  let previousMonthCount = 0;
+  let hasPreviousMonthData = false;
+
+  for (const checkIn of checkIns) {
+    const [y, m] = brtDateKey(checkIn.createdAt).split('-').map(Number);
+    if (y === year && m === month) {
+      currentMonthCount += 1;
+    } else if (y === prevYear && m === prevMonth) {
+      previousMonthCount += 1;
+      hasPreviousMonthData = true;
+    }
+  }
+
+  const todayOfMonth = Number(brtDateKey(now).split('-')[2]);
+  const lastDayOfCurrentMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+  return {
+    currentMonthCount,
+    previousMonthCount: hasPreviousMonthData ? previousMonthCount : null,
+    isCurrentMonthPartial: todayOfMonth < lastDayOfCurrentMonth,
+  };
 }

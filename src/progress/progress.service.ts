@@ -1,5 +1,7 @@
+import { MealsRepository } from '@/repositories/food-diary/meals.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
 import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
+import { WorkoutsRepository } from '@/repositories/workouts/workouts.repository';
 import { AppError } from '@/utils/app.erro';
 import { Injectable } from '@nestjs/common';
 import { MeasurementRecord } from '@prisma/client';
@@ -15,6 +17,14 @@ import {
   mergeMeasurementPoints,
   ownRecordToPoint,
 } from './mergeMeasurements.util';
+import {
+  computeAdherence,
+  computeCorrelation,
+  computePeriodComparison,
+  computeSmoothedTrend,
+  computeStreak,
+  resolvePreviousMonthStart,
+} from './progressDashboardAggregation.util';
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const RECENT_LIMIT = 10;
@@ -34,6 +44,8 @@ export class ProgressService {
   constructor(
     private readonly measurementRecords: MeasurementRecordsRepository,
     private readonly formRecords: FormRecordsRepository,
+    private readonly meals: MealsRepository,
+    private readonly workouts: WorkoutsRepository,
   ) {}
 
   // The student's own records and the weight-tagged points of every linked
@@ -45,26 +57,55 @@ export class ProgressService {
   ): Promise<DashboardResponseDTO> {
     const now = new Date(Date.now());
     const since = new Date(now.getTime() - weeks * 7 * DAY_IN_MS);
+    // Period comparison (US-002) needs the full previous calendar month,
+    // which can reach further back than the `weeks` display window.
+    const previousMonthStart = resolvePreviousMonthStart(now);
+    const widestSince =
+      since.getTime() < previousMonthStart.getTime()
+        ? since
+        : previousMonthStart;
 
-    const [ownRecent, ownPeriod, professionalRecent, professionalPeriod] =
-      await Promise.all([
-        this.measurementRecords.findRecentByUser(userId, RECENT_LIMIT),
-        this.measurementRecords.findByUserSince(userId, since),
-        this.formRecords.findWeightPointsByLinkedUser(userId, RECENT_LIMIT),
-        this.formRecords.findWeightPointsByLinkedUser(
-          userId,
-          PERIOD_LIMIT,
-          since,
-        ),
-      ]);
+    const [
+      ownRecent,
+      ownWide,
+      professionalRecent,
+      professionalWide,
+      diaryMeals,
+      hasWorkoutPlan,
+    ] = await Promise.all([
+      this.measurementRecords.findRecentByUser(userId, RECENT_LIMIT),
+      this.measurementRecords.findByUserSince(userId, widestSince),
+      this.formRecords.findWeightPointsByLinkedUser(userId, RECENT_LIMIT),
+      this.formRecords.findWeightPointsByLinkedUser(
+        userId,
+        PERIOD_LIMIT,
+        widestSince,
+      ),
+      this.meals.findByUserAndDateRange(userId, widestSince, now),
+      this.workouts.existsForUser(userId),
+    ]);
 
     const recent = mergeMeasurementPoints(ownRecent, professionalRecent).slice(
       0,
       RECENT_LIMIT,
     );
-    const withinPeriod = mergeMeasurementPoints(ownPeriod, professionalPeriod)
+    const wideMerged = mergeMeasurementPoints(ownWide, professionalWide);
+    const withinPeriod = wideMerged
       .filter((point) => point.recordedAt >= since)
       .reverse();
+
+    const diaryLoggedDates = diaryMeals.map((meal) => meal.loggedAt);
+    const diaryLoggedDatesInWindow = diaryLoggedDates.filter(
+      (date) => date >= since,
+    );
+    const weightPointsInWindow = withinPeriod.map((point) => ({
+      recordedAt: point.recordedAt,
+      weightKg: point.weightKg,
+    }));
+    const weightPointsWide = wideMerged.map((point) => ({
+      recordedAt: point.recordedAt,
+      weightKg: point.weightKg,
+    }));
 
     return {
       latest: recent[0] ? this.toResponse(recent[0]) : null,
@@ -97,6 +138,23 @@ export class ProgressService {
         start: since.toISOString(),
         end: now.toISOString(),
       },
+      smoothedTrend: computeSmoothedTrend(weightPointsInWindow),
+      periodComparison: computePeriodComparison(
+        weightPointsWide,
+        diaryLoggedDates,
+        now,
+      ),
+      streak: computeStreak(diaryLoggedDates, now),
+      adherence: computeAdherence(
+        diaryLoggedDatesInWindow,
+        since,
+        now,
+        hasWorkoutPlan,
+      ),
+      correlation: computeCorrelation(
+        weightPointsInWindow,
+        diaryLoggedDatesInWindow,
+      ),
     };
   }
 

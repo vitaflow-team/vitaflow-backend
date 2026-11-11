@@ -24,6 +24,8 @@ import { StudentWorkoutsService } from './workouts/studentWorkouts.service';
 import { WorkoutNotificationsService } from './workouts/workoutNotifications.service';
 import { WorkoutsController } from './workouts/workouts.controller';
 import { EducatorWorkoutsService } from './workouts/workouts.service';
+import { EducatorDashboardController } from './dashboard/educatorDashboard.controller';
+import { EducatorDashboardService } from './dashboard/educatorDashboard.service';
 
 @Module({
   imports: [
@@ -36,6 +38,12 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
   ],
   controllers: [
+    // Registered before StudentsController: Nest/Express matches routes in
+    // registration order, and StudentsController's GET ':id' would
+    // otherwise shadow GET 'educator/students/dashboard' (id="dashboard"),
+    // a real 404 caught only by a live server boot, never by Jest's
+    // per-controller TestingModule specs.
+    EducatorDashboardController,
     StudentsController,
     WorkoutsController,
     StudentWorkoutsController,
@@ -57,6 +65,7 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     WorkoutNotificationsService,
     EducatorWorkoutsService,
     StudentWorkoutsService,
+    EducatorDashboardService,
     Clock,
   ],
   // EducatorWorkoutsRepository is also exported for pdf-export (ADR-010).

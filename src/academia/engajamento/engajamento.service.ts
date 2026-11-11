@@ -2,17 +2,23 @@ import { PrismaService } from '@/database/prisma.service';
 import { CheckInRepository } from '@/repositories/academia/checkIn.repository';
 import { ChurnRiskEpisodeRepository } from '@/repositories/academia/churnRiskEpisode.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ChurnRiskReason } from '@prisma/client';
 import {
   computeAtRisk,
+  computeCheckInHeatmap,
+  computeMonthOverMonth,
   computeRecentFeed,
   computeTodayCount,
   computeWeeklyFrequency,
   resolveLookbackDays,
+  resolvePreviousMonthStart,
   WEEKLY_LOOKBACK_DAYS,
   type AtRiskStudent,
+  type CheckInFixture,
   type FeedEntry,
+  type HeatmapCell,
+  type MonthOverMonth,
 } from './engajamentoAggregation.util';
 
 export interface EngajamentoSummary {
@@ -20,12 +26,16 @@ export interface EngajamentoSummary {
   weeklyFrequencyAverage: number;
   atRisk: AtRiskStudent[];
   recentFeed: FeedEntry[];
+  checkInHeatmap: HeatmapCell[];
+  monthOverMonth: MonthOverMonth;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class EngajamentoService {
+  private readonly logger = new Logger(EngajamentoService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly checkIns: CheckInRepository,
@@ -70,6 +80,9 @@ export class EngajamentoService {
       (student) => !dismissed.has(student.clientId),
     );
 
+    const { checkInHeatmap, monthOverMonth } =
+      await this.computeExtendedWidgets(academiaId, checkInFixtures, now);
+
     return {
       todayCheckInCount: computeTodayCount(checkInFixtures, now),
       weeklyFrequencyAverage: computeWeeklyFrequency(
@@ -79,6 +92,44 @@ export class EngajamentoService {
       ),
       atRisk,
       recentFeed: computeRecentFeed(checkInFixtures),
+      checkInHeatmap,
+      monthOverMonth,
     };
+  }
+
+  /**
+   * Heatmap + month-over-month degrade to a safe zero-state on failure
+   * (UT-048) rather than failing the rest of an already-working summary.
+   */
+  private async computeExtendedWidgets(
+    academiaId: string,
+    windowedCheckIns: CheckInFixture[],
+    now: Date,
+  ): Promise<{
+    checkInHeatmap: HeatmapCell[];
+    monthOverMonth: MonthOverMonth;
+  }> {
+    try {
+      const monthRows = await this.checkIns.findByAcademiaSince(
+        academiaId,
+        resolvePreviousMonthStart(now),
+      );
+      return {
+        checkInHeatmap: computeCheckInHeatmap(windowedCheckIns),
+        monthOverMonth: computeMonthOverMonth(monthRows, now),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Failed to compute heatmap/monthOverMonth for academia ${academiaId}: ${String(error)}`,
+      );
+      return {
+        checkInHeatmap: computeCheckInHeatmap([]),
+        monthOverMonth: {
+          currentMonthCount: 0,
+          previousMonthCount: null,
+          isCurrentMonthPartial: true,
+        },
+      };
+    }
   }
 }

@@ -422,4 +422,21 @@ export class FixedTimesRepository {
     });
     return result.count;
   }
+
+  /** Most recent non-canceled session start per client of this educator's
+   * portfolio, for schedule-inactivity risk signals. */
+  async findLatestNonCanceledByClient(
+    professionalId: string,
+  ): Promise<Map<string, Date>> {
+    const rows = await this.prisma.fixedSession.findMany({
+      where: { professionalId, status: { not: 'CANCELED' } },
+      select: { clientId: true, startAt: true },
+      orderBy: { startAt: 'desc' },
+    });
+    const last = new Map<string, Date>();
+    for (const row of rows) {
+      if (!last.has(row.clientId)) last.set(row.clientId, row.startAt);
+    }
+    return last;
+  }
 }

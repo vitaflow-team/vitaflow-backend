@@ -3,8 +3,11 @@ import { AuthGuard } from '@/auth/auth.guard';
 import { PrismaService } from '@/database/prisma.service';
 import { ProgressController } from '@/progress/progress.controller';
 import { ProgressService } from '@/progress/progress.service';
+import { FormRecordsRepository } from '@/repositories/clinical-records/formRecords.repository';
+import { MealsRepository } from '@/repositories/food-diary/meals.repository';
 import { MeasurementRecordsRepository } from '@/repositories/progress/measurementRecords.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
+import { WorkoutsRepository } from '@/repositories/workouts/workouts.repository';
 import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -34,6 +37,9 @@ describe('Progress records integration', () => {
         PrismaService,
         UserRepository,
         MeasurementRecordsRepository,
+        FormRecordsRepository,
+        MealsRepository,
+        WorkoutsRepository,
         ProgressService,
         AuthGuard,
       ],
@@ -59,6 +65,8 @@ describe('Progress records integration', () => {
       await prisma.measurementRecord.deleteMany({
         where: { userId: { in: ids } },
       });
+      await prisma.meal.deleteMany({ where: { userId: { in: ids } } });
+      await prisma.workout.deleteMany({ where: { userId: { in: ids } } });
       await prisma.users.deleteMany({ where: { id: { in: ids } } });
       createdUserIds.clear();
     }
@@ -134,6 +142,56 @@ describe('Progress records integration', () => {
     expect(response.body.bmiSeries).toHaveLength(3);
   });
 
+  it('role-management-dashboards IT-001: all five dashboard widgets are populated from seeded data; unauthenticated returns 401', async () => {
+    const now = Date.now();
+    const dayMs = 86_400_000;
+    await seedRecord(owner.id, 70, 168, new Date(now - 6 * dayMs));
+    await seedRecord(owner.id, 69, 168, new Date(now - 1 * dayMs));
+    for (let i = 0; i < 5; i++) {
+      await prisma.meal.create({
+        data: {
+          userId: owner.id,
+          mealType: 'LUNCH',
+          description: 'Almoço',
+          calories: 600,
+          loggedAt: new Date(now - i * dayMs),
+        },
+      });
+    }
+    await prisma.workout.create({
+      data: {
+        userId: owner.id,
+        goal: 'WEIGHT_LOSS',
+        daysPerWeek: 3,
+        explanation: 'Plano de teste',
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/progress-records/dashboard')
+      .set('Authorization', `Bearer ${await tokenFor(owner)}`)
+      .expect(200);
+
+    expect(Array.isArray(response.body.smoothedTrend)).toBe(true);
+    expect(
+      response.body.periodComparison.map((m: { metric: string }) => m.metric),
+    ).toEqual(['weight', 'diaryLoggedDays']);
+    expect(response.body.streak.currentDays).toBeGreaterThanOrEqual(5);
+    expect(response.body.adherence).toMatchObject({
+      workoutPercent: null,
+      workoutTrackingUnavailable: true,
+      hasWorkoutPlan: true,
+    });
+    expect(response.body.adherence.diaryPercent).toBeGreaterThan(0);
+    expect(Array.isArray(response.body.correlation)).toBe(true);
+    expect(response.body.correlation.length).toBeGreaterThan(0);
+
+    const unauthenticated = await request(app.getHttpServer()).get(
+      '/progress-records/dashboard',
+    );
+    expect(unauthenticated.status).toBe(401);
+  });
+
   it('IT-002 returns the exact empty dashboard shape', async () => {
     const response = await request(app.getHttpServer())
       .get('/progress-records/dashboard')
@@ -151,6 +209,24 @@ describe('Progress records integration', () => {
         start: expect.any(String),
         end: expect.any(String),
       },
+      smoothedTrend: [],
+      periodComparison: [
+        { metric: 'weight', current: null, previous: null, deltaPercent: null },
+        {
+          metric: 'diaryLoggedDays',
+          current: 0,
+          previous: 0,
+          deltaPercent: null,
+        },
+      ],
+      streak: { currentDays: 0, personalBestDays: 0 },
+      adherence: {
+        workoutPercent: null,
+        workoutTrackingUnavailable: true,
+        hasWorkoutPlan: false,
+        diaryPercent: 0,
+      },
+      correlation: [],
     });
   });
 
@@ -283,6 +359,24 @@ describe('Progress records integration', () => {
         start: expect.any(String),
         end: expect.any(String),
       },
+      smoothedTrend: [],
+      periodComparison: [
+        { metric: 'weight', current: null, previous: null, deltaPercent: null },
+        {
+          metric: 'diaryLoggedDays',
+          current: 0,
+          previous: 0,
+          deltaPercent: null,
+        },
+      ],
+      streak: { currentDays: 0, personalBestDays: 0 },
+      adherence: {
+        workoutPercent: null,
+        workoutTrackingUnavailable: true,
+        hasWorkoutPlan: false,
+        diaryPercent: 0,
+      },
+      correlation: [],
     });
   });
 
