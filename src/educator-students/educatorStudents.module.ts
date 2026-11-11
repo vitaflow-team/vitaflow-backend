@@ -24,6 +24,8 @@ import { StudentWorkoutsService } from './workouts/studentWorkouts.service';
 import { WorkoutNotificationsService } from './workouts/workoutNotifications.service';
 import { WorkoutsController } from './workouts/workouts.controller';
 import { EducatorWorkoutsService } from './workouts/workouts.service';
+import { EducatorDashboardController } from './dashboard/educatorDashboard.controller';
+import { EducatorDashboardService } from './dashboard/educatorDashboard.service';
 
 @Module({
   imports: [
@@ -40,6 +42,7 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     WorkoutsController,
     StudentWorkoutsController,
     FixedTimesController,
+    EducatorDashboardController,
   ],
   providers: [
     PrismaService,
@@ -57,6 +60,7 @@ import { EducatorWorkoutsService } from './workouts/workouts.service';
     WorkoutNotificationsService,
     EducatorWorkoutsService,
     StudentWorkoutsService,
+    EducatorDashboardService,
     Clock,
   ],
   // EducatorWorkoutsRepository is also exported for pdf-export (ADR-010).

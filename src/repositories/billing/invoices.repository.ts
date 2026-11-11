@@ -12,6 +12,18 @@ const OPEN_STATUSES: InvoiceStatus[] = [
   InvoiceStatus.OVERDUE,
 ];
 
+const PAID_STATUSES: InvoiceStatus[] = [
+  InvoiceStatus.PAID,
+  InvoiceStatus.PAID_MANUALLY,
+];
+
+export interface RevenueGroup {
+  clientId: string;
+  year: number;
+  month: number;
+  amountCents: number;
+}
+
 export interface NewInvoiceReservation {
   clientId: string;
   billingAccountId: string;
@@ -144,6 +156,28 @@ export class InvoicesRepository {
     return await this.prisma.invoice.findMany({
       where: { billingAccountId, status: { in: OPEN_STATUSES } },
     });
+  }
+
+  // DB-side aggregation (ADR-006): a professional's billing history grows
+  // unboundedly, so the sum is computed in Postgres, not reduced in JS.
+  // Scoped by billingAccountId — not by the professional's *current* client
+  // list — so a student's historical revenue survives their disconnection
+  // (UT-026); only the invoice's own current status is reflected (UT-027).
+  async sumAmountByStudentAndMonth(
+    billingAccountId: string,
+  ): Promise<RevenueGroup[]> {
+    if (!billingAccountId) return [];
+    const groups = await this.prisma.invoice.groupBy({
+      by: ['clientId', 'competenceYear', 'competenceMonth'],
+      where: { billingAccountId, status: { in: PAID_STATUSES } },
+      _sum: { amountCents: true },
+    });
+    return groups.map((group) => ({
+      clientId: group.clientId,
+      year: group.competenceYear,
+      month: group.competenceMonth,
+      amountCents: group._sum.amountCents ?? 0,
+    }));
   }
 
   // A reservation the crash window left behind (ADR-009): no charge id,
