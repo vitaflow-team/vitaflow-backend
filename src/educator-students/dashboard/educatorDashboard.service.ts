@@ -1,5 +1,8 @@
 import { BillingAccountRepository } from '@/repositories/billing/billingAccount.repository';
-import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
+import {
+  InvoicesRepository,
+  type RevenueGroup,
+} from '@/repositories/billing/invoices.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { FixedTimesRepository } from '@/repositories/fixed-times/fixedTimes.repository';
 import { Injectable, Logger } from '@nestjs/common';
@@ -126,12 +129,7 @@ export class EducatorDashboardService {
    * current portfolio (UT-026) — their name is looked up individually since
    * they're absent from the already-fetched `students` list. */
   private async buildRevenueSeries(
-    revenueGroups: {
-      clientId: string;
-      year: number;
-      month: number;
-      amountCents: number;
-    }[],
+    revenueGroups: RevenueGroup[],
     students: { id: string; name: string }[],
   ): Promise<RevenueSeriesPoint[]> {
     const nameByClientId = new Map(students.map((s) => [s.id, s.name]));
