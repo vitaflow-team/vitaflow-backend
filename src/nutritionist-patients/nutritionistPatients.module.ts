@@ -17,8 +17,13 @@ import { NutritionistPatientsService } from './nutritionistPatients.service';
 @Module({
   imports: [AuthModule],
   controllers: [
-    NutritionistPatientsController,
+    // Registered before NutritionistPatientsController: Nest/Express
+    // matches routes in registration order, and NutritionistPatientsController's
+    // GET ':id' would otherwise shadow GET 'nutritionist/patients/dashboard'
+    // (id="dashboard"), a real 404 caught only by a live server boot, never
+    // by Jest's per-controller TestingModule specs.
     NutritionistDashboardController,
+    NutritionistPatientsController,
   ],
   providers: [
     PrismaService,

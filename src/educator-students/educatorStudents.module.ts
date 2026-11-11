@@ -38,11 +38,16 @@ import { EducatorDashboardService } from './dashboard/educatorDashboard.service'
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
   ],
   controllers: [
+    // Registered before StudentsController: Nest/Express matches routes in
+    // registration order, and StudentsController's GET ':id' would
+    // otherwise shadow GET 'educator/students/dashboard' (id="dashboard"),
+    // a real 404 caught only by a live server boot, never by Jest's
+    // per-controller TestingModule specs.
+    EducatorDashboardController,
     StudentsController,
     WorkoutsController,
     StudentWorkoutsController,
     FixedTimesController,
-    EducatorDashboardController,
   ],
   providers: [
     PrismaService,
