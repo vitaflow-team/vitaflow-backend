@@ -327,3 +327,54 @@ describe('ClientsRepository.findByUserAndProfessional', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('ClientsRepository.findAcademiaMembershipsByUserId', () => {
+  const findMany = jest.fn();
+  const prisma = { client: { findMany } } as unknown as PrismaService;
+  const repository = new ClientsRepository(prisma);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('UT-013 joins the academia name, scoped to this user’s academia-type clients, oldest first', async () => {
+    findMany.mockResolvedValue([
+      {
+        id: 'client-1',
+        userId: 'user-1',
+        academiaId: 'academia-1',
+        academia: { name: 'Academia Vitória' },
+      },
+    ]);
+
+    const result = await repository.findAcademiaMembershipsByUserId('user-1');
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', academiaId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      include: { academia: { select: { name: true } } },
+    });
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'client-1',
+        academia: { name: 'Academia Vitória' },
+      }),
+    ]);
+  });
+
+  it('UT-014 excludes a client with no academiaId (a professional-type client)', async () => {
+    // The where clause itself (academiaId: { not: null }) is what excludes
+    // it — asserted here by confirming the repository never widens that
+    // filter, mirroring findAcademiaOwnedByUserId's own exclusion rule.
+    findMany.mockResolvedValue([]);
+
+    const result = await repository.findAcademiaMembershipsByUserId('user-1');
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'user-1', academiaId: { not: null } },
+      }),
+    );
+    expect(result).toEqual([]);
+  });
+});

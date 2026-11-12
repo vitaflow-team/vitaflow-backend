@@ -119,6 +119,24 @@ export class StudentAccessPlanRepository {
     return await this.prisma.studentAccessPlan.findUnique({ where: { id } });
   }
 
+  // Additive — for the student-access-plan-profile mirror's plan-history
+  // section (TechSpec § Core Interfaces). ARCHIVED rows are the full
+  // assignment history minus the current one (which currentForClient
+  // already serves); updatedAt doubles as "ended around" since activate()
+  // is the only path that ever sets a row to ARCHIVED (TechSpec § Data
+  // Models) and that write always touches @updatedAt.
+  async findHistoryByClient(
+    clientId: string,
+    limit: number,
+  ): Promise<(StudentAccessPlan & { accessPlan: { name: string } })[]> {
+    return (await this.prisma.studentAccessPlan.findMany({
+      where: { clientId, status: StudentAccessPlanStatus.ARCHIVED },
+      orderBy: { assignedAt: 'desc' },
+      take: limit,
+      include: { accessPlan: { select: { name: true } } },
+    })) as (StudentAccessPlan & { accessPlan: { name: string } })[];
+  }
+
   /** Raw check-in timestamps of this client since the given instant — the
    * caller buckets them into distinct BRT calendar days (ADR-003). */
   async findCheckInTimestampsSince(
