@@ -1,9 +1,12 @@
 import {
   computeMonthsInCare,
   computeNoDiaryEntryAlerts,
+  computeOverduePaymentAlerts,
   computePatientAdherence,
   computePortfolioWeightEvolution,
   groupIntoBuckets,
+  isNoDiaryEntry,
+  referenceDiaryDate,
   type PatientAdherenceEntry,
   type PatientAdherenceInput,
 } from './nutritionistDashboardAggregation.util';
@@ -29,6 +32,7 @@ function baseInput(
   return {
     clientId: 'p1',
     clientName: 'Patient 1',
+    createdAt: daysAgo(100), // well past the grace period by default
     mealLoggedDates: [],
     lastEntryAt: null,
     since: null,
@@ -142,6 +146,7 @@ describe('groupIntoBuckets', () => {
         bucket: 'compliant',
         loggedDayRatio: 0.9,
         daysSinceLastEntry: 0,
+        noDiaryEntryEligible: false,
       },
       {
         clientId: 'b',
@@ -149,6 +154,7 @@ describe('groupIntoBuckets', () => {
         bucket: 'struggling',
         loggedDayRatio: 0.5,
         daysSinceLastEntry: 1,
+        noDiaryEntryEligible: false,
       },
       {
         clientId: 'c',
@@ -156,6 +162,7 @@ describe('groupIntoBuckets', () => {
         bucket: 'nonAdherent',
         loggedDayRatio: 0.1,
         daysSinceLastEntry: 20,
+        noDiaryEntryEligible: true,
       },
       {
         clientId: 'd',
@@ -163,6 +170,7 @@ describe('groupIntoBuckets', () => {
         bucket: 'noDataYet',
         loggedDayRatio: null,
         daysSinceLastEntry: null,
+        noDiaryEntryEligible: true,
       },
     ];
 
@@ -184,6 +192,7 @@ describe('computeNoDiaryEntryAlerts', () => {
         bucket: 'nonAdherent',
         loggedDayRatio: 0.1,
         daysSinceLastEntry: 12,
+        noDiaryEntryEligible: true,
       },
     ];
 
@@ -202,6 +211,7 @@ describe('computeNoDiaryEntryAlerts', () => {
         bucket: 'noDataYet',
         loggedDayRatio: null,
         daysSinceLastEntry: null,
+        noDiaryEntryEligible: true,
       },
     ];
 
@@ -220,10 +230,112 @@ describe('computeNoDiaryEntryAlerts', () => {
         bucket: 'compliant',
         loggedDayRatio: 0.9,
         daysSinceLastEntry: 2,
+        noDiaryEntryEligible: false,
       },
     ];
 
     expect(computeNoDiaryEntryAlerts(entries)).toEqual([]);
+  });
+
+  // UT-026 (churn-risk-alert-independent ADR-007): computeNoDiaryEntryAlerts
+  // now delegates eligibility entirely to the precomputed flag — a never-
+  // logged patient younger than the grace period must never appear, even
+  // though daysSinceLastEntry is null (previously the sole trigger).
+  it('UT-026 excludes a never-logged patient whose noDiaryEntryEligible is false (younger than the grace period)', () => {
+    const entries: PatientAdherenceEntry[] = [
+      {
+        clientId: 'p1',
+        clientName: 'P1',
+        bucket: 'noDataYet',
+        loggedDayRatio: null,
+        daysSinceLastEntry: null,
+        noDiaryEntryEligible: false,
+      },
+    ];
+
+    expect(computeNoDiaryEntryAlerts(entries)).toEqual([]);
+  });
+
+  it('UT-027 includes a never-logged patient whose noDiaryEntryEligible is true (past the grace period)', () => {
+    const entries: PatientAdherenceEntry[] = [
+      {
+        clientId: 'p1',
+        clientName: 'P1',
+        bucket: 'noDataYet',
+        loggedDayRatio: null,
+        daysSinceLastEntry: null,
+        noDiaryEntryEligible: true,
+      },
+    ];
+
+    expect(computeNoDiaryEntryAlerts(entries)).toEqual([
+      expect.objectContaining({ clientId: 'p1' }),
+    ]);
+  });
+});
+
+describe('referenceDiaryDate / isNoDiaryEntry (churn-risk-alert-independent ADR-007)', () => {
+  const createdAt = daysAgo(3);
+
+  it('UT-022 returns the last logged entry when one exists, not the relationship creation date', () => {
+    const lastEntry = daysAgo(1);
+    const result = referenceDiaryDate(
+      { id: 'p1', createdAt },
+      new Map([['p1', lastEntry]]),
+    );
+
+    expect(result).toEqual(lastEntry);
+  });
+
+  it('UT-023 falls back to the relationship creation date when the patient has never logged', () => {
+    const result = referenceDiaryDate({ id: 'p1', createdAt }, new Map());
+
+    expect(result).toEqual(createdAt);
+  });
+
+  it('UT-024 (boundary) is eligible at exactly the 10-day threshold', () => {
+    const tenDaysAgo = daysAgo(10);
+    const result = isNoDiaryEntry(
+      { id: 'p1', createdAt: tenDaysAgo },
+      NOW,
+      new Map(),
+    );
+
+    expect(result).toBe(true);
+  });
+
+  it('UT-025 (boundary) is not eligible at 9 days', () => {
+    const nineDaysAgo = daysAgo(9);
+    const result = isNoDiaryEntry(
+      { id: 'p1', createdAt: nineDaysAgo },
+      NOW,
+      new Map(),
+    );
+
+    expect(result).toBe(false);
+  });
+});
+
+describe('computeOverduePaymentAlerts', () => {
+  it('flags only patients present in the overdue set, when billing is available', () => {
+    const patients = [
+      { id: 'p1', name: 'P1' },
+      { id: 'p2', name: 'P2' },
+    ];
+
+    const alerts = computeOverduePaymentAlerts(patients, new Set(['p1']), true);
+
+    expect(alerts).toEqual([{ clientId: 'p1', clientName: 'P1' }]);
+  });
+
+  it('returns an empty list when billing is not available, regardless of the overdue set', () => {
+    const alerts = computeOverduePaymentAlerts(
+      [{ id: 'p1', name: 'P1' }],
+      new Set(['p1']),
+      false,
+    );
+
+    expect(alerts).toEqual([]);
   });
 });
 

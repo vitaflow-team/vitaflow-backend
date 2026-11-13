@@ -105,6 +105,32 @@ export class ClientsRepository {
     });
   }
 
+  // TRUE private clients only (academiaId: null) — a gym student also
+  // carries professionalId (the currently-assigned educator), so
+  // getAllByProfessionalId alone would incorrectly include them
+  // (churn-risk-alert-independent TechSpec § Core Interfaces).
+  async findPrivateClientsByProfessionalId(
+    professionalId: string,
+  ): Promise<Client[]> {
+    return await this.prisma.client.findMany({
+      where: { professionalId, academiaId: null },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  // Distinct professional ids with at least one TRUE private client — the
+  // cron-looping target for independent-professional churn-risk evaluation
+  // (churn-risk-alert-independent TechSpec § Core Interfaces). Same
+  // academiaId: null requirement as findPrivateClientsByProfessionalId.
+  async findProfessionalIdsWithPrivateClients(): Promise<string[]> {
+    const rows = await this.prisma.client.findMany({
+      where: { professionalId: { not: null }, academiaId: null },
+      select: { professionalId: true },
+      distinct: ['professionalId'],
+    });
+    return rows.map((row) => row.professionalId as string);
+  }
+
   async countByProfessionalId(professionalId: string): Promise<number> {
     return await this.prisma.client.count({
       where: {

@@ -62,4 +62,34 @@ export class ChurnRiskEpisodeRepository {
     });
     return rows.map((row) => row.clientId);
   }
+
+  // Generic, client-id-scoped counterpart to findOpenByAcademia, for
+  // ownership shapes that aren't academia-based (churn-risk-alert-
+  // independent ADR-006) — the existing academia-shaped method above stays
+  // untouched; the evaluation caller computes clientIds itself.
+  async findOpenByClientIds(clientIds: string[]): Promise<ChurnRiskEpisode[]> {
+    if (clientIds.length === 0) return [];
+    return await this.prisma.churnRiskEpisode.findMany({
+      where: { endedAt: null, clientId: { in: clientIds } },
+    });
+  }
+
+  // Generic, client-id-scoped counterpart to findDismissedClientIds, for the
+  // same reason as findOpenByClientIds above.
+  async findDismissedClientIdsByIds(
+    clientIds: string[],
+    reason: ChurnRiskReason,
+  ): Promise<Set<string>> {
+    if (clientIds.length === 0) return new Set();
+    const rows = await this.prisma.churnRiskEpisode.findMany({
+      where: {
+        reason,
+        dismissedAt: { not: null },
+        endedAt: null,
+        clientId: { in: clientIds },
+      },
+      select: { clientId: true },
+    });
+    return new Set(rows.map((row) => row.clientId));
+  }
 }

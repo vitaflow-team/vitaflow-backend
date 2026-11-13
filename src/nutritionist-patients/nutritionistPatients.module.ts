@@ -1,6 +1,9 @@
 import { AuthModule } from '@/auth/auth.module';
+import { ChurnRiskModule } from '@/academia/churn-risk/churnRisk.module';
 import { NutritionistGuard } from '@/common/guards/nutritionist.guard';
 import { PrismaService } from '@/database/prisma.service';
+import { BillingAccountRepository } from '@/repositories/billing/billingAccount.repository';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { MealsRepository } from '@/repositories/food-diary/meals.repository';
 import { WaterLogRepository } from '@/repositories/food-diary/waterLog.repository';
@@ -15,7 +18,10 @@ import { NutritionistPatientsController } from './nutritionistPatients.controlle
 import { NutritionistPatientsService } from './nutritionistPatients.service';
 
 @Module({
-  imports: [AuthModule],
+  // ChurnRiskModule: so the dashboard can inject ChurnRiskEpisodeRepository
+  // for its dismissed-patient filter (churn-risk-alert-independent ADR-006),
+  // same pattern AcademiaModule already uses for EngajamentoService.
+  imports: [AuthModule, ChurnRiskModule],
   controllers: [
     // Registered before NutritionistPatientsController: Nest/Express
     // matches routes in registration order, and NutritionistPatientsController's
@@ -33,6 +39,8 @@ import { NutritionistPatientsService } from './nutritionistPatients.service';
     WaterLogRepository,
     MealPlansRepository,
     MeasurementRecordsRepository,
+    BillingAccountRepository,
+    InvoicesRepository,
     NutritionistGuard,
     NutritionistPatientsService,
     NutritionistDashboardService,

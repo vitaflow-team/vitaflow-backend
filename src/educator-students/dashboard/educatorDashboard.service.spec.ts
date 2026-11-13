@@ -6,6 +6,7 @@ function buildService(overrides: {
   fixedTimes?: Record<string, jest.Mock>;
   billingAccounts?: Record<string, jest.Mock>;
   invoices?: Record<string, jest.Mock>;
+  churnRiskEpisodes?: Record<string, jest.Mock>;
 }) {
   const clients = {
     getAllByProfessionalId: jest.fn().mockResolvedValue([]),
@@ -25,13 +26,25 @@ function buildService(overrides: {
     sumAmountByStudentAndMonth: jest.fn().mockResolvedValue([]),
     ...overrides.invoices,
   };
+  const churnRiskEpisodes = {
+    findDismissedClientIdsByIds: jest.fn().mockResolvedValue(new Set()),
+    ...overrides.churnRiskEpisodes,
+  };
   const service = new EducatorDashboardService(
     clients as never,
     fixedTimes as never,
     billingAccounts as never,
     invoices as never,
+    churnRiskEpisodes as never,
   );
-  return { service, clients, fixedTimes, billingAccounts, invoices };
+  return {
+    service,
+    clients,
+    fixedTimes,
+    billingAccounts,
+    invoices,
+    churnRiskEpisodes,
+  };
 }
 
 describe('EducatorDashboardService.getDashboard', () => {
@@ -138,5 +151,54 @@ describe('EducatorDashboardService.getDashboard', () => {
     expect(invoices.sumAmountByStudentAndMonth).toHaveBeenCalledWith(
       'account-1',
     );
+  });
+
+  it('UT-032 excludes a student whose only current reason is dismissed, but keeps one who also has a reason that is still live', async () => {
+    const students = [
+      {
+        id: 's1',
+        name: 'Dismissed only',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      },
+      {
+        id: 's2',
+        name: 'Also overdue',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      },
+    ];
+    const { service } = buildService({
+      clients: {
+        getAllByProfessionalId: jest.fn().mockResolvedValue(students),
+      },
+      fixedTimes: {
+        // Both never had a session → both flagged NO_CONTACT.
+        findLatestNonCanceledByClient: jest.fn().mockResolvedValue(new Map()),
+      },
+      billingAccounts: {
+        findActiveByUser: jest.fn().mockResolvedValue({ id: 'account-1' }),
+      },
+      invoices: {
+        // s2 also has an overdue invoice — a second, still-live reason.
+        findOpenByAccount: jest
+          .fn()
+          .mockResolvedValue([{ clientId: 's2', status: 'OVERDUE' }]),
+      },
+      churnRiskEpisodes: {
+        // NO_CONTACT is dismissed for both; OVERDUE_PAYMENT is dismissed
+        // for neither.
+        findDismissedClientIdsByIds: jest
+          .fn()
+          .mockImplementation((_ids: string[], reason: string) =>
+            Promise.resolve(
+              reason === 'NO_CONTACT' ? new Set(['s1', 's2']) : new Set(),
+            ),
+          ),
+      },
+    });
+
+    const result = await service.getDashboard('educator-1', NOW);
+
+    expect(result.riskRanking.map((entry) => entry.clientId)).toEqual(['s2']);
+    expect(result.noContactAlerts).toEqual([]);
   });
 });

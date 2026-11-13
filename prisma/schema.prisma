@@ -38,6 +38,12 @@ model Users {
   termsAcceptedAt     DateTime?
   healthDataConsentAt DateTime?
 
+  // null = this professional has never been evaluated by the independent-
+  // professional churn-risk feature yet (churn-risk-alert-independent
+  // ADR-008) — mirrors Academia.churnRiskBaselineAt's silent-baseline
+  // marker, scoped per professional instead of per academia.
+  independentChurnRiskBaselineAt DateTime?
+
   // Mirrors Asaas's own state so the app can answer "is this user
   // subscribed" without calling Asaas on every request. Asaas (via
   // webhooks) is still the source of truth — these are a cache of it.
@@ -1259,6 +1265,13 @@ model StudentAccessPlan {
 enum ChurnRiskReason {
   CHECK_IN_INACTIVITY
   ACCESS_PLAN_LAPSED
+  // Independent-professional reasons (churn-risk-alert-independent ADR-008):
+  // NO_CONTACT (Educador Físico), NO_DIARY_ENTRY (Nutricionista),
+  // OVERDUE_PAYMENT (both) — distinct from the academia-specific values
+  // above so `reason` stays self-describing regardless of ownership shape.
+  NO_CONTACT
+  NO_DIARY_ENTRY
+  OVERDUE_PAYMENT
 }
 
 // A churn-risk episode: one row per (clientId, reason) — not one row per

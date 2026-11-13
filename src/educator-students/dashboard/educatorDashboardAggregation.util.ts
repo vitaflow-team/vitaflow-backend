@@ -33,15 +33,17 @@ function daysSince(date: Date, now: Date): number {
 
 /** The date NO_CONTACT is measured from: the last non-canceled session, or
  * the connection date when there has never been one (UT-021's grace period
- * anchor). */
-function referenceContactDate(
+ * anchor). Exported for direct reuse by the independent-professional
+ * churn-risk evaluation path (churn-risk-alert-independent TechSpec § Core
+ * Interfaces) — not just this file's own dashboard computation. */
+export function referenceContactDate(
   student: StudentFixture,
   lastContactByClient: Map<string, Date>,
 ): Date {
   return lastContactByClient.get(student.id) ?? student.createdAt;
 }
 
-function isNoContact(
+export function isNoContact(
   student: StudentFixture,
   lastContactByClient: Map<string, Date>,
   now: Date,

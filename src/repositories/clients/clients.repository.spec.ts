@@ -378,3 +378,65 @@ describe('ClientsRepository.findAcademiaMembershipsByUserId', () => {
     expect(result).toEqual([]);
   });
 });
+
+describe('ClientsRepository.findProfessionalIdsWithPrivateClients', () => {
+  const findMany = jest.fn();
+  const prisma = { client: { findMany } } as unknown as PrismaService;
+  const repository = new ClientsRepository(prisma);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('UT-019 returns distinct professional ids, excluding academia-owned clients', async () => {
+    findMany.mockResolvedValue([
+      { professionalId: 'prof-1' },
+      { professionalId: 'prof-2' },
+    ]);
+
+    const result = await repository.findProfessionalIdsWithPrivateClients();
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { professionalId: { not: null }, academiaId: null },
+      select: { professionalId: true },
+      distinct: ['professionalId'],
+    });
+    expect(result).toEqual(['prof-1', 'prof-2']);
+  });
+
+  it('UT-020 the where clause itself (academiaId: null) is what excludes a gym-assigned educator who has no private clients of their own', async () => {
+    // A gym student also carries professionalId (the assigned educator) —
+    // the filter's job is to never match that case, asserted here by
+    // confirming the repository never widens it to professionalId alone.
+    findMany.mockResolvedValue([]);
+
+    await repository.findProfessionalIdsWithPrivateClients();
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { professionalId: { not: null }, academiaId: null },
+      }),
+    );
+  });
+});
+
+describe('ClientsRepository.findPrivateClientsByProfessionalId', () => {
+  const findMany = jest.fn();
+  const prisma = { client: { findMany } } as unknown as PrismaService;
+  const repository = new ClientsRepository(prisma);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('scopes by professionalId and academiaId: null together', async () => {
+    findMany.mockResolvedValue([]);
+
+    await repository.findPrivateClientsByProfessionalId('prof-1');
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { professionalId: 'prof-1', academiaId: null },
+      orderBy: { name: 'asc' },
+    });
+  });
+});

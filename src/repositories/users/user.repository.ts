@@ -284,9 +284,51 @@ export class UserRepository {
     });
   }
 
+  // Mirrors AcademiaRepository.findChurnRiskBaselineAt/markChurnRiskBaselined
+  // (churn-risk-alert-independent ADR-008): null = never evaluated by the
+  // independent-professional churn-risk feature yet.
+  async findIndependentChurnRiskBaselineAt(
+    professionalId: string,
+  ): Promise<Date | null> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: professionalId },
+      select: { independentChurnRiskBaselineAt: true },
+    });
+    return user?.independentChurnRiskBaselineAt ?? null;
+  }
+
+  async markIndependentChurnRiskBaselined(
+    professionalId: string,
+    at: Date,
+  ): Promise<void> {
+    await this.prisma.users.update({
+      where: { id: professionalId },
+      data: { independentChurnRiskBaselineAt: at },
+    });
+  }
+
   async findManyByIds(ids: string[]): Promise<Users[]> {
     if (ids.length === 0) return [];
     return await this.prisma.users.findMany({ where: { id: { in: ids } } });
+  }
+
+  // Batch type resolution for a list of professional ids (churn-risk-alert-
+  // independent TechSpec § Core Interfaces) — reuses the same
+  // product/select: { type: true } shape as searchDirectory, just batched by
+  // id instead of filtered by a single criterion.
+  async findProductTypesByIds(
+    ids: string[],
+  ): Promise<Map<string, ProductType>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.users.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, product: { select: { type: true } } },
+    });
+    const types = new Map<string, ProductType>();
+    for (const row of rows) {
+      if (row.product) types.set(row.id, row.product.type);
+    }
+    return types;
   }
 
   async findAllBackofficeStaff(): Promise<Users[]> {
