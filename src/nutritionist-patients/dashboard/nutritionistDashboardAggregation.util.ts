@@ -23,11 +23,20 @@ export interface PatientBucketEntry {
 
 export interface PatientAdherenceEntry extends PatientBucketEntry {
   bucket: AdherenceBucket;
+  /** Whether this patient is currently eligible for the no-diary-entry alert
+   * (churn-risk-alert-independent ADR-007) — computed once here via
+   * isNoDiaryEntry, so computeNoDiaryEntryAlerts never re-derives it. Not
+   * part of PatientBucketEntry: never leaked to the frontend contract. */
+  noDiaryEntryEligible: boolean;
 }
 
 export interface PatientAdherenceInput {
   clientId: string;
   clientName: string;
+  /** When this patient relationship began — the grace-period anchor for a
+   * patient who has never logged anything yet (churn-risk-alert-independent
+   * ADR-007), mirroring the educator dashboard's own createdAt fallback. */
+  createdAt: Date;
   /** Every Meal.loggedAt this patient has ever logged. */
   mealLoggedDates: Date[];
   /** max(last Meal.loggedAt, last WaterLog.date); null if neither exists. */
@@ -48,6 +57,26 @@ function daysSince(date: Date, now: Date): number {
   return Math.floor((now.getTime() - date.getTime()) / DAY_MS);
 }
 
+/** The date NO_DIARY_ENTRY is measured from: the patient's last diary entry,
+ * or their relationship's own creation date when they have never logged
+ * (churn-risk-alert-independent ADR-007) — the same grace-period shape as
+ * the educator dashboard's referenceContactDate. */
+export function referenceDiaryDate(
+  patient: { id: string; createdAt: Date },
+  lastEntryByPatient: Map<string, Date>,
+): Date {
+  return lastEntryByPatient.get(patient.id) ?? patient.createdAt;
+}
+
+export function isNoDiaryEntry(
+  patient: { id: string; createdAt: Date },
+  now: Date,
+  lastEntryByPatient: Map<string, Date>,
+): boolean {
+  const reference = referenceDiaryDate(patient, lastEntryByPatient);
+  return daysSince(reference, now) >= NO_DIARY_ENTRY_THRESHOLD_DAYS;
+}
+
 /** Classifies one patient's diary adherence (`since` → `now`) and no-entry
  * staleness in one pass, so both views share one canonical per-patient
  * record (UT-030–036). */
@@ -58,6 +87,14 @@ export function computePatientAdherence(
   const daysSinceLastEntry = input.lastEntryAt
     ? daysSince(input.lastEntryAt, now)
     : null;
+  const lastEntryByPatient = new Map(
+    input.lastEntryAt ? [[input.clientId, input.lastEntryAt]] : [],
+  );
+  const noDiaryEntryEligible = isNoDiaryEntry(
+    { id: input.clientId, createdAt: input.createdAt },
+    now,
+    lastEntryByPatient,
+  );
 
   if (input.since === null) {
     return {
@@ -66,6 +103,7 @@ export function computePatientAdherence(
       bucket: 'noDataYet',
       loggedDayRatio: null,
       daysSinceLastEntry,
+      noDiaryEntryEligible,
     };
   }
 
@@ -96,6 +134,7 @@ export function computePatientAdherence(
     bucket,
     loggedDayRatio: Math.round(ratio * 1000) / 1000,
     daysSinceLastEntry,
+    noDiaryEntryEligible,
   };
 }
 
@@ -130,22 +169,46 @@ export function groupIntoBuckets(entries: PatientAdherenceEntry[]): {
 
 /** Stale or never-logged patients, capped at 50 (ADR-008); a patient who
  * never logged anything (`daysSinceLastEntry: null`) is the most urgent
- * case and sorts first (UT-035/UT-036). */
+ * case and sorts first (UT-035/UT-036). Eligibility (`noDiaryEntryEligible`)
+ * is `isNoDiaryEntry`'s own precomputed verdict (churn-risk-alert-
+ * independent ADR-007) — a patient younger than the threshold with nothing
+ * logged yet is excluded, the same grace period the educator dashboard's
+ * no-contact-alert list already has. */
 export function computeNoDiaryEntryAlerts(
   entries: PatientAdherenceEntry[],
 ): PatientBucketEntry[] {
   return entries
-    .filter(
-      (entry) =>
-        entry.daysSinceLastEntry === null ||
-        entry.daysSinceLastEntry >= NO_DIARY_ENTRY_THRESHOLD_DAYS,
-    )
+    .filter((entry) => entry.noDiaryEntryEligible)
     .sort(
       (a, b) =>
         (b.daysSinceLastEntry ?? Infinity) - (a.daysSinceLastEntry ?? Infinity),
     )
     .slice(0, NO_DIARY_ENTRY_ALERT_CAP)
     .map(toBucketEntry);
+}
+
+export const OVERDUE_PAYMENT_ALERT_CAP = 50;
+
+export interface OverduePaymentAlertEntry {
+  clientId: string;
+  clientName: string;
+}
+
+/** Patients with an overdue invoice, capped the same way every other alert
+ * list in this project is (ADR-008) — mirrors educatorDashboardAggregation
+ * .util.ts's OVERDUE_PAYMENT surfacing, extended to Nutricionista for the
+ * first time (churn-risk-alert-independent TechSpec § API Endpoints). `[]`
+ * when billing isn't connected — never a default-flagged guess. */
+export function computeOverduePaymentAlerts(
+  patients: { id: string; name: string }[],
+  overdueClientIds: Set<string>,
+  billingAvailable: boolean,
+): OverduePaymentAlertEntry[] {
+  if (!billingAvailable) return [];
+  return patients
+    .filter((patient) => overdueClientIds.has(patient.id))
+    .slice(0, OVERDUE_PAYMENT_ALERT_CAP)
+    .map((patient) => ({ clientId: patient.id, clientName: patient.name }));
 }
 
 /** Whole calendar months between `clientCreatedAt` and the first day of

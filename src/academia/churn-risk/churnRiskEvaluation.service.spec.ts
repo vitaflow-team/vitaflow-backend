@@ -31,6 +31,7 @@ function makeDeps() {
   return {
     episodes: {
       findOpenByAcademia: jest.fn().mockResolvedValue([]),
+      findOpenByClientIds: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue(undefined),
       end: jest.fn().mockResolvedValue(undefined),
       dismissOpenForClient: jest.fn().mockResolvedValue(0),
@@ -47,12 +48,32 @@ function makeDeps() {
     },
     clients: {
       findAllGymStudentNames: jest.fn().mockResolvedValue([student('s1')]),
+      findPrivateClientsByProfessionalId: jest.fn().mockResolvedValue([]),
     },
     users: {
       findUnique: jest.fn().mockResolvedValue({ id: 'owner-1' }),
+      findIndependentChurnRiskBaselineAt: jest
+        .fn()
+        .mockResolvedValue(BASELINED_AT),
+      markIndependentChurnRiskBaselined: jest.fn().mockResolvedValue(undefined),
     },
     notifications: {
       create: jest.fn().mockResolvedValue(undefined),
+    },
+    fixedTimes: {
+      findLatestNonCanceledByClient: jest.fn().mockResolvedValue(new Map()),
+    },
+    meals: {
+      findByUserForProfessional: jest.fn().mockResolvedValue([]),
+    },
+    waterLogs: {
+      findByUserForProfessional: jest.fn().mockResolvedValue([]),
+    },
+    billingAccounts: {
+      findActiveByUser: jest.fn().mockResolvedValue(null),
+    },
+    invoices: {
+      findOpenByAccount: jest.fn().mockResolvedValue([]),
     },
   };
 }
@@ -66,7 +87,30 @@ function makeService(deps: ReturnType<typeof makeDeps>) {
     deps.clients as never,
     deps.users as never,
     deps.notifications as never,
+    deps.fixedTimes as never,
+    deps.meals as never,
+    deps.waterLogs as never,
+    deps.billingAccounts as never,
+    deps.invoices as never,
   );
+}
+
+function privateClient(
+  id: string,
+  overrides: Partial<{
+    name: string;
+    userId: string | null;
+    createdAt: Date;
+  }> = {},
+) {
+  return {
+    id,
+    name: overrides.name ?? `Cliente ${id}`,
+    userId: overrides.userId ?? `user-${id}`,
+    academiaId: null,
+    professionalId: 'professional-1',
+    createdAt: overrides.createdAt ?? OLD_CHECK_IN,
+  };
 }
 
 describe('ChurnRiskEvaluationService', () => {
@@ -410,6 +454,415 @@ describe('ChurnRiskEvaluationService', () => {
         NOW,
       );
       expect(result.newEpisodes).toBe(1);
+    });
+  });
+
+  describe('evaluateProfessional', () => {
+    const TEN_DAYS_AGO = new Date('2026-11-05T12:00:00Z'); // exactly 10 days before NOW
+    const FIVE_DAYS_AGO = new Date('2026-11-10T12:00:00Z'); // 5 days before NOW
+
+    it('UT-001 Educador Físico: a student with no non-canceled session in 10+ days creates a NO_CONTACT episode and notifies once', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', OLD_CHECK_IN]]),
+      );
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).toHaveBeenCalledWith(
+        's1',
+        'NO_CONTACT',
+        NOW,
+      );
+      expect(deps.notifications.create).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ notified: true });
+    });
+
+    it('UT-002 a student with a new session closes their open NO_CONTACT episode, with no notification for the recovery', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', RECENT_CHECK_IN]]),
+      );
+      deps.episodes.findOpenByClientIds.mockResolvedValue([
+        openEpisode('s1', 'NO_CONTACT' as never),
+      ]);
+      const service = makeService(deps);
+
+      await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.end).toHaveBeenCalledWith(
+        'episode-s1-NO_CONTACT',
+        NOW,
+      );
+      expect(deps.notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('UT-003 Nutricionista: a patient with no diary entry in 10+ days (old relationship) creates a NO_DIARY_ENTRY episode', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('p1', { createdAt: OLD_CHECK_IN }),
+      ]);
+      // No meals/waterLogs returned → never logged; relationship is old
+      // enough (grace period elapsed).
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'NUTRITIONIST' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).toHaveBeenCalledWith(
+        'p1',
+        'NO_DIARY_ENTRY',
+        NOW,
+      );
+      expect(result.notified).toBe(true);
+    });
+
+    it('UT-004 a patient with a recent diary entry closes their open NO_DIARY_ENTRY episode', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('p1'),
+      ]);
+      deps.meals.findByUserForProfessional.mockResolvedValue([
+        { loggedAt: RECENT_CHECK_IN },
+      ]);
+      deps.episodes.findOpenByClientIds.mockResolvedValue([
+        openEpisode('p1', 'NO_DIARY_ENTRY' as never),
+      ]);
+      const service = makeService(deps);
+
+      await service.evaluateProfessional(
+        'professional-1',
+        'NUTRITIONIST' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.end).toHaveBeenCalledWith(
+        'episode-p1-NO_DIARY_ENTRY',
+        NOW,
+      );
+    });
+
+    it('UT-005 Educador Físico: a student linked 5 days ago who never had a session is not flagged (grace period)', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1', { createdAt: FIVE_DAYS_AGO }),
+      ]);
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).not.toHaveBeenCalled();
+      expect(result.notified).toBe(false);
+    });
+
+    it('UT-006 Nutricionista: a patient linked exactly 10 days ago who never logged is eligible (inclusive boundary)', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('p1', { createdAt: TEN_DAYS_AGO }),
+      ]);
+      const service = makeService(deps);
+
+      await service.evaluateProfessional(
+        'professional-1',
+        'NUTRITIONIST' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).toHaveBeenCalledWith(
+        'p1',
+        'NO_DIARY_ENTRY',
+        NOW,
+      );
+    });
+
+    it('UT-007 billing connected and the client has an OVERDUE invoice creates an OVERDUE_PAYMENT episode', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', RECENT_CHECK_IN]]),
+      );
+      deps.billingAccounts.findActiveByUser.mockResolvedValue({
+        id: 'account-1',
+      });
+      deps.invoices.findOpenByAccount.mockResolvedValue([
+        { clientId: 's1', status: 'OVERDUE' },
+      ]);
+      const service = makeService(deps);
+
+      await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).toHaveBeenCalledWith(
+        's1',
+        'OVERDUE_PAYMENT',
+        NOW,
+      );
+    });
+
+    it('UT-008 an open OVERDUE_PAYMENT episode closes once the invoice is no longer overdue', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', RECENT_CHECK_IN]]),
+      );
+      deps.billingAccounts.findActiveByUser.mockResolvedValue({
+        id: 'account-1',
+      });
+      deps.invoices.findOpenByAccount.mockResolvedValue([]); // no longer overdue
+      deps.episodes.findOpenByClientIds.mockResolvedValue([
+        openEpisode('s1', 'OVERDUE_PAYMENT' as never),
+      ]);
+      const service = makeService(deps);
+
+      await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.end).toHaveBeenCalledWith(
+        'episode-s1-OVERDUE_PAYMENT',
+        NOW,
+      );
+    });
+
+    it('UT-009 a professional with no connected billing account is never flagged for OVERDUE_PAYMENT', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', RECENT_CHECK_IN]]),
+      );
+      deps.billingAccounts.findActiveByUser.mockResolvedValue(null);
+      const service = makeService(deps);
+
+      await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).not.toHaveBeenCalled();
+      expect(deps.invoices.findOpenByAccount).not.toHaveBeenCalled();
+    });
+
+    it('UT-010 a client newly triggering NO_CONTACT and OVERDUE_PAYMENT in the same run gets one combined notification, not two', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', OLD_CHECK_IN]]),
+      );
+      deps.billingAccounts.findActiveByUser.mockResolvedValue({
+        id: 'account-1',
+      });
+      deps.invoices.findOpenByAccount.mockResolvedValue([
+        { clientId: 's1', status: 'OVERDUE' },
+      ]);
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.notifications.create).toHaveBeenCalledTimes(1);
+      expect(deps.episodes.create).toHaveBeenCalledTimes(2);
+      expect(result.notified).toBe(true);
+    });
+
+    it('UT-010a evaluateProfessional always calls NotificationsService.create for a new episode — muting is that service’s own responsibility', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', OLD_CHECK_IN]]),
+      );
+      const service = makeService(deps);
+
+      await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.notifications.create).toHaveBeenCalledWith(
+        'professional-1',
+        'CHURN_RISK_ALERT',
+        expect.any(String),
+        expect.any(String),
+      );
+    });
+
+    it('UT-011 a professional’s first-ever evaluation creates episodes silently (no notification)', async () => {
+      const deps = makeDeps();
+      deps.users.findIndependentChurnRiskBaselineAt.mockResolvedValue(null);
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', OLD_CHECK_IN]]),
+      );
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).toHaveBeenCalledWith(
+        's1',
+        'NO_CONTACT',
+        NOW,
+      );
+      expect(deps.notifications.create).not.toHaveBeenCalled();
+      expect(deps.users.markIndependentChurnRiskBaselined).toHaveBeenCalledWith(
+        'professional-1',
+        NOW,
+      );
+      expect(result.notified).toBe(false);
+    });
+
+    it('UT-012 a professional’s first-ever evaluation with zero qualifying clients still records the baseline', async () => {
+      const deps = makeDeps();
+      deps.users.findIndependentChurnRiskBaselineAt.mockResolvedValue(null);
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([]);
+      const service = makeService(deps);
+
+      await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.users.markIndependentChurnRiskBaselined).toHaveBeenCalledWith(
+        'professional-1',
+        NOW,
+      );
+    });
+
+    it('UT-013 a professional already baselined notifies normally for a newly-starting reason', async () => {
+      const deps = makeDeps();
+      deps.users.findIndependentChurnRiskBaselineAt.mockResolvedValue(
+        BASELINED_AT,
+      );
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', OLD_CHECK_IN]]),
+      );
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.notifications.create).toHaveBeenCalledTimes(1);
+      expect(result.notified).toBe(true);
+    });
+
+    it('UT-014 an already-open episode for a reason that still applies generates no additional notification', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', OLD_CHECK_IN]]),
+      );
+      deps.episodes.findOpenByClientIds.mockResolvedValue([
+        openEpisode('s1', 'NO_CONTACT' as never),
+      ]);
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).not.toHaveBeenCalled();
+      expect(deps.notifications.create).not.toHaveBeenCalled();
+      expect(result.notified).toBe(false);
+    });
+
+    it('UT-015 a recovered episode that relapses later is notified again as a new episode', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([
+        privateClient('s1'),
+      ]);
+      deps.fixedTimes.findLatestNonCanceledByClient.mockResolvedValue(
+        new Map([['s1', OLD_CHECK_IN]]),
+      );
+      // No currently-open episode — the prior one already ended on an
+      // earlier run; this run's relapse is a genuinely new episode.
+      deps.episodes.findOpenByClientIds.mockResolvedValue([]);
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).toHaveBeenCalledWith(
+        's1',
+        'NO_CONTACT',
+        NOW,
+      );
+      expect(result.notified).toBe(true);
+    });
+
+    it('UT-016 a professional with zero private clients is a no-op, never throws', async () => {
+      const deps = makeDeps();
+      deps.clients.findPrivateClientsByProfessionalId.mockResolvedValue([]);
+      const service = makeService(deps);
+
+      const result = await service.evaluateProfessional(
+        'professional-1',
+        'PHYSICAL_EDUCATOR' as never,
+        NOW,
+      );
+
+      expect(deps.episodes.create).not.toHaveBeenCalled();
+      expect(deps.notifications.create).not.toHaveBeenCalled();
+      expect(result).toEqual({ notified: false });
     });
   });
 

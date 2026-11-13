@@ -1,4 +1,5 @@
 import { AcademiaActivityService } from '@/academia/activity/academiaActivity.service';
+import { ChurnRiskModule } from '@/academia/churn-risk/churnRisk.module';
 import { AuthModule } from '@/auth/auth.module';
 import { PhysicalEducatorGuard } from '@/common/guards/physicalEducator.guard';
 import { PrismaService } from '@/database/prisma.service';
@@ -33,6 +34,10 @@ import { EducatorDashboardService } from './dashboard/educatorDashboard.service'
     NotificationsModule,
     FixedTimesModule,
     BillingModule,
+    // So the dashboard can inject ChurnRiskEpisodeRepository for its
+    // dismissed-student filter (churn-risk-alert-independent ADR-006), same
+    // pattern AcademiaModule already uses for EngajamentoService.
+    ChurnRiskModule,
     // Own throttler storage: the account lookup limit is independent of the
     // auth routes' throttlers and keyed by the authenticated educator.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),

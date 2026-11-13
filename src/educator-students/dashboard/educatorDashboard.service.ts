@@ -3,10 +3,11 @@ import {
   InvoicesRepository,
   type RevenueGroup,
 } from '@/repositories/billing/invoices.repository';
+import { ChurnRiskEpisodeRepository } from '@/repositories/academia/churnRiskEpisode.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { FixedTimesRepository } from '@/repositories/fixed-times/fixedTimes.repository';
 import { Injectable, Logger } from '@nestjs/common';
-import { InvoiceStatus } from '@prisma/client';
+import { ChurnRiskReason, InvoiceStatus } from '@prisma/client';
 import {
   computeCounters,
   computeNoContactAlerts,
@@ -45,6 +46,7 @@ export class EducatorDashboardService {
     private readonly fixedTimes: FixedTimesRepository,
     private readonly billingAccounts: BillingAccountRepository,
     private readonly invoices: InvoicesRepository,
+    private readonly churnRiskEpisodes: ChurnRiskEpisodeRepository,
   ) {}
 
   async getDashboard(
@@ -55,23 +57,54 @@ export class EducatorDashboardService {
       this.clients.getAllByProfessionalId(professionalId),
       this.fixedTimes.findLatestNonCanceledByClient(professionalId),
     ]);
+    const studentIds = students.map((student) => student.id);
 
-    const { billingAvailable, overdueClientIds, revenueByStudentMonth } =
-      await this.loadBillingData(professionalId, students);
+    const [
+      { billingAvailable, overdueClientIds, revenueByStudentMonth },
+      dismissedContact,
+      dismissedPayment,
+    ] = await Promise.all([
+      this.loadBillingData(professionalId, students),
+      this.churnRiskEpisodes.findDismissedClientIdsByIds(
+        studentIds,
+        ChurnRiskReason.NO_CONTACT,
+      ),
+      this.churnRiskEpisodes.findDismissedClientIdsByIds(
+        studentIds,
+        ChurnRiskReason.OVERDUE_PAYMENT,
+      ),
+    ]);
 
+    const isReasonDismissed = (
+      entry: StudentRiskEntry,
+      reason: 'NO_CONTACT' | 'OVERDUE_PAYMENT',
+    ): boolean =>
+      reason === 'NO_CONTACT'
+        ? dismissedContact.has(entry.clientId)
+        : dismissedPayment.has(entry.clientId);
+
+    // Mirrors engajamento.service.ts's dismissed-student filter (ADR-010):
+    // an entry drops off the list only once every reason it currently has
+    // is individually dismissed — a client dismissed for NO_CONTACT who
+    // later also starts OVERDUE_PAYMENT still shows, for that new reason.
     const riskRanking = computeRiskRanking(
       students,
       lastContactByClient,
       overdueClientIds,
       billingAvailable,
       now,
+    ).filter(
+      (entry) =>
+        !entry.reasons.every((reason) => isReasonDismissed(entry, reason)),
     );
 
     return {
       counters: computeCounters(students, lastContactByClient, now),
       riskRanking,
       revenueByStudentMonth,
-      noContactAlerts: computeNoContactAlerts(riskRanking),
+      noContactAlerts: computeNoContactAlerts(riskRanking).filter(
+        (entry) => !dismissedContact.has(entry.clientId),
+      ),
     };
   }
 

@@ -646,4 +646,53 @@ describe('UserRepository Tests', () => {
       );
     });
   });
+
+  describe('findProductTypesByIds', () => {
+    const findMany = jest.fn();
+    const repository = new UserRepository({
+      users: { findMany },
+    } as unknown as PrismaService);
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('UT-021 batch-resolves product types for a list of ids spanning two professional types', async () => {
+      findMany.mockResolvedValue([
+        { id: 'edu-1', product: { type: ProductType.PHYSICAL_EDUCATOR } },
+        { id: 'nutri-1', product: { type: ProductType.NUTRITIONIST } },
+      ]);
+
+      const result = await repository.findProductTypesByIds([
+        'edu-1',
+        'nutri-1',
+      ]);
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['edu-1', 'nutri-1'] } },
+        select: { id: true, product: { select: { type: true } } },
+      });
+      expect(result).toEqual(
+        new Map([
+          ['edu-1', ProductType.PHYSICAL_EDUCATOR],
+          ['nutri-1', ProductType.NUTRITIONIST],
+        ]),
+      );
+    });
+
+    it('returns an empty map without querying when given an empty id list', async () => {
+      const result = await repository.findProductTypesByIds([]);
+
+      expect(result).toEqual(new Map());
+      expect(findMany).not.toHaveBeenCalled();
+    });
+
+    it('omits an id whose user has no product at all', async () => {
+      findMany.mockResolvedValue([{ id: 'u1', product: null }]);
+
+      const result = await repository.findProductTypesByIds(['u1']);
+
+      expect(result).toEqual(new Map());
+    });
+  });
 });
