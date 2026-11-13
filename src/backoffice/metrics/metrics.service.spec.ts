@@ -24,6 +24,9 @@ function makeUsers(): UserRepository {
       { role: 'ACADEMIA', count: 0 },
     ]),
     sumActiveSubscriptionRevenue: jest.fn().mockResolvedValue(1234.5),
+    findCohortUsers: jest.fn().mockResolvedValue([]),
+    findActivePremiumUsersForLtv: jest.fn().mockResolvedValue([]),
+    findRolesWithActivePremiumProduct: jest.fn().mockResolvedValue([]),
   } as unknown as UserRepository;
 }
 
@@ -70,7 +73,15 @@ describe('MetricsService', () => {
         { role: 'PHYSICAL_EDUCATOR', canceledThisMonth: 0 },
         { role: 'ACADEMIA', canceledThisMonth: 0 },
       ],
+      // cohortRetention is always the full zero-filled 12-month × 4-role ×
+      // 2-plan grid (96 rows) even with no cohort users — asserted below.
+      cohortRetention: result.cohortRetention,
+      ltvBySegment: [],
     });
+    expect(result.cohortRetention).toHaveLength(12 * 4 * 2); // 96 cells
+    expect(result.cohortRetention.every((row) => row.cohortSize === 0)).toBe(
+      true,
+    );
     expect(listPayments).toHaveBeenCalledWith(API_KEY, expect.anything());
   });
 
@@ -131,5 +142,33 @@ describe('MetricsService', () => {
     expect(first.mrr.previousMonth).toBeNull();
     expect(second.mrr.previousMonth).toBe(500);
     expect(listPayments).toHaveBeenCalledTimes(2);
+  });
+
+  it('UT-019 degrades cohortRetention to [] without throwing when findCohortUsers rejects', async () => {
+    const users = makeUsers();
+    (users.findCohortUsers as jest.Mock).mockRejectedValue(
+      new Error('db down'),
+    );
+    const { service } = makeService({ users });
+
+    const result = await service.getPlatformMetrics();
+
+    expect(result.cohortRetention).toEqual([]);
+    expect(result.registeredByRole).toHaveLength(4);
+    expect(result.churnByRole).toHaveLength(4);
+  });
+
+  it('UT-020 degrades ltvBySegment to [] without throwing when findActivePremiumUsersForLtv rejects', async () => {
+    const users = makeUsers();
+    (users.findActivePremiumUsersForLtv as jest.Mock).mockRejectedValue(
+      new Error('db down'),
+    );
+    const { service } = makeService({ users });
+
+    const result = await service.getPlatformMetrics();
+
+    expect(result.ltvBySegment).toEqual([]);
+    expect(result.registeredByRole).toHaveLength(4);
+    expect(result.churnByRole).toHaveLength(4);
   });
 });

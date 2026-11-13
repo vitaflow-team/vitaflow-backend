@@ -647,6 +647,120 @@ describe('UserRepository Tests', () => {
     });
   });
 
+  describe('Cohort retention / LTV by segment (cohort-ltv-analysis)', () => {
+    let repository: UserRepository;
+    let usersFindMany: jest.Mock;
+    let productFindMany: jest.Mock;
+
+    beforeEach(async () => {
+      usersFindMany = jest.fn().mockResolvedValue([]);
+      productFindMany = jest.fn().mockResolvedValue([]);
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          UserRepository,
+          {
+            provide: PrismaService,
+            useValue: {
+              users: { findMany: usersFindMany },
+              product: { findMany: productFindMany },
+            },
+          },
+        ],
+      }).compile();
+
+      repository = module.get<UserRepository>(UserRepository);
+    });
+
+    // UT-016
+    it('findCohortUsers queries users created since the given date, selecting the fields computeCohortRetention needs', async () => {
+      const since = new Date('2025-04-01T00:00:00Z');
+      usersFindMany.mockResolvedValueOnce([
+        {
+          createdAt: new Date('2025-12-05T00:00:00Z'),
+          subscriptionCancelAt: null,
+          product: { type: ProductType.USER, tier: ProductTier.FREE },
+        },
+      ]);
+
+      const result = await repository.findCohortUsers(since);
+
+      const [{ where, select }] = usersFindMany.mock.calls[0] as [
+        {
+          where: { createdAt: { gte: Date }; isBackoffice: boolean };
+          select: { product: { select: { type: boolean; tier: boolean } } };
+        },
+      ];
+      expect(where.createdAt.gte).toEqual(since);
+      expect(where.isBackoffice).toBe(false);
+      expect(select.product.select).toEqual({ type: true, tier: true });
+      expect(result).toEqual([
+        {
+          cohortMonthStart: new Date('2025-12-01T00:00:00Z'),
+          subscriptionCancelAt: null,
+          productType: ProductType.USER,
+          tier: ProductTier.FREE,
+        },
+      ]);
+    });
+
+    // UT-017
+    it('findActivePremiumUsersForLtv queries only active, non-Free subscribers', async () => {
+      const now = new Date('2026-03-15T00:00:00Z');
+      usersFindMany.mockResolvedValueOnce([
+        {
+          subscriptionCancelAt: new Date('2026-03-10T00:00:00Z'),
+          product: { type: ProductType.USER, price: 49.9 },
+        },
+      ]);
+
+      const result = await repository.findActivePremiumUsersForLtv(now);
+
+      const [{ where }] = usersFindMany.mock.calls[0] as [
+        {
+          where: {
+            subscriptionStatus: { in: string[] };
+            product: { tier: { not: ProductTier } };
+          };
+        },
+      ];
+      expect(where.subscriptionStatus.in).toEqual(
+        expect.arrayContaining(['active', 'trialing', 'past_due']),
+      );
+      expect(where.product.tier.not).toBe(ProductTier.FREE);
+      expect(result).toEqual([
+        {
+          productType: ProductType.USER,
+          price: 49.9,
+          canceledThisMonth: true,
+        },
+      ]);
+    });
+
+    // UT-018
+    it('findRolesWithActivePremiumProduct queries distinct active non-Free product types', async () => {
+      productFindMany.mockResolvedValueOnce([
+        { type: ProductType.USER },
+        { type: ProductType.NUTRITIONIST },
+      ]);
+
+      const result = await repository.findRolesWithActivePremiumProduct();
+
+      const [{ where, select, distinct }] = productFindMany.mock.calls[0] as [
+        {
+          where: { tier: { not: ProductTier }; active: boolean };
+          select: { type: boolean };
+          distinct: string[];
+        },
+      ];
+      expect(where.tier.not).toBe(ProductTier.FREE);
+      expect(where.active).toBe(true);
+      expect(select).toEqual({ type: true });
+      expect(distinct).toEqual(['type']);
+      expect(result).toEqual([ProductType.USER, ProductType.NUTRITIONIST]);
+    });
+  });
+
   describe('findProductTypesByIds', () => {
     const findMany = jest.fn();
     const repository = new UserRepository({

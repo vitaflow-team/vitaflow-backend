@@ -3,12 +3,24 @@ import {
   type PaymentGateway,
 } from '@/billing/gateway/paymentGateway';
 import {
+  computeCohortRetention,
+  type CohortRetentionRow,
+} from '@/backoffice/metrics/cohortRetention.util';
+import {
+  computeLtvBySegment,
+  type LtvBySegmentEntry,
+} from '@/backoffice/metrics/ltvBySegment.util';
+import {
   RoleCount,
   UserRepository,
 } from '@/repositories/users/user.repository';
 import { Clock } from '@/scheduling/clock.service';
 import { PLATFORM_ASAAS_API_KEY } from '@/users/subscription/platformGateway.tokens';
-import { startOfMonth, startOfPreviousMonth } from '@/utils/monthRange';
+import {
+  lastNMonthStarts,
+  startOfMonth,
+  startOfPreviousMonth,
+} from '@/utils/monthRange';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductType } from '@prisma/client';
 
@@ -34,6 +46,8 @@ export interface PlatformMetrics {
   };
   registeredByRole: RegisteredByRole[];
   churnByRole: ChurnByRole[];
+  cohortRetention: CohortRetentionRow[];
+  ltvBySegment: LtvBySegmentEntry[];
 }
 
 interface AsaasRevenueCache {
@@ -68,13 +82,22 @@ export class MetricsService {
   ) {}
 
   async getPlatformMetrics(): Promise<PlatformMetrics> {
-    const [registeredByRole, churnByRole, current, previousMonth] =
-      await Promise.all([
-        this.buildRegisteredByRole(),
-        this.buildChurnByRole(),
-        this.users.sumActiveSubscriptionRevenue(),
-        this.previousMonthRevenue(),
-      ]);
+    const now = this.clock.now();
+    const [
+      registeredByRole,
+      churnByRole,
+      current,
+      previousMonth,
+      cohortRetention,
+      ltvBySegment,
+    ] = await Promise.all([
+      this.buildRegisteredByRole(),
+      this.buildChurnByRole(),
+      this.users.sumActiveSubscriptionRevenue(),
+      this.previousMonthRevenue(now),
+      this.buildCohortRetention(now),
+      this.buildLtvBySegment(now),
+    ]);
 
     return {
       mrr: {
@@ -84,6 +107,8 @@ export class MetricsService {
       },
       registeredByRole,
       churnByRole,
+      cohortRetention,
+      ltvBySegment,
     };
   }
 
@@ -109,14 +134,45 @@ export class MetricsService {
     }));
   }
 
+  // Degrades to an empty array on failure, never throwing — mirrors the
+  // MRR-trend degrade pattern below, so a bug in this bulk-fetch/in-memory
+  // aggregation (cohort-ltv-analysis ADR-007) never takes down the rest of
+  // the endpoint.
+  private async buildCohortRetention(now: Date): Promise<CohortRetentionRow[]> {
+    try {
+      const since = lastNMonthStarts(now, 12)[0];
+      const rows = await this.users.findCohortUsers(since);
+      return computeCohortRetention(rows, now);
+    } catch (error) {
+      this.logger.warn(
+        `platform_metrics_cohort_retention_failed error=${String(error)}`,
+      );
+      return [];
+    }
+  }
+
+  private async buildLtvBySegment(now: Date): Promise<LtvBySegmentEntry[]> {
+    try {
+      const [rows, rolesWithPremiumOffering] = await Promise.all([
+        this.users.findActivePremiumUsersForLtv(now),
+        this.users.findRolesWithActivePremiumProduct(),
+      ]);
+      return computeLtvBySegment(rows, rolesWithPremiumOffering);
+    } catch (error) {
+      this.logger.warn(
+        `platform_metrics_ltv_by_segment_failed error=${String(error)}`,
+      );
+      return [];
+    }
+  }
+
   // A cache hit reports the timestamp of the original successful read, not
   // "now" — `asOf` describes when the figure was actually read from Asaas.
   // A failure is never cached (ADR-006): the next call retries immediately.
-  private async previousMonthRevenue(): Promise<{
+  private async previousMonthRevenue(now: Date): Promise<{
     value: number | null;
     asOf: string;
   }> {
-    const now = this.clock.now();
     if (
       this.cache &&
       now.getTime() - this.cache.computedAt.getTime() < ASAAS_CACHE_TTL_MS

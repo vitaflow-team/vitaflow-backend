@@ -1,6 +1,7 @@
+import { CohortRetentionRowDTO } from './cohortRetentionRow.Dto';
+import { LtvBySegmentEntryDTO } from './ltvBySegmentEntry.Dto';
+import { ROLES } from './platformRole';
 import { ApiProperty } from '@nestjs/swagger';
-
-const ROLES = ['USER', 'NUTRITIONIST', 'PHYSICAL_EDUCATOR', 'ACADEMIA'];
 
 export class MrrDTO {
   @ApiProperty()
@@ -48,4 +49,10 @@ export class PlatformMetricsResponseDTO {
 
   @ApiProperty({ type: [ChurnByRoleDTO] })
   churnByRole!: ChurnByRoleDTO[];
+
+  @ApiProperty({ type: [CohortRetentionRowDTO] })
+  cohortRetention!: CohortRetentionRowDTO[];
+
+  @ApiProperty({ type: [LtvBySegmentEntryDTO] })
+  ltvBySegment!: LtvBySegmentEntryDTO[];
 }

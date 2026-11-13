@@ -1,3 +1,5 @@
+import type { ActivePremiumUserRow } from '@/backoffice/metrics/ltvBySegment.util';
+import type { CohortUserRow } from '@/backoffice/metrics/cohortRetention.util';
 import { PrismaService } from '@/database/prisma.service';
 import { ProfileAddressDTO } from '@/users/profile/profileAddress.Dto';
 import { PAID_STATUSES } from '@/users/subscription/subscriptionExpiry';
@@ -487,6 +489,81 @@ export class UserRepository {
       (total, user) => total + (user.product?.price ?? 0),
       0,
     );
+  }
+
+  // Cohort retention / LTV by segment (cohort-ltv-analysis ADR-007): one bulk
+  // fetch for every user created since `since`, bucketed and zero-filled in
+  // memory by computeCohortRetention — not a per-cell count() — since the
+  // retention grid has up to 12 cohort months × 12 elapsed months × 4 roles ×
+  // 2 plans, and a per-cell query at that scale would be hundreds of
+  // round-trips per request.
+  async findCohortUsers(since: Date): Promise<CohortUserRow[]> {
+    const users = await this.prisma.users.findMany({
+      where: { isBackoffice: false, createdAt: { gte: since } },
+      select: {
+        createdAt: true,
+        subscriptionCancelAt: true,
+        product: { select: { type: true, tier: true } },
+      },
+    });
+
+    return users
+      .filter((user) => user.product)
+      .map((user) => ({
+        cohortMonthStart: startOfMonth(user.createdAt),
+        subscriptionCancelAt: user.subscriptionCancelAt,
+        productType: user.product!.type,
+        tier: user.product!.tier,
+      }));
+  }
+
+  // One bulk fetch of every currently-active Premium subscriber
+  // (cohort-ltv-analysis ADR-001, ADR-004: Free excluded from both the ARPU
+  // numerator and the churn-rate population), bucketed by role in
+  // computeLtvBySegment. "Active" reuses the same PAID_STATUSES definition
+  // as sumActiveSubscriptionRevenue above.
+  async findActivePremiumUsersForLtv(
+    now: Date,
+  ): Promise<ActivePremiumUserRow[]> {
+    const cancelRange = { gte: startOfMonth(now), lt: startOfNextMonth(now) };
+    const users = await this.prisma.users.findMany({
+      where: {
+        isBackoffice: false,
+        subscriptionStatus: { in: PAID_STATUSES },
+        product: { tier: { not: ProductTier.FREE } },
+      },
+      select: {
+        subscriptionCancelAt: true,
+        product: { select: { type: true, price: true } },
+      },
+    });
+
+    return users
+      .filter((user) => user.product)
+      .map((user) => ({
+        productType: user.product!.type,
+        price: user.product!.price,
+        canceledThisMonth: Boolean(
+          user.subscriptionCancelAt &&
+            user.subscriptionCancelAt >= cancelRange.gte &&
+            user.subscriptionCancelAt < cancelRange.lt,
+        ),
+      }));
+  }
+
+  // Distinguishes "role has zero currently-active Premium users" (ltv: null,
+  // entry present — findActivePremiumUsersForLtv returns no rows for it) from
+  // "role has no active Premium product offered at all" (entry omitted
+  // entirely, cohort-ltv-analysis US-002.EC-3) — a distinction the active-user
+  // query above cannot make on its own.
+  async findRolesWithActivePremiumProduct(): Promise<ProductType[]> {
+    const products = await this.prisma.product.findMany({
+      where: { tier: { not: ProductTier.FREE }, active: true },
+      select: { type: true },
+      distinct: ['type'],
+    });
+
+    return products.map((product) => product.type);
   }
 
   async updateUserProfile(
