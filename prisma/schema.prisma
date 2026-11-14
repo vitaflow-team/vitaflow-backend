@@ -1178,6 +1178,13 @@ model EducatorWorkout {
   status             EducatorWorkoutStatus    @default(DRAFT)
   // Start of the 30-minute window that groups edit notifications.
   lastEditNotifiedAt DateTime?
+  // Set on every successful AI (re)generation (ai-workout-prescription-b2b
+  // ADR-009). Null = never AI-generated. Compared against `updatedAt` to
+  // detect "edited since generation" before a regenerate overwrites a draft.
+  lastGeneratedAt    DateTime?
+  // Educator-only prose explanation of the AI-generated plan (ADR-010).
+  // Never surfaced on any student/client-facing response.
+  aiExplanation      String?
   sessions           EducatorWorkoutSession[]
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
