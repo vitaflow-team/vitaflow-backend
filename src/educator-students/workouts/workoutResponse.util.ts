@@ -25,6 +25,9 @@ export function toTreeResponse(
     // function is only ever reached by educator-facing routes, never by any
     // student/client-facing response, so no extra gating is needed here.
     aiExplanation: tree.aiExplanation,
+    lastGeneratedAt: tree.lastGeneratedAt
+      ? tree.lastGeneratedAt.toISOString()
+      : tree.lastGeneratedAt,
     sessions: tree.sessions.map((session, position) => ({
       id: session.id,
       label: sessionLabel(position),
