@@ -21,6 +21,7 @@ import { PrismaService } from './database/prisma.service';
 import { BackofficeViewAsSessionRepository } from './repositories/backoffice/backofficeViewAsSession.repository';
 import { UserRepository } from './repositories/users/user.repository';
 import { EducatorStudentsModule } from './educator-students/educatorStudents.module';
+import { EducatorWorkoutAiGenerationModule } from './educator-students/workouts/aiGeneration/educatorWorkoutAiGeneration.module';
 import { ExerciseLibraryModule } from './exercise-library/exerciseLibrary.module';
 import { FoodDiaryModule } from './food-diary/foodDiary.module';
 import { MailModule } from './mail/mail.module';
@@ -68,6 +69,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     MessagesModule,
     SchedulingModule,
     EducatorStudentsModule,
+    EducatorWorkoutAiGenerationModule,
     AcademiaModule,
     BackofficeModule,
     NutritionistPatientsModule,

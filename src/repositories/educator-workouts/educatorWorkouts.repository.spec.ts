@@ -5,6 +5,11 @@ function makeTx() {
   return {
     $queryRaw: jest.fn().mockResolvedValue([]),
     educatorWorkout: {
+      create: jest
+        .fn()
+        .mockImplementation(({ data }) =>
+          Promise.resolve({ id: 'created-w1', ...data }),
+        ),
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       findFirst: jest.fn(),
@@ -131,6 +136,67 @@ describe('EducatorWorkoutsRepository', () => {
       });
       expect(tx.educatorWorkoutSession.deleteMany).toHaveBeenCalledWith({
         where: { workoutId: 'w1', id: { notIn: ['s1'] } },
+      });
+    });
+  });
+
+  describe('createGeneratedDraft (ai-workout-prescription-b2b)', () => {
+    it('creates the workout with lastGeneratedAt/aiExplanation set, then writes the tree, in one transaction', async () => {
+      const generatedAt = new Date('2026-11-13T00:00:00Z');
+
+      await repository.createGeneratedDraft(
+        'client-1',
+        {
+          title: 'Treino gerado por IA',
+          weeklyFrequency: 3,
+          sessions: [{ name: 'Dia 1', exercises: [item()] }],
+        },
+        'explicação gerada',
+        generatedAt,
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.educatorWorkout.create).toHaveBeenCalledWith({
+        data: {
+          clientId: 'client-1',
+          title: 'Treino gerado por IA',
+          weeklyFrequency: 3,
+          lastGeneratedAt: generatedAt,
+          aiExplanation: 'explicação gerada',
+        },
+      });
+      expect(tx.educatorWorkoutSession.create).toHaveBeenCalledWith({
+        data: { workoutId: 'created-w1', name: 'Dia 1', position: 0 },
+      });
+    });
+  });
+
+  describe('applyGeneratedTree (ai-workout-prescription-b2b)', () => {
+    it('updates title/weeklyFrequency/lastGeneratedAt/aiExplanation and writes the tree in one transaction', async () => {
+      const generatedAt = new Date('2026-11-13T00:00:00Z');
+
+      await repository.applyGeneratedTree(
+        'w1',
+        {
+          title: 'Treino regenerado',
+          weeklyFrequency: 4,
+          sessions: [{ name: 'Dia 1', exercises: [item()] }],
+        },
+        null,
+        generatedAt,
+      );
+
+      expect(tx.educatorWorkout.update).toHaveBeenCalledWith({
+        where: { id: 'w1' },
+        data: {
+          title: 'Treino regenerado',
+          weeklyFrequency: 4,
+          lastGeneratedAt: generatedAt,
+          aiExplanation: null,
+        },
+      });
+      expect(tx.educatorWorkoutSession.create).toHaveBeenCalledWith({
+        data: { workoutId: 'w1', name: 'Dia 1', position: 0 },
       });
     });
   });

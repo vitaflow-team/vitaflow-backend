@@ -21,6 +21,10 @@ export function toTreeResponse(
     status: tree.status,
     weeklyFrequency: tree.weeklyFrequency,
     updatedAt: tree.updatedAt.toISOString(),
+    // Educator-only (ai-workout-prescription-b2b ADR-006/ADR-010) — this
+    // function is only ever reached by educator-facing routes, never by any
+    // student/client-facing response, so no extra gating is needed here.
+    aiExplanation: tree.aiExplanation,
     sessions: tree.sessions.map((session, position) => ({
       id: session.id,
       label: sessionLabel(position),

@@ -60,6 +60,13 @@ export interface WorkoutTreeResponseDTO {
   weeklyFrequency: number | null;
   updatedAt: string;
   sessions: WorkoutSessionResponseDTO[];
+  /**
+   * Educator-only prose explanation of an AI-generated plan
+   * (ai-workout-prescription-b2b ADR-006/ADR-010). Present only when the
+   * workout was AI-generated and an explanation was produced; never surfaced
+   * on any student/client-facing response.
+   */
+  aiExplanation?: string | null;
 }
 
 export interface DuplicateResponseDTO {
