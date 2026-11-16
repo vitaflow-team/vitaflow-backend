@@ -19,7 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { WorkoutTreeResponseDTO } from '../dto/workoutResponse.Dto';
 import { EducatorAiWorkoutConversationDTO } from './dto/educatorAiWorkoutConversation.Dto';
-import { EducatorAiWorkoutConversationTurn } from './educatorAiWorkoutConversation.types';
+import { EducatorAiWorkoutConversationResult } from './educatorAiWorkoutConversation.types';
 import { EducatorAiWorkoutGenerationService } from './educatorAiWorkoutGeneration.service';
 
 // Every route here requires Premium (PRD ADR-005, no free first use) —
@@ -59,7 +59,7 @@ export class EducatorAiWorkoutGenerationController {
     @Param('studentId') studentId: string,
     @Body() dto: EducatorAiWorkoutConversationDTO,
     @Request() req: AuthenticatedRequest,
-  ): Promise<EducatorAiWorkoutConversationTurn | WorkoutTreeResponseDTO> {
+  ): Promise<EducatorAiWorkoutConversationResult | WorkoutTreeResponseDTO> {
     if (!dto.conversationId) {
       return await this.generation.startConversation(
         req.user.id,

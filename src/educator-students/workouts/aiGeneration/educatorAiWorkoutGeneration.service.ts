@@ -17,8 +17,8 @@ import { toTreeResponse } from '../workoutResponse.util';
 import { WorkoutTreeResponseDTO } from '../dto/workoutResponse.Dto';
 import {
   EducatorAiWorkoutAnswers,
+  EducatorAiWorkoutConversationResult,
   EducatorAiWorkoutConversationState,
-  EducatorAiWorkoutConversationTurn,
 } from './educatorAiWorkoutConversation.types';
 import { EducatorAiWorkoutLlmService } from './educatorAiWorkoutLlm.service';
 import { toEducatorWorkoutInput } from './educatorAiWorkoutGeneration.util';
@@ -74,7 +74,7 @@ export class EducatorAiWorkoutGenerationService {
     studentId: string,
     workoutId?: string,
     confirmOverwrite?: boolean,
-  ): Promise<EducatorAiWorkoutConversationTurn | WorkoutTreeResponseDTO> {
+  ): Promise<EducatorAiWorkoutConversationResult | WorkoutTreeResponseDTO> {
     const student = await findOwnedStudent(this.clients, educatorId, studentId);
 
     let existingTitle: string | null = null;
@@ -101,7 +101,7 @@ export class EducatorAiWorkoutGenerationService {
     educatorId: string,
     conversationId: string,
     rawAnswer: string,
-  ): Promise<EducatorAiWorkoutConversationTurn | WorkoutTreeResponseDTO> {
+  ): Promise<EducatorAiWorkoutConversationResult | WorkoutTreeResponseDTO> {
     const state = this.conversations.get(educatorId, conversationId);
     if (!state) {
       throw new CodedError(
@@ -148,7 +148,7 @@ export class EducatorAiWorkoutGenerationService {
     educatorId: string,
     conversationId: string,
     state: EducatorAiWorkoutConversationState,
-  ): Promise<EducatorAiWorkoutConversationTurn | WorkoutTreeResponseDTO> {
+  ): Promise<EducatorAiWorkoutConversationResult | WorkoutTreeResponseDTO> {
     const turn = await this.llm.nextQuestion(state);
 
     if (invalidDaysPerWeek(turn.answers.daysPerWeek)) {
@@ -168,14 +168,14 @@ export class EducatorAiWorkoutGenerationService {
       pendingField: turn.field ?? undefined,
       pendingRawAnswer: undefined,
     });
-    return turn;
+    return { ...turn, conversationId };
   }
 
   private repromptDaysPerWeek(
     conversationId: string,
     state: EducatorAiWorkoutConversationState,
     answers: EducatorAiWorkoutAnswers,
-  ): EducatorAiWorkoutConversationTurn {
+  ): EducatorAiWorkoutConversationResult {
     const corrected = { ...answers, daysPerWeek: undefined };
     this.conversations.update(conversationId, {
       ...state,
@@ -184,6 +184,7 @@ export class EducatorAiWorkoutGenerationService {
       pendingRawAnswer: undefined,
     });
     return {
+      conversationId,
       answers: corrected,
       field: 'daysPerWeek',
       question: `Quantos dias por semana? Informe um número entre ${WORKOUT_FREQUENCY_MIN} e ${WORKOUT_FREQUENCY_MAX}.`,
