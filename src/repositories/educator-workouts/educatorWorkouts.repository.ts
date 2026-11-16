@@ -195,22 +195,29 @@ export class EducatorWorkoutsRepository {
     aiExplanation: string | null,
     generatedAt: Date,
   ): Promise<WorkoutTree> {
-    return await this.prisma.$transaction(async (tx) => {
-      const created = await tx.educatorWorkout.create({
-        data: {
-          clientId,
-          title: tree.title,
-          weeklyFrequency: tree.weeklyFrequency,
-          lastGeneratedAt: generatedAt,
-          aiExplanation,
-        },
-      });
-      await this.writeSessionsAndExercises(tx, created.id, tree);
-      return await tx.educatorWorkout.findUniqueOrThrow({
-        where: { id: created.id },
-        include: TREE_INCLUDE,
-      });
-    });
+    return await this.prisma.$transaction(
+      async (tx) => {
+        const created = await tx.educatorWorkout.create({
+          data: {
+            clientId,
+            title: tree.title,
+            weeklyFrequency: tree.weeklyFrequency,
+            lastGeneratedAt: generatedAt,
+            aiExplanation,
+          },
+        });
+        await this.writeSessionsAndExercises(tx, created.id, tree);
+        return await tx.educatorWorkout.findUniqueOrThrow({
+          where: { id: created.id },
+          include: TREE_INCLUDE,
+        });
+      },
+      // Unlike a manual save, a full AI-generated tree can have several
+      // sessions written in one go, each awaited in sequence — comfortably
+      // inside Prisma's 5s default against a warm connection, but worth the
+      // headroom against a cold one.
+      { timeout: 15_000 },
+    );
   }
 
   /**
@@ -226,21 +233,84 @@ export class EducatorWorkoutsRepository {
     aiExplanation: string | null,
     generatedAt: Date,
   ): Promise<WorkoutTree> {
-    return await this.prisma.$transaction(async (tx) => {
-      await tx.educatorWorkout.update({
-        where: { id: workoutId },
-        data: {
-          title: tree.title,
-          weeklyFrequency: tree.weeklyFrequency,
-          lastGeneratedAt: generatedAt,
-          aiExplanation,
-        },
+    return await this.prisma.$transaction(
+      async (tx) => {
+        await tx.educatorWorkout.update({
+          where: { id: workoutId },
+          data: {
+            title: tree.title,
+            weeklyFrequency: tree.weeklyFrequency,
+            lastGeneratedAt: generatedAt,
+            aiExplanation,
+          },
+        });
+        await this.writeSessionsAndExercises(tx, workoutId, tree);
+        return await tx.educatorWorkout.findUniqueOrThrow({
+          where: { id: workoutId },
+          include: TREE_INCLUDE,
+        });
+      },
+      { timeout: 15_000 },
+    );
+  }
+
+  // Shared by applyTree/createGeneratedDraft/applyGeneratedTree: upserts
+  // every session/exercise in `tree`, then deletes whatever existing row
+  // wasn't kept. Exercises first: one that moved sessions is already updated
+  // by the time its old session is deleted, so a kept exercise never gets
+  // taken down with it.
+  private async writeSessionsAndExercises(
+    tx: Prisma.TransactionClient,
+    workoutId: string,
+    tree: WorkoutTreeInput,
+  ): Promise<void> {
+    const keptSessionIds: string[] = [];
+    const keptExerciseIds: string[] = [];
+
+    for (const [sessionPosition, session] of tree.sessions.entries()) {
+      const sessionId = await this.upsertSession(tx, {
+        workoutId,
+        id: session.id,
+        name: session.name,
+        position: sessionPosition,
       });
-      await this.writeSessionsAndExercises(tx, workoutId, tree);
-      return await tx.educatorWorkout.findUniqueOrThrow({
-        where: { id: workoutId },
-        include: TREE_INCLUDE,
-      });
+      keptSessionIds.push(sessionId);
+
+      for (const [position, exercise] of session.exercises.entries()) {
+        const data = {
+          sessionId,
+          position,
+          source: exercise.source,
+          exerciseId: exercise.exerciseId,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup,
+          equipment: exercise.equipment,
+          sets: exercise.sets,
+          reps: exercise.reps,
+          load: exercise.load,
+          videoUrl: exercise.videoUrl,
+        };
+        if (exercise.id) {
+          await tx.educatorWorkoutExercise.update({
+            where: { id: exercise.id, session: { workoutId } },
+            data,
+          });
+          keptExerciseIds.push(exercise.id);
+        } else {
+          const created = await tx.educatorWorkoutExercise.create({ data });
+          keptExerciseIds.push(created.id);
+        }
+      }
+    }
+
+    await tx.educatorWorkoutExercise.deleteMany({
+      where: {
+        session: { workoutId },
+        id: { notIn: keptExerciseIds },
+      },
+    });
+    await tx.educatorWorkoutSession.deleteMany({
+      where: { workoutId, id: { notIn: keptSessionIds } },
     });
   }
 

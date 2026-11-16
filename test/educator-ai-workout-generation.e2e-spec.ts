@@ -4,14 +4,23 @@
  * Runs the real EducatorAiWorkoutGenerationController/Service, the real
  * manual WorkoutsController/EducatorWorkoutsService (for activation —
  * ADR-004 requires that exact, unmodified endpoint), the real repositories,
- * AuthGuard, PhysicalEducatorGuard, ProfessionalPremiumGuard, and the app's
- * global ValidationPipe against an isolated database. Only the OpenAI client
- * is replaced with a mock (this feature's own rule: no automated test makes
- * a real network call, mirroring `ai-workout-generator.e2e-spec.ts`) —
- * everything else, including the real deterministic RuleEngineService, runs
- * unmocked.
+ * the real NotificationsService/WorkoutNotificationsService, AuthGuard,
+ * PhysicalEducatorGuard, ProfessionalPremiumGuard, and the app's global
+ * ValidationPipe against an isolated database. Only the OpenAI client and
+ * `MailService` are replaced with mocks (no automated test makes a real
+ * network call, mirroring `ai-workout-generator.e2e-spec.ts`) — everything
+ * else, including the real deterministic RuleEngineService, runs unmocked,
+ * except where one test spies on it directly (see IT-001 (negative)'s own
+ * comment: the shared dev database is not test-isolated, so "no exercise
+ * matches" can't be asserted by omission).
  *
- * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
+ * `TEST_DATABASE_URL` is a real, shared, non-isolated Neon dev database in
+ * this project's setup (not a throwaway per-run database), so this suite's
+ * own fixtures are the only thing keeping it deterministic — `registerStudent`
+ * writes `Client` rows directly via Prisma rather than through
+ * `StudentsController`, since that controller's `StudentsService` pulls in
+ * an unrelated billing/employment dependency tree this suite has no reason
+ * to wire up.
  */
 import { AuthGuard } from '@/auth/auth.guard';
 import { PhysicalEducatorGuard } from '@/common/guards/physicalEducator.guard';
@@ -27,12 +36,16 @@ import { StudentWorkoutsService } from '@/educator-students/workouts/studentWork
 import { WorkoutsController } from '@/educator-students/workouts/workouts.controller';
 import { EducatorWorkoutsService } from '@/educator-students/workouts/workouts.service';
 import { WorkoutNotificationsService } from '@/educator-students/workouts/workoutNotifications.service';
+import { MailService } from '@/mail/mail.service';
+import { NotificationsService } from '@/notifications/notifications.service';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { EducatorWorkoutsRepository } from '@/repositories/educator-workouts/educatorWorkouts.repository';
 import { ExercisesRepository } from '@/repositories/exercise-library/exercises.repository';
 import { FitnessProfileRepository } from '@/repositories/fitness-profile/fitnessProfile.repository';
+import { NotificationsRepository } from '@/repositories/notifications/notifications.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Clock } from '@/scheduling/clock.service';
+import { FixedTimesRepository } from '@/repositories/fixed-times/fixedTimes.repository';
 import { FixedSessionsService } from '@/scheduling/fixed-times/fixedSessions.service';
 import { OPENAI_CLIENT } from '@/workouts/openaiClient.provider';
 import { RuleEngineService } from '@/workouts/ruleEngine.service';
@@ -134,7 +147,10 @@ describe('Educator AI workout generation integration', () => {
   let groupId: string;
   let educator: Users;
   let otherEducator: Users;
+  let otherPremiumEducator: Users;
+  let ruleEngineService: RuleEngineService;
   const openAiCreate = jest.fn();
+  const sendNotificationEmail = jest.fn();
 
   const jwtSecret = 'educator-ai-workout-generation-integration-jwt-secret';
 
@@ -165,17 +181,18 @@ describe('Educator AI workout generation integration', () => {
         AuthGuard,
         PhysicalEducatorGuard,
         ProfessionalPremiumGuard,
+        NotificationsRepository,
+        NotificationsService,
         WorkoutNotificationsService,
         EducatorWorkoutsService,
         EducatorAiWorkoutLlmService,
         ConversationStore,
         EducatorAiWorkoutGenerationService,
         StudentWorkoutsService,
+        FixedTimesRepository,
+        FixedSessionsService,
         Clock,
-        {
-          provide: FixedSessionsService,
-          useValue: { todaySessionId: jest.fn().mockResolvedValue(null) },
-        },
+        { provide: MailService, useValue: { sendNotificationEmail } },
         {
           provide: OPENAI_CLIENT,
           useValue: { chat: { completions: { create: openAiCreate } } },
@@ -189,6 +206,7 @@ describe('Educator AI workout generation integration', () => {
     await app.init();
     prisma = moduleFixture.get(PrismaService);
     jwtService = moduleFixture.get(JwtService);
+    ruleEngineService = moduleFixture.get(RuleEngineService);
 
     await seed();
   });
@@ -198,7 +216,9 @@ describe('Educator AI workout generation integration', () => {
   });
 
   afterAll(async () => {
-    const ids = [educator, otherEducator].map((u) => u.id);
+    const ids = [educator, otherEducator, otherPremiumEducator].map(
+      (u) => u.id,
+    );
     await prisma.client.deleteMany({ where: { professionalId: { in: ids } } });
     await prisma.exercise.deleteMany({
       where: { name: { startsWith: RUN_TAG } },
@@ -206,6 +226,7 @@ describe('Educator AI workout generation integration', () => {
     await prisma.fitnessProfile.deleteMany({
       where: { userId: { in: ids } },
     });
+    await prisma.notification.deleteMany({ where: { userId: { in: ids } } });
     await prisma.users.deleteMany({ where: { id: { in: ids } } });
     await prisma.product.deleteMany({ where: { groupId } });
     await prisma.productGroup.deleteMany({ where: { id: groupId } });
@@ -244,9 +265,16 @@ describe('Educator AI workout generation integration', () => {
       (p) => p.tier === ProductTier.STANDARD,
     )!;
 
-    educator = await createUser('educator', { productId: premiumProduct.id });
+    educator = await createUser('educator', {
+      productId: premiumProduct.id,
+      subscriptionStatus: 'active',
+    });
     otherEducator = await createUser('other-educator-free', {
       productId: freeProduct.id,
+    });
+    otherPremiumEducator = await createUser('other-educator-premium', {
+      productId: premiumProduct.id,
+      subscriptionStatus: 'active',
     });
 
     const base = {
@@ -300,20 +328,22 @@ describe('Educator AI workout generation integration', () => {
     };
   }
 
+  // Creates the Client row directly — `StudentsController`'s own
+  // registration endpoint pulls in `StudentsService`'s full dependency
+  // tree (billing, employments, academia activity, ...), none of which
+  // this suite's own boundary (the AI generation feature) needs to wire up.
   async function registerStudent(by: Users, account?: Users): Promise<string> {
-    const caller = await as(by);
-    const response = await caller.post(
-      '/educator/students',
-      account
-        ? { email: account.email, linkExistingAccount: true }
-        : {
-            name: 'Aluno IA Teste',
-            email: `${RUN_TAG}-student-${Date.now()}@integration.test`,
-            linkExistingAccount: false,
-          },
-    );
-    expect(response.status).toBe(201);
-    return response.body.id as string;
+    const client = await prisma.client.create({
+      data: {
+        name: account?.name ?? 'Aluno IA Teste',
+        email:
+          account?.email ?? `${RUN_TAG}-student-${Date.now()}@integration.test`,
+        phone: '11999999999',
+        professionalId: by.id,
+        userId: account?.id ?? null,
+      },
+    });
+    return client.id;
   }
 
   const conversationUrl = (studentId: string) =>
@@ -356,13 +386,27 @@ describe('Educator AI workout generation integration', () => {
     const caller = await as(educator);
     const studentId = await registerStudent(educator);
 
+    // This is a shared, non-isolated dev database — asserting "no exercise
+    // matches BODYWEIGHT" would be flaky against whatever real seed data
+    // happens to exist there. The rule engine itself is already exercised
+    // for real everywhere else in this suite; here only its "unusable plan"
+    // outcome needs to be reachable deterministically.
+    const unusablePlan = {
+      scaled: true,
+      days: [1, 2, 3].map((dayOfWeek) => ({ dayOfWeek, exercises: [] })),
+    };
+    const ruleEngineSpy = jest
+      .spyOn(ruleEngineService, 'select')
+      .mockResolvedValueOnce(unusablePlan);
+
     // The rule engine rejects before `explain()` is ever called, so only
     // one mocked response is needed.
-    openAiCreate.mockResolvedValueOnce(doneTurn({ equipment: 'BODYWEIGHT' }));
+    openAiCreate.mockResolvedValueOnce(doneTurn());
     const response = await caller.post(conversationUrl(studentId), {});
 
     expect(response.status).toBe(422);
     expect(response.body.code).toBe('no_eligible_exercises');
+    ruleEngineSpy.mockRestore();
   });
 
   it('IT-001 (degrade) still persists the draft, with aiExplanation null, when the explanation call fails', async () => {
@@ -451,7 +495,9 @@ describe('Educator AI workout generation integration', () => {
 
   it('IT-007 rejects a student not owned by the calling educator', async () => {
     const studentOfA = await registerStudent(educator);
-    const callerForB = await as(otherEducator);
+    // Premium too, so this exercises the ownership check itself, not the
+    // Premium gate — `otherEducator` (non-Premium) is IT-006's own case.
+    const callerForB = await as(otherPremiumEducator);
 
     const response = await callerForB.post(conversationUrl(studentOfA), {});
 
@@ -510,6 +556,11 @@ describe('Educator AI workout generation integration', () => {
       'Plano de treino gerado.',
     );
 
+    // Activation sent this student a notification, which must go first —
+    // its FK is RESTRICT, not CASCADE.
+    await prisma.notification.deleteMany({
+      where: { userId: studentAccount.id },
+    });
     await prisma.users.delete({ where: { id: studentAccount.id } });
   });
 });
