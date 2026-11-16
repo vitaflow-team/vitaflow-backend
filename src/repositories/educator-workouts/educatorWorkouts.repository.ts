@@ -195,22 +195,29 @@ export class EducatorWorkoutsRepository {
     aiExplanation: string | null,
     generatedAt: Date,
   ): Promise<WorkoutTree> {
-    return await this.prisma.$transaction(async (tx) => {
-      const created = await tx.educatorWorkout.create({
-        data: {
-          clientId,
-          title: tree.title,
-          weeklyFrequency: tree.weeklyFrequency,
-          lastGeneratedAt: generatedAt,
-          aiExplanation,
-        },
-      });
-      await this.writeSessionsAndExercises(tx, created.id, tree);
-      return await tx.educatorWorkout.findUniqueOrThrow({
-        where: { id: created.id },
-        include: TREE_INCLUDE,
-      });
-    });
+    return await this.prisma.$transaction(
+      async (tx) => {
+        const created = await tx.educatorWorkout.create({
+          data: {
+            clientId,
+            title: tree.title,
+            weeklyFrequency: tree.weeklyFrequency,
+            lastGeneratedAt: generatedAt,
+            aiExplanation,
+          },
+        });
+        await this.writeSessionsAndExercises(tx, created.id, tree);
+        return await tx.educatorWorkout.findUniqueOrThrow({
+          where: { id: created.id },
+          include: TREE_INCLUDE,
+        });
+      },
+      // Unlike a manual save, a full AI-generated tree can have several
+      // sessions written in one go, each awaited in sequence — comfortably
+      // inside Prisma's 5s default against a warm connection, but worth the
+      // headroom against a cold one.
+      { timeout: 15_000 },
+    );
   }
 
   /**
@@ -226,22 +233,25 @@ export class EducatorWorkoutsRepository {
     aiExplanation: string | null,
     generatedAt: Date,
   ): Promise<WorkoutTree> {
-    return await this.prisma.$transaction(async (tx) => {
-      await tx.educatorWorkout.update({
-        where: { id: workoutId },
-        data: {
-          title: tree.title,
-          weeklyFrequency: tree.weeklyFrequency,
-          lastGeneratedAt: generatedAt,
-          aiExplanation,
-        },
-      });
-      await this.writeSessionsAndExercises(tx, workoutId, tree);
-      return await tx.educatorWorkout.findUniqueOrThrow({
-        where: { id: workoutId },
-        include: TREE_INCLUDE,
-      });
-    });
+    return await this.prisma.$transaction(
+      async (tx) => {
+        await tx.educatorWorkout.update({
+          where: { id: workoutId },
+          data: {
+            title: tree.title,
+            weeklyFrequency: tree.weeklyFrequency,
+            lastGeneratedAt: generatedAt,
+            aiExplanation,
+          },
+        });
+        await this.writeSessionsAndExercises(tx, workoutId, tree);
+        return await tx.educatorWorkout.findUniqueOrThrow({
+          where: { id: workoutId },
+          include: TREE_INCLUDE,
+        });
+      },
+      { timeout: 15_000 },
+    );
   }
 
   // Shared by applyTree/createGeneratedDraft/applyGeneratedTree: upserts

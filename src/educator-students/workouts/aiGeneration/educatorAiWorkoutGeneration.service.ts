@@ -32,6 +32,15 @@ const NO_ELIGIBLE_EXERCISES =
 const INCOMPLETE_ANSWERS = 'Respostas incompletas para gerar o treino.';
 const DEFAULT_GENERATED_TITLE = 'Treino gerado por IA';
 
+// `updatedAt` is DB-stamped (`@updatedAt`) in the same write that persists
+// the app-captured `lastGeneratedAt`, so it is always a hair later than
+// `lastGeneratedAt`, never equal — comparing with a bare `>` would flag
+// every draft as "edited since generation" immediately after its own
+// generation. A real manual edit takes measurably longer than this to
+// happen (the educator has to open the editor and type), so any gap under
+// this tolerance is clock skew, not an edit.
+const REGENERATE_EDIT_TOLERANCE_MS = 5_000;
+
 function invalidDaysPerWeek(value: number | undefined): boolean {
   if (value === undefined) return false;
   return (
@@ -133,7 +142,8 @@ export class EducatorAiWorkoutGenerationService {
 
     const editedSinceGeneration =
       target.lastGeneratedAt !== null &&
-      target.updatedAt > target.lastGeneratedAt;
+      target.updatedAt.getTime() - target.lastGeneratedAt.getTime() >
+        REGENERATE_EDIT_TOLERANCE_MS;
     if (editedSinceGeneration && !confirmOverwrite) {
       throw new CodedError(
         CONFIRM_OVERWRITE_REQUIRED,
