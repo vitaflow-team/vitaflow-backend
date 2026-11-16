@@ -84,6 +84,49 @@ function explanation(text = 'Plano de treino gerado.') {
   return completion({ explanation: text });
 }
 
+interface GeneratedExercise {
+  id: string;
+  source: string;
+  exerciseId: string | null;
+  sets: number;
+  reps: string;
+  load: string | null;
+  videoUrl: string | null;
+}
+
+interface GeneratedSession {
+  id: string;
+  name: string;
+  exercises: GeneratedExercise[];
+}
+
+// Maps a generated draft's own response shape into `SaveWorkoutDTO`'s —
+// the manual-save endpoint's global ValidationPipe (`forbidNonWhitelisted`)
+// rejects the response's extra fields (`label`, `libraryVideoUrl`,
+// `conflicts`) otherwise. `emptySessionIndex` empties one session's
+// exercises, for the "manually emptied since generation" scenarios.
+function toSaveWorkoutSessions(
+  sessions: GeneratedSession[],
+  emptySessionIndex = -1,
+) {
+  return sessions.map((session, index) => ({
+    id: session.id,
+    name: session.name,
+    exercises:
+      index === emptySessionIndex
+        ? []
+        : session.exercises.map((exercise) => ({
+            id: exercise.id,
+            source: exercise.source,
+            exerciseId: exercise.exerciseId ?? undefined,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            load: exercise.load ?? undefined,
+            videoUrl: exercise.videoUrl ?? undefined,
+          })),
+  }));
+}
+
 describe('Educator AI workout generation integration', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -276,23 +319,20 @@ describe('Educator AI workout generation integration', () => {
   const conversationUrl = (studentId: string) =>
     `/educator/students/${studentId}/workouts/ai-generation/conversation`;
 
-  // Drives the whole conversation in 2 round trips (start + the single
-  // structured done turn) plus the explanation call — see `doneTurn`'s
-  // comment for why this is a valid, sufficient shortcut for this suite.
+  // `doneTurn` supplies every answer in a single structured turn, so the
+  // service completes (rule engine + explanation, both inside the SAME
+  // request) on this one call — no second round trip exists to carry a
+  // conversationId on. Both LLM calls that single request makes
+  // (nextQuestion, then explain) share the one mocked client, so both
+  // responses must be queued before it.
   async function generate(
     caller: Awaited<ReturnType<typeof as>>,
     studentId: string,
     body: { workoutId?: string; confirmOverwrite?: boolean } = {},
   ) {
     openAiCreate.mockResolvedValueOnce(doneTurn());
-    const start = await caller.post(conversationUrl(studentId), body);
-    if (start.status !== 200) return start;
-
     openAiCreate.mockResolvedValueOnce(explanation());
-    return await caller.post(conversationUrl(studentId), {
-      conversationId: start.body.conversationId as string,
-      answer: '',
-    });
+    return await caller.post(conversationUrl(studentId), body);
   }
 
   it('IT-001 generates and persists a new DRAFT with sessions/exercises and an explanation', async () => {
@@ -316,27 +356,10 @@ describe('Educator AI workout generation integration', () => {
     const caller = await as(educator);
     const studentId = await registerStudent(educator);
 
+    // The rule engine rejects before `explain()` is ever called, so only
+    // one mocked response is needed.
     openAiCreate.mockResolvedValueOnce(doneTurn({ equipment: 'BODYWEIGHT' }));
-    const start = await caller.post(conversationUrl(studentId), {});
-    openAiCreate.mockResolvedValueOnce(
-      completion({
-        answers: {
-          goal: 'MUSCLE_GAIN',
-          daysPerWeek: 3,
-          equipment: 'BODYWEIGHT',
-          experienceLevel: 'BEGINNER',
-          muscleFocus: 'NONE',
-        },
-        field: null,
-        question: '',
-        done: true,
-        reprompt: false,
-      }),
-    );
-    const response = await caller.post(conversationUrl(studentId), {
-      conversationId: start.body.conversationId as string,
-      answer: '',
-    });
+    const response = await caller.post(conversationUrl(studentId), {});
 
     expect(response.status).toBe(422);
     expect(response.body.code).toBe('no_eligible_exercises');
@@ -347,12 +370,9 @@ describe('Educator AI workout generation integration', () => {
     const studentId = await registerStudent(educator);
 
     openAiCreate.mockResolvedValueOnce(doneTurn());
-    const start = await caller.post(conversationUrl(studentId), {});
+    // Every retry attempt of the explain() call fails (not just the first).
     openAiCreate.mockRejectedValue(new Error('simulated upstream failure'));
-    const response = await caller.post(conversationUrl(studentId), {
-      conversationId: start.body.conversationId as string,
-      answer: '',
-    });
+    const response = await caller.post(conversationUrl(studentId), {});
 
     expect(response.status).toBe(200);
     expect(response.body.aiExplanation).toBeNull();
@@ -376,13 +396,22 @@ describe('Educator AI workout generation integration', () => {
     const first = await generate(caller, studentId);
     const workoutId = first.body.id as string;
 
-    // A manual save bumps `updatedAt` past `lastGeneratedAt`.
-    await caller.post(
+    // A manual save (the existing, unmodified editor endpoint) bumps
+    // `updatedAt` past `lastGeneratedAt`.
+    const manualSave = await caller.put(
       `/educator/students/${studentId}/workouts/${workoutId}`,
-      {},
+      {
+        title: first.body.title,
+        weeklyFrequency: first.body.weeklyFrequency,
+        sessions: toSaveWorkoutSessions(
+          first.body.sessions as GeneratedSession[],
+        ),
+      },
     );
+    expect(manualSave.status).toBe(200);
 
-    openAiCreate.mockResolvedValueOnce(doneTurn());
+    // No LLM call happens on this path: the overwrite check runs before
+    // the conversation is ever started.
     const blocked = await caller.post(conversationUrl(studentId), {
       workoutId,
     });
@@ -435,41 +464,15 @@ describe('Educator AI workout generation integration', () => {
     const generated = await generate(caller, studentId);
     const workoutId = generated.body.id as string;
 
-    type GeneratedExercise = {
-      id: string;
-      source: string;
-      exerciseId: string | null;
-      sets: number;
-      reps: string;
-      load: string | null;
-      videoUrl: string | null;
-    };
-    const sessions = generated.body.sessions as Array<{
-      id: string;
-      name: string;
-      exercises: GeneratedExercise[];
-    }>;
     const save = await caller.put(
       `/educator/students/${studentId}/workouts/${workoutId}`,
       {
         title: generated.body.title,
         weeklyFrequency: generated.body.weeklyFrequency,
-        sessions: sessions.map((session, index) => ({
-          id: session.id,
-          name: session.name,
-          exercises:
-            index === 0
-              ? []
-              : session.exercises.map((exercise) => ({
-                  id: exercise.id,
-                  source: exercise.source,
-                  exerciseId: exercise.exerciseId ?? undefined,
-                  sets: exercise.sets,
-                  reps: exercise.reps,
-                  load: exercise.load ?? undefined,
-                  videoUrl: exercise.videoUrl ?? undefined,
-                })),
-        })),
+        sessions: toSaveWorkoutSessions(
+          generated.body.sessions as GeneratedSession[],
+          0,
+        ),
       },
     );
     expect(save.status).toBe(200);

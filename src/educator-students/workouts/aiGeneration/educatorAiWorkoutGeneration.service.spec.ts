@@ -148,13 +148,17 @@ describe('EducatorAiWorkoutGenerationService', () => {
       reprompt: false,
     });
 
-    await service.startConversation(
+    const result = await service.startConversation(
       'educator-1',
       '11111111-1111-4111-8111-111111111111',
     );
 
     expect(workoutsFindOwnedTree).not.toHaveBeenCalled();
     expect(workoutsCreateGeneratedDraft).not.toHaveBeenCalled();
+    // The client has no other way to continue this conversation past its
+    // first question — a regression guard for a real bug where this field
+    // was silently dropped from every in-progress turn.
+    expect(result).toMatchObject({ conversationId: expect.any(String) });
   });
 
   // UT-010
@@ -369,7 +373,11 @@ describe('EducatorAiWorkoutGenerationService', () => {
       '11111111-1111-4111-8111-111111111111',
     );
 
-    expect(result).toMatchObject({ field: 'daysPerWeek', reprompt: true });
+    expect(result).toMatchObject({
+      field: 'daysPerWeek',
+      reprompt: true,
+      conversationId: expect.any(String),
+    });
     expect(workoutsCreateGeneratedDraft).not.toHaveBeenCalled();
   });
 

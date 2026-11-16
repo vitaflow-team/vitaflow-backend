@@ -39,6 +39,9 @@ export interface EducatorAiWorkoutConversationState {
   pendingRawAnswer?: string;
 }
 
+// The LLM's own raw turn shape — never leaves EducatorAiWorkoutLlmService
+// as-is, since it has no notion of a conversationId (that's assigned by
+// ConversationStore, a service-level concern).
 export interface EducatorAiWorkoutConversationTurn {
   answers: EducatorAiWorkoutAnswers;
   field: EducatorAiWorkoutField | null;
@@ -46,3 +49,12 @@ export interface EducatorAiWorkoutConversationTurn {
   done: boolean;
   reprompt: boolean;
 }
+
+// What the controller actually hands back for an in-progress conversation:
+// the LLM's turn, plus the conversationId the caller must echo on the next
+// call. Without this, the client would have no way to continue a
+// conversation past its first question.
+export type EducatorAiWorkoutConversationResult =
+  EducatorAiWorkoutConversationTurn & {
+    conversationId: string;
+  };
