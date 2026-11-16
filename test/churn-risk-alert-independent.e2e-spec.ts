@@ -652,6 +652,11 @@ describe('Churn-risk alert for independent professionals — integration', () =>
     await prisma.client.deleteMany({
       where: { id: { in: [student.id, student2.id] } },
     });
+    // The evaluation's own notification references this user; its FK is
+    // RESTRICT, not CASCADE.
+    await prisma.notification.deleteMany({
+      where: { userId: freshEducator.id },
+    });
     await prisma.users.delete({ where: { id: freshEducator.id } });
   });
 
