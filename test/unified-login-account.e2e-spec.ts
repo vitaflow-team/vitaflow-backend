@@ -8,6 +8,10 @@
  * `GoogleAuthService.verify` returns the identity registered for a token, and
  * the mail double records the links a real inbox would receive.
  *
+ * IT-001 through IT-004 (the duplicate correction and the unique index) are
+ * not here: they run the migration body in a throwaway schema, through
+ * `prisma/checks/unify-users-email.sql`.
+ *
  * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
  */
 import { AcademiaStaffAuthService } from '@/academia/staff/academiaStaffAuth.service';
@@ -17,6 +21,7 @@ import { AuthGuard } from '@/auth/auth.guard';
 import { AuthService } from '@/auth/auth.service';
 import { DualBucketThrottlerGuard } from '@/auth/dualBucketThrottler.guard';
 import { GoogleAuthService } from '@/auth/googleAuth.service';
+import { GoogleLinkController } from '@/auth/googleLink.controller';
 import { BackofficeStaffController } from '@/backoffice/staff/backofficeStaff.controller';
 import { BackofficeStaffService } from '@/backoffice/staff/backofficeStaff.service';
 import { AdminTierGuard } from '@/common/guards/adminTier.guard';
@@ -24,6 +29,8 @@ import { BackofficeGuard } from '@/common/guards/backoffice.guard';
 import { createValidationPipe } from '@/config/validationPipe';
 import { PrismaService } from '@/database/prisma.service';
 import { MailService } from '@/mail/mail.service';
+import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
+import { AcademiaStaffMemberTokenRepository } from '@/repositories/academia/academiaStaffMemberToken.repository';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
 import { BackofficeViewAsSessionRepository } from '@/repositories/backoffice/backofficeViewAsSession.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
@@ -33,8 +40,12 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
 import { ProfileController } from '@/users/profile/profile.controller';
 import { ProfileService } from '@/users/profile/profile.service';
+import { RecoverpassController } from '@/users/recoverpass/recoverpass.controller';
+import { RecoverpassService } from '@/users/recoverpass/recoverpass.service';
 import { SignInController } from '@/users/signin/signin.controller';
 import { SignInService } from '@/users/signin/signin.service';
+import { SignUpController } from '@/users/signup/signup.controller';
+import { SignUpService } from '@/users/signup/signup.service';
 import { UserTokenService } from '@/users/token/userToken.service';
 import { AppError } from '@/utils/app.erro';
 import { PasswordHash } from '@/utils/password.hash';
@@ -64,6 +75,7 @@ describe('Unified login account — integration', () => {
   let passwordHash: string;
   let freeProductId: string;
   let groupId: string;
+  const createdAcademiaIds: string[] = [];
   const mail = {
     sendEmailPassword: jest.fn().mockResolvedValue(undefined),
     sendNotificationEmail: jest.fn().mockResolvedValue(undefined),
@@ -99,7 +111,10 @@ describe('Unified login account — integration', () => {
         BackofficeStaffController,
         ProfileController,
         AuthController,
+        GoogleLinkController,
         SignInController,
+        SignUpController,
+        RecoverpassController,
       ],
       providers: [
         PrismaService,
@@ -116,6 +131,11 @@ describe('Unified login account — integration', () => {
         ProfileService,
         AuthService,
         SignInService,
+        SignUpService,
+        RecoverpassService,
+        AcademiaStaffMemberRepository,
+        AcademiaStaffMemberTokenRepository,
+        AcademiaStaffAuthService,
         AuthGuard,
         BackofficeGuard,
         AdminTierGuard,
@@ -129,10 +149,6 @@ describe('Unified login account — integration', () => {
             getSignedUrl: jest.fn().mockResolvedValue(null),
             isBucketUrl: jest.fn().mockReturnValue(false),
           },
-        },
-        {
-          provide: AcademiaStaffAuthService,
-          useValue: { findByEmail: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();
@@ -169,6 +185,12 @@ describe('Unified login account — integration', () => {
   afterAll(async () => {
     if (prisma) {
       await removeRunUsers();
+      await prisma.academiaStaffMember.deleteMany({
+        where: { academiaId: { in: createdAcademiaIds } },
+      });
+      await prisma.academia.deleteMany({
+        where: { id: { in: createdAcademiaIds } },
+      });
       if (groupId) {
         await prisma.product.deleteMany({ where: { groupId } });
         await prisma.productGroup.deleteMany({ where: { id: groupId } });
@@ -272,6 +294,53 @@ describe('Unified login account — integration', () => {
 
   const signInWithPassword = (email: string, password = PASSWORD) =>
     anonymous.post('/users/signin', { email, password });
+
+  const signUp = (email: string) =>
+    anonymous.post('/users/signup', {
+      name: 'Nova Conta',
+      email,
+      password: PASSWORD,
+      checkPassword: PASSWORD,
+      termsAccepted: true,
+      healthDataConsent: true,
+    });
+
+  // Registers the Google identity a token stands for, then links it to the
+  // signed-in account with the given intent.
+  async function linkGoogle(
+    owner: Users,
+    intent: string,
+    google: { sub: string; email: string },
+  ) {
+    const idToken = `google-${google.sub}`;
+    googleTokens.set(idToken, google);
+    return (await asUser(owner)).post('/auth/google/link', {
+      idToken,
+      intent,
+    });
+  }
+
+  async function linkIntent(owner: Users, password?: string) {
+    return (await asUser(owner)).post(
+      '/auth/google/link-intent',
+      password === undefined ? {} : { password },
+    );
+  }
+
+  // The recovery email is sent off the response path, so the test waits
+  // for the mail double to receive it instead of assuming it already has.
+  async function lastRecoveryToken(): Promise<string> {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const call = mail.sendEmailPassword.mock.calls.find(
+        (args) => args[3] === './resetpassword',
+      );
+      if (call) {
+        return new URL(call[4] as string).searchParams.get('token')!;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error('no recovery email was sent');
+  }
 
   const reload = (id: string) =>
     prisma.users.findUniqueOrThrow({ where: { id } });
@@ -628,6 +697,313 @@ describe('Unified login account — integration', () => {
         googleLinked: false,
         isBackoffice: true,
       });
+    });
+  });
+
+  describe('one account per email (US-001, US-012)', () => {
+    it('IT-005 sign-up refuses an email that exists in another letter case', async () => {
+      const stored = emailFor('it005').replace('integration', 'Integration');
+      await createAccount('it005', { email: stored });
+
+      const signup = await signUp(emailFor('it005'));
+
+      expect(signup.status).toBe(400);
+      await expect(countAccounts(stored)).resolves.toBe(1);
+    });
+
+    it('IT-005 the database itself refuses a second row for the same email', async () => {
+      const account = await createAccount('it005b');
+      // A staff row in another letter case: exactly the pair the old partial
+      // indexes allowed. RUN_TAG stays as-is so cleanup would still find it.
+      const variant = `${RUN_TAG}-IT005B@INTEGRATION.TEST`;
+
+      await expect(
+        prisma.users.create({
+          data: {
+            name: 'Duplicada',
+            email: variant,
+            password: passwordHash,
+            isBackoffice: true,
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+      await expect(countAccounts(account.email)).resolves.toBe(1);
+    });
+
+    it('IT-013 an email with an underscore links only the identical address', async () => {
+      // Created first on purpose: a wildcard match would find it before the
+      // real one.
+      const lookalike = await createAccount('axb');
+      const real = await createAccount('a_b');
+
+      const google = await signInWithGoogle('it013-sub', real.email);
+
+      expect(google.status).toBe(201);
+      expect(google.body.id).toBe(real.id);
+      await expect(
+        prisma.oAuthIdentity.count({ where: { userId: lookalike.id } }),
+      ).resolves.toBe(0);
+
+      // The lookup every student and patient registration goes through.
+      const found = await app.get(UserRepository).findByEmail(real.email);
+      expect(found?.id).toBe(real.id);
+    });
+
+    it('IT-020 two simultaneous first Google sign-ins leave exactly one account', async () => {
+      const email = emailFor('it020');
+
+      const [first, second] = await Promise.all([
+        signInWithGoogle('it020-sub', email),
+        signInWithGoogle('it020-sub', email),
+      ]);
+
+      expect(first.status).toBe(201);
+      expect(second.status).toBe(201);
+      expect(second.body.id).toBe(first.body.id);
+      await expect(countAccounts(email)).resolves.toBe(1);
+      await expect(
+        prisma.oAuthIdentity.count({ where: { userId: first.body.id } }),
+      ).resolves.toBe(1);
+    });
+
+    it('IT-022 a deleted account frees its email for a new sign-up', async () => {
+      const account = await createAccount('it022');
+
+      const removal = await (await asUser(account)).delete('/profile');
+      expect(removal.status).toBe(204);
+
+      const signup = await signUp(account.email);
+      expect(signup.status).toBe(201);
+      expect(signup.body.id).not.toBe(account.id);
+      await expect(countAccounts(account.email)).resolves.toBe(1);
+    });
+  });
+
+  describe('same account by either method (US-002, US-003)', () => {
+    it('IT-006 password and Google sign-in enter the same account, and repeating adds nothing', async () => {
+      const account = await createAccount('it006');
+
+      const byPassword = await signInWithPassword(account.email);
+      const byGoogle = await signInWithGoogle('it006-sub', account.email);
+
+      expect(byPassword.status).toBe(201);
+      expect(byGoogle.status).toBe(201);
+      expect(byGoogle.body.id).toBe(account.id);
+      expect(byPassword.body.id).toBe(account.id);
+
+      const again = await signInWithGoogle('it006-sub', account.email);
+      expect(again.body.id).toBe(account.id);
+      await expect(
+        prisma.oAuthIdentity.count({ where: { userId: account.id } }),
+      ).resolves.toBe(1);
+      await expect(countAccounts(account.email)).resolves.toBe(1);
+    });
+
+    it('IT-007 an account created by Google gets a password through recovery', async () => {
+      const email = emailFor('it007');
+      const created = await signInWithGoogle('it007-sub', email);
+      expect(created.status).toBe(201);
+
+      const unknown = await anonymous.post('/users/recoverpass', {
+        email: emailFor('it007-nobody'),
+      });
+      const recovery = await anonymous.post('/users/recoverpass', { email });
+      expect(recovery.status).toBe(201);
+      expect(recovery.body).toEqual(unknown.body);
+
+      const token = await lastRecoveryToken();
+      const newPassword = {
+        token,
+        password: 'NovaSenha456',
+        checkPassword: 'NovaSenha456',
+      };
+      const change = await anonymous.post('/users/newpassword', newPassword);
+      expect(change.status).toBe(201);
+
+      const signIn = await signInWithPassword(email, 'NovaSenha456');
+      expect(signIn.status).toBe(201);
+      expect(signIn.body.id).toBe(created.body.id);
+
+      const reused = await anonymous.post('/users/newpassword', newPassword);
+      expect(reused.status).toBe(400);
+    });
+
+    it('IT-008 Google activates a never-activated account and kills its old credentials', async () => {
+      const account = await createAccount('it008', { active: false });
+      await app.get(UserTokenService).issue(account.id, 'ACTIVATION' as never);
+
+      const google = await signInWithGoogle('it008-sub', account.email);
+
+      expect(google.status).toBe(201);
+      expect(google.body.id).toBe(account.id);
+      const activated = await reload(account.id);
+      expect(activated.active).toBe(true);
+      expect(activated.password).not.toBe(account.password);
+      await expect(
+        prisma.usersToken.count({ where: { userID: account.id } }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.oAuthIdentity.count({ where: { userId: account.id } }),
+      ).resolves.toBe(1);
+      expect((await signInWithPassword(account.email)).status).toBe(401);
+    });
+  });
+
+  describe('staff accounts and Google (US-004, US-005)', () => {
+    it('IT-009 Google is refused for a staff account, active or pending, every time', async () => {
+      const active = await createStaff('it009-active', BackofficeTier.ADMIN);
+      const pending = await createStaff('it009-pending', BackofficeTier.EQUIPE);
+      await prisma.users.update({
+        where: { id: pending.id },
+        data: { active: false },
+      });
+      const usersBefore = await prisma.users.count();
+
+      for (const staff of [active, pending, active, pending]) {
+        const refused = await signInWithGoogle(`sub-${staff.id}`, staff.email);
+        expect(refused.status).toBe(403);
+        expect(refused.body.code).toBe('google_link_required');
+        expect(refused.body).not.toHaveProperty('accessToken');
+      }
+
+      await expect(prisma.users.count()).resolves.toBe(usersBefore);
+      expect((await reload(active.id)).active).toBe(true);
+      expect((await reload(pending.id)).active).toBe(false);
+      await expect(
+        prisma.oAuthIdentity.count({
+          where: { userId: { in: [active.id, pending.id] } },
+        }),
+      ).resolves.toBe(0);
+    });
+
+    it('IT-010 a staff member connects Google with the password and then signs in with Google', async () => {
+      const staff = await createStaff('it010', BackofficeTier.ADMIN);
+
+      const intent = await linkIntent(staff, PASSWORD);
+      expect(intent.status).toBe(201);
+
+      const link = await linkGoogle(staff, intent.body.intent as string, {
+        sub: 'it010-sub',
+        email: staff.email,
+      });
+      expect(link.status).toBe(201);
+      expect(link.body.id).toBe(staff.id);
+      expect(link.body.accessToken).toEqual(expect.any(String));
+
+      const google = await signInWithGoogle('it010-sub', staff.email);
+      expect(google.status).toBe(201);
+      expect(google.body.id).toBe(staff.id);
+      await expect(countAccounts(staff.email)).resolves.toBe(1);
+    });
+
+    it('IT-011 linking refuses a wrong password, another email, a taken identity and a foreign or expired intent', async () => {
+      const staff = await createStaff('it011-staff', BackofficeTier.EQUIPE);
+      const ordinary = await createAccount('it011-ordinary');
+      const other = await createAccount('it011-other');
+
+      const wrong = await linkIntent(staff, 'SenhaErrada999');
+      expect(wrong.status).toBe(401);
+      expect(wrong.body.code).toBe('invalid_password');
+      expect((await linkIntent(staff)).status).toBe(401);
+
+      const granted = await linkIntent(ordinary);
+      expect(granted.status).toBe(201);
+      const intent = granted.body.intent as string;
+
+      const mismatch = await linkGoogle(ordinary, intent, {
+        sub: 'it011-a',
+        email: other.email,
+      });
+      expect(mismatch.status).toBe(409);
+      expect(mismatch.body.code).toBe('google_email_mismatch');
+
+      await signInWithGoogle('it011-taken', other.email);
+      const taken = await linkGoogle(ordinary, intent, {
+        sub: 'it011-taken',
+        email: ordinary.email,
+      });
+      expect(taken.status).toBe(409);
+      expect(taken.body.code).toBe('google_identity_in_use');
+
+      const foreign = await linkGoogle(staff, intent, {
+        sub: 'it011-b',
+        email: staff.email,
+      });
+      expect(foreign.status).toBe(401);
+      expect(foreign.body.code).toBe('invalid_intent');
+
+      const expired = await jwtService.signAsync(
+        { purpose: 'google_link', id: ordinary.id },
+        { expiresIn: -10 },
+      );
+      const late = await linkGoogle(ordinary, expired, {
+        sub: 'it011-c',
+        email: ordinary.email,
+      });
+      expect(late.status).toBe(401);
+      expect(late.body.code).toBe('invalid_intent');
+
+      await expect(
+        prisma.oAuthIdentity.count({
+          where: { userId: { in: [staff.id, ordinary.id] } },
+        }),
+      ).resolves.toBe(0);
+    });
+
+    it('IT-011 linking needs a session and never accepts an account id from the client', async () => {
+      const ordinary = await createAccount('it011b-ordinary');
+      const victim = await createStaff('it011b-victim', BackofficeTier.ADMIN);
+      const intent = (await linkIntent(ordinary)).body.intent as string;
+      googleTokens.set('google-it011b', {
+        sub: 'it011b-sub',
+        email: victim.email,
+      });
+
+      const anonymousAttempt = await anonymous.post('/auth/google/link', {
+        idToken: 'google-it011b',
+        intent,
+      });
+      expect(anonymousAttempt.status).toBe(401);
+
+      const crafted = await (
+        await asUser(ordinary)
+      ).post('/auth/google/link', {
+        idToken: 'google-it011b',
+        intent,
+        userId: victim.id,
+      });
+      expect(crafted.status).toBe(400);
+
+      await expect(
+        prisma.oAuthIdentity.count({ where: { userId: victim.id } }),
+      ).resolves.toBe(0);
+    });
+  });
+
+  describe('receptionist and Google (US-010)', () => {
+    it('IT-012 a receptionist email is refused by Google, creates nothing, and still signs in with the password', async () => {
+      const academia = await prisma.academia.create({
+        data: { name: `${RUN_TAG} Academia` },
+      });
+      createdAcademiaIds.push(academia.id);
+      const receptionist = await prisma.academiaStaffMember.create({
+        data: {
+          academiaId: academia.id,
+          name: 'Recepção',
+          email: emailFor('it012-recepcao'),
+          passwordHash,
+        },
+      });
+
+      const google = await signInWithGoogle('it012-sub', receptionist.email);
+
+      expect(google.status).toBe(403);
+      expect(google.body.code).toBe('google_receptionist_email');
+      await expect(countAccounts(receptionist.email)).resolves.toBe(0);
+
+      const signIn = await signInWithPassword(receptionist.email);
+      expect(signIn.status).toBe(201);
+      expect(signIn.body.id).toBe(receptionist.id);
     });
   });
 });

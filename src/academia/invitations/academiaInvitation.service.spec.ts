@@ -27,7 +27,7 @@ function makeDeps() {
     create: jest.fn().mockResolvedValue({ id: 'employment-1' }),
   };
   const users = {
-    findByEmailInsensitive: jest.fn().mockResolvedValue(null),
+    findByEmail: jest.fn().mockResolvedValue(null),
   };
   const staffMembers = {
     create: jest.fn().mockResolvedValue({ id: 'staff-1' }),
@@ -56,7 +56,7 @@ describe('AcademiaInvitationService', () => {
   describe('invite', () => {
     it('UT-006 creates a PENDING EMPLOYMENT invitation matched to an existing PHYSICAL_EDUCATOR account', async () => {
       const deps = makeDeps();
-      deps.users.findByEmailInsensitive.mockResolvedValue({
+      deps.users.findByEmail.mockResolvedValue({
         id: 'educator-1',
         product: { type: 'PHYSICAL_EDUCATOR' },
       });
@@ -84,7 +84,7 @@ describe('AcademiaInvitationService', () => {
         'RECEPTIONIST',
         null,
       );
-      expect(deps.users.findByEmailInsensitive).not.toHaveBeenCalled();
+      expect(deps.users.findByEmail).not.toHaveBeenCalled();
     });
 
     it('UT-008 rejects a duplicate PENDING invitation', async () => {
@@ -102,7 +102,7 @@ describe('AcademiaInvitationService', () => {
 
     it('UT-009 rejects an EMPLOYMENT invite to a non-physical-educator account', async () => {
       const deps = makeDeps();
-      deps.users.findByEmailInsensitive.mockResolvedValue({
+      deps.users.findByEmail.mockResolvedValue({
         id: 'u1',
         product: { type: 'NUTRITIONIST' },
       });
@@ -115,7 +115,7 @@ describe('AcademiaInvitationService', () => {
 
     it('UT-010 rejects inviting an educator already ACTIVE-employed at this academia', async () => {
       const deps = makeDeps();
-      deps.users.findByEmailInsensitive.mockResolvedValue({
+      deps.users.findByEmail.mockResolvedValue({
         id: 'educator-1',
         product: { type: 'PHYSICAL_EDUCATOR' },
       });
@@ -129,7 +129,7 @@ describe('AcademiaInvitationService', () => {
 
     it('UT-011 allows inviting an educator already employed by a DIFFERENT academia', async () => {
       const deps = makeDeps();
-      deps.users.findByEmailInsensitive.mockResolvedValue({
+      deps.users.findByEmail.mockResolvedValue({
         id: 'educator-1',
         product: { type: 'PHYSICAL_EDUCATOR' },
       });

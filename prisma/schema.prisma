@@ -118,13 +118,11 @@ model Users {
 
   billingAccounts BillingAccount[]
 
-  // No longer a plain @@unique: a staff invitation must be able to coexist
-  // with a pre-existing customer account on the same email, as two entirely
-  // separate rows (platform-admin-access ADR-005, task_02). Replaced by two
-  // hand-authored partial unique indexes, scoped by isBackoffice, in this
-  // feature's migration — Prisma's schema DSL cannot express a partial
-  // index, so there is no attribute-level equivalent here (same pattern as
-  // Client's email scoping, gym-foundation ADR-009).
+  // One email is one account (unified-login-account ADR-001): email is
+  // unique case-insensitively through the hand-authored functional index
+  // Users_email_key on lower(email), created by
+  // 20261116220000_unify_users_email. Prisma's schema DSL cannot express a
+  // functional index, so there is no attribute-level equivalent here.
 }
 
 enum BackofficeTier {

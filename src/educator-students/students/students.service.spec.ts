@@ -88,7 +88,7 @@ describe('StudentsService', () => {
     delete: jest.fn(),
   };
   const users = {
-    findByEmailInsensitive: jest.fn(),
+    findByEmail: jest.fn(),
     findUnique: jest.fn(),
     findByIdWithProduct: jest.fn().mockResolvedValue(null),
   };
@@ -128,7 +128,7 @@ describe('StudentsService', () => {
       Promise.resolve(client(data)),
     );
     users.findUnique.mockResolvedValue({ email: 'thiago@exemplo.com' });
-    users.findByEmailInsensitive.mockResolvedValue(null);
+    users.findByEmail.mockResolvedValue(null);
     formRecords.findLatestByClient.mockResolvedValue([]);
     formRecords.findHistory.mockResolvedValue([]);
     workouts.findActiveByClient.mockResolvedValue(null);
@@ -221,7 +221,7 @@ describe('StudentsService', () => {
 
   describe('lookupAccount', () => {
     it('UT-035 returns the confirmed account holder name and nothing else', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(account());
+      users.findByEmail.mockResolvedValue(account());
 
       expect(await service.lookupAccount('diego@exemplo.com')).toEqual({
         found: true,
@@ -230,9 +230,7 @@ describe('StudentsService', () => {
     });
 
     it('UT-036 reports an unconfirmed account as not found', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(
-        account({ active: false }),
-      );
+      users.findByEmail.mockResolvedValue(account({ active: false }));
 
       expect(await service.lookupAccount('diego@exemplo.com')).toEqual({
         found: false,
@@ -276,7 +274,7 @@ describe('StudentsService', () => {
     });
 
     it('UT-041 links a confirmed account and fills missing data from it', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(account());
+      users.findByEmail.mockResolvedValue(account());
 
       await service.create(EDUCATOR, {
         email: 'diego@exemplo.com',
@@ -303,9 +301,7 @@ describe('StudentsService', () => {
     });
 
     it('UT-043 treats an unconfirmed account as no account to link', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(
-        account({ active: false }),
-      );
+      users.findByEmail.mockResolvedValue(account({ active: false }));
 
       const result = await codeOf(
         service.create(EDUCATOR, { ...register, linkExistingAccount: true }),
@@ -316,7 +312,7 @@ describe('StudentsService', () => {
     });
 
     it('UT-044 answers 409 account_exists when registering without account for a confirmed account', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(account());
+      users.findByEmail.mockResolvedValue(account());
 
       const result = await codeOf(service.create(EDUCATOR, register));
 
@@ -325,9 +321,7 @@ describe('StudentsService', () => {
     });
 
     it('UT-045 registers unlinked when the account is not confirmed', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(
-        account({ active: false }),
-      );
+      users.findByEmail.mockResolvedValue(account({ active: false }));
 
       const result = await service.create(EDUCATOR, register);
 
@@ -723,7 +717,7 @@ describe('StudentsService', () => {
     });
 
     it('UT-057 asks for confirmation when the new e-mail has a confirmed account, then links', async () => {
-      users.findByEmailInsensitive.mockResolvedValue(
+      users.findByEmail.mockResolvedValue(
         account({ email: 'novo@exemplo.com' }),
       );
 

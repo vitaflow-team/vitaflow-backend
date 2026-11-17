@@ -45,7 +45,7 @@ export class AcademiaInvitationService {
 
     let educatorId: string | null = null;
     if (kind === AcademiaInvitationKind.EMPLOYMENT) {
-      const existing = await this.users.findByEmailInsensitive(email);
+      const existing = await this.users.findByEmail(email);
       if (existing) {
         if (existing.product?.type !== ProductType.PHYSICAL_EDUCATOR) {
           throw new CodedError(

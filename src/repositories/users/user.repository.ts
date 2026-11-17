@@ -44,8 +44,10 @@ export class UserRepository {
     });
   }
 
-  // Exact but case-insensitive: accounts stored before emails were
-  // normalized (mixed case) still resolve from the lowercased input.
+  // The only lookup by email (unified-login-account ADR-008): one email is
+  // one account, enforced by the Users_email_key index on lower(email).
+  // Exact but case-insensitive, with LIKE wildcards escaped — an email
+  // containing `_` or `%` matches that address and no other.
   async findByEmail(
     email: string,
   ): Promise<(Users & { product: Product | null }) | null> {
@@ -57,64 +59,6 @@ export class UserRepository {
         product: true,
       },
       orderBy: { createdAt: 'asc' },
-    });
-  }
-
-  // Scoped email uniqueness is now partial (platform-admin-access ADR-005
-  // coexistence): a backoffice staff row and a customer row can legitimately
-  // share one email as two separate Users rows. Callers that must consider
-  // every account at that email (sign-in password matching) use this
-  // instead of findByEmail, which only ever returns one of them.
-  async findAllByEmail(
-    email: string,
-  ): Promise<(Users & { product: Product | null })[]> {
-    return await this.prisma.users.findMany({
-      where: {
-        email: { equals: escapeLikePattern(email), mode: 'insensitive' },
-      },
-      include: {
-        product: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-  }
-
-  async findByEmailInsensitive(
-    email: string,
-  ): Promise<(Users & { product: Product | null }) | null> {
-    return await this.prisma.users.findFirst({
-      where: {
-        email: {
-          equals: email,
-          mode: 'insensitive',
-        },
-      },
-      include: {
-        product: true,
-      },
-    });
-  }
-
-  // Scoped to isBackoffice: false, which the Users_email_customer_key
-  // partial unique index (platform-admin-access ADR-005 coexistence)
-  // guarantees matches at most one row — unlike findByEmailInsensitive,
-  // which can now hit either a customer or a staff row sharing the same
-  // email with no way to tell which. Google sign-in uses this one: it must
-  // never match, and thereby auto-activate or OAuth-link, a staff invite
-  // row, since staff are only ever meant to activate through the admin's
-  // invitation-token link (ADR-005), not by anyone proving they own the
-  // invited email address via Google.
-  async findCustomerByEmailInsensitive(
-    email: string,
-  ): Promise<(Users & { product: Product | null }) | null> {
-    return await this.prisma.users.findFirst({
-      where: {
-        email: { equals: email, mode: 'insensitive' },
-        isBackoffice: false,
-      },
-      include: {
-        product: true,
-      },
     });
   }
 
@@ -310,17 +254,6 @@ export class UserRepository {
         data: { userId: null },
       });
       await tx.users.delete({ where: { id: userId } });
-    });
-  }
-
-  // Scoped to isBackoffice rows only, so a same-email customer row (ADR-005
-  // coexistence) is never mistaken for the staff row.
-  async findStaffByEmail(email: string): Promise<Users | null> {
-    return await this.prisma.users.findFirst({
-      where: {
-        email: { equals: escapeLikePattern(email), mode: 'insensitive' },
-        isBackoffice: true,
-      },
     });
   }
 
