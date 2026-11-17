@@ -112,14 +112,23 @@ export function changeVsPrevious(
   return Math.round(((current - previous) / previous) * 100);
 }
 
-// The page a list should return: anything that is not a positive whole number
-// is page 1, and a page past the end is the last page that exists.
-export function resolvePage(raw: unknown, total: number): number {
+// Far beyond any real list, and small enough to be stored in an integer column.
+const MAX_PAGE = 1_000_000;
+
+// The page a request asks for: anything that is not a positive whole number is
+// page 1.
+export function requestedPage(raw: unknown): number {
   const requested = Number(raw);
-  const page =
-    typeof raw === 'string' && Number.isInteger(requested) && requested >= 1
-      ? requested
-      : 1;
+  return typeof raw === 'string' &&
+    Number.isInteger(requested) &&
+    requested >= 1
+    ? Math.min(requested, MAX_PAGE)
+    : 1;
+}
+
+// The page a list should return: a page past the end is the last page that
+// exists.
+export function resolvePage(raw: unknown, total: number): number {
   const lastPage = Math.max(1, Math.ceil(total / DELINQUENT_PAGE_SIZE));
-  return Math.min(page, lastPage);
+  return Math.min(requestedPage(raw), lastPage);
 }

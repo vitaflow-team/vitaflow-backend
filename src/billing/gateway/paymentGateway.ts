@@ -1,3 +1,9 @@
+import type { GatewayPaymentItem } from './types/gatewayPaymentItem';
+import type { PaymentItemFilter } from './types/paymentItemFilter';
+
+// Rows per page of every payment listing (the gateway's own maximum).
+export const PAYMENT_ITEMS_PAGE_SIZE = 100;
+
 export type GatewayErrorKind =
   | 'auth'
   | 'validation'
@@ -103,6 +109,18 @@ export interface PaymentGateway {
     apiKey: string,
     range: { from: string; to: string },
   ): Promise<number>;
+  // One page (at most PAYMENT_ITEMS_PAGE_SIZE) of the platform's payments, so
+  // a caller keeps what earlier pages delivered when a later one fails; a
+  // shorter page is the last one.
+  listPaymentItems(
+    apiKey: string,
+    filter: PaymentItemFilter,
+  ): Promise<GatewayPaymentItem[]>;
+  // A single payment re-read, with the customer and subscription it belongs to.
+  getPaymentItem(
+    apiKey: string,
+    paymentId: string,
+  ): Promise<GatewayPaymentItem>;
 }
 
 export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');

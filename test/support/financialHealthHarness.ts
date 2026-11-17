@@ -22,6 +22,7 @@ import {
   AcademiaAccessPlan,
   AcademiaStaffMember,
   AccessPlanValidityType,
+  BackofficeTier,
   BillingAccount,
   BillingAccountStatus,
   Client,
@@ -33,11 +34,15 @@ import {
 } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { FakeAsaasServer } from './fakeAsaasServer';
+import { FAKE_KEYS, FakeAsaasServer } from './fakeAsaasServer';
 
 export const JWT_SECRET =
   process.env.JWT_SECRET ?? 'billing-integration-jwt-secret-0123456789';
 export const CIPHER_KEY = Buffer.alloc(32, 9);
+// Vitaflow's own Asaas account in the platform suites: the key the fake
+// gateway accepts and the token its webhook must carry.
+export const PLATFORM_API_KEY = FAKE_KEYS.valid;
+export const PLATFORM_WEBHOOK_TOKEN = 'platform-webhook-token-integration';
 
 export interface SeedInvoiceInput {
   clientId: string;
@@ -85,6 +90,8 @@ export class FinancialHealthHarness {
     process.env.JWT_SECRET = JWT_SECRET;
     process.env.BILLING_ENCRYPTION_KEY = CIPHER_KEY.toString('base64');
     process.env.API_PUBLIC_URL = 'https://api.vitaflow.test';
+    process.env.ASAAS_PLATFORM_API_KEY = PLATFORM_API_KEY;
+    process.env.ASAAS_PLATFORM_WEBHOOK_TOKEN = PLATFORM_WEBHOOK_TOKEN;
     await this.fake.start();
     process.env.ASAAS_BASE_URL = this.fake.baseUrl;
 
@@ -126,7 +133,11 @@ export class FinancialHealthHarness {
   async createUser(
     label: string,
     productId: string,
-    extra: { academiaId?: string; subscriptionStatus?: string | null } = {},
+    extra: {
+      academiaId?: string;
+      subscriptionStatus?: string | null;
+      asaasCustomerId?: string;
+    } = {},
   ): Promise<Users> {
     return await this.prisma.users.create({
       data: {
@@ -140,6 +151,21 @@ export class FinancialHealthHarness {
             ? 'active'
             : extra.subscriptionStatus,
         academiaId: extra.academiaId,
+        asaasCustomerId: extra.asaasCustomerId,
+      },
+    });
+  }
+
+  // A member of the Vitaflow team (`isBackoffice`) of the given tier.
+  async createStaff(label: string, tier: BackofficeTier): Promise<Users> {
+    return await this.prisma.users.create({
+      data: {
+        name: `Staff ${label}`,
+        email: `${this.tag}-staff-${label}-${this.next()}@integration.test`,
+        password: 'unused-in-integration-test',
+        active: true,
+        isBackoffice: true,
+        backofficeTier: tier,
       },
     });
   }
@@ -442,6 +468,12 @@ export class FinancialHealthHarness {
       })
     ).map((c) => c.id);
 
+    await prisma.backofficeAccessLog.deleteMany({
+      where: { staffUserId: { in: userIds } },
+    });
+    await prisma.backofficeViewAsSession.deleteMany({
+      where: { staffUserId: { in: userIds } },
+    });
     await prisma.invoice.deleteMany({
       where: {
         OR: [

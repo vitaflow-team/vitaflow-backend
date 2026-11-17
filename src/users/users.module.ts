@@ -16,6 +16,7 @@ import { UploadService } from '@/utils/upload.service';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TemplatesService } from '@/clinical-records/templates/templates.service';
+import { PlatformPaymentsModule } from './subscription/platformPayments/platformPayments.module';
 import {
   PLATFORM_ASAAS_API_KEY,
   PLATFORM_WEBHOOK_TOKEN,
@@ -41,6 +42,7 @@ import { UserTokenService } from './token/userToken.service';
     NotificationsModule,
     AcademiaModule,
     BillingModule,
+    PlatformPaymentsModule,
   ],
   controllers: [
     SignUpController,

@@ -5,10 +5,13 @@ import {
   GatewayCharge,
   GatewayChargeStatus,
   GatewayError,
+  PAYMENT_ITEMS_PAGE_SIZE,
   PaymentGateway,
   SubscriptionChanges,
   SubscriptionCheckoutInput,
 } from '../paymentGateway';
+import type { GatewayPaymentItem } from '../types/gatewayPaymentItem';
+import type { PaymentItemFilter } from '../types/paymentItemFilter';
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const READ_RETRIES = 2;
@@ -42,6 +45,44 @@ export interface AsaasPaymentsPage {
   payments: { value: number; status: string; paymentDate: string }[];
   hasMore: boolean;
   offset: number;
+}
+
+interface AsaasPaymentItem {
+  id: string;
+  customer: string;
+  subscription?: string | null;
+  value: number;
+  status: string;
+  dueDate: string;
+  paymentDate?: string | null;
+  deleted?: boolean;
+}
+
+interface AsaasPaymentItemsPage {
+  data?: AsaasPaymentItem[];
+  payments?: AsaasPaymentItem[];
+}
+
+function toPaymentItem(payment: AsaasPaymentItem): GatewayPaymentItem {
+  return {
+    id: payment.id,
+    customer: payment.customer,
+    subscription: payment.subscription ?? null,
+    valueCents: Math.round(payment.value * 100),
+    status: payment.status,
+    dueDate: payment.dueDate,
+    paymentDate: payment.paymentDate ?? null,
+    deleted: payment.deleted === true,
+  };
+}
+
+function paymentItemsQuery(filter: PaymentItemFilter): string {
+  const params = new URLSearchParams();
+  if (filter.dueFrom !== undefined) params.set('dueDate[ge]', filter.dueFrom);
+  if (filter.dueTo !== undefined) params.set('dueDate[le]', filter.dueTo);
+  params.set('limit', String(PAYMENT_ITEMS_PAGE_SIZE));
+  params.set('offset', String(filter.offset));
+  return params.toString();
 }
 
 interface AsaasRequest {
@@ -324,6 +365,33 @@ export class AsaasGateway implements PaymentGateway {
     }
 
     return total;
+  }
+
+  // One page of the platform account's payments (financial-health ADR-006),
+  // used only by the backfill and the nightly sync. Paging stays with the
+  // caller so a failure on a later page never discards the earlier ones.
+  async listPaymentItems(
+    apiKey: string,
+    filter: PaymentItemFilter,
+  ): Promise<GatewayPaymentItem[]> {
+    const page = await this.call<AsaasPaymentItemsPage>(apiKey, {
+      method: 'GET',
+      path: `/payments?${paymentItemsQuery(filter)}`,
+      retryable: true,
+    });
+    return (page.data ?? page.payments ?? []).map(toPaymentItem);
+  }
+
+  async getPaymentItem(
+    apiKey: string,
+    paymentId: string,
+  ): Promise<GatewayPaymentItem> {
+    const payment = await this.call<AsaasPaymentItem>(apiKey, {
+      method: 'GET',
+      path: `/payments/${paymentId}`,
+      retryable: true,
+    });
+    return toPaymentItem(payment);
   }
 
   private async call<T = unknown>(

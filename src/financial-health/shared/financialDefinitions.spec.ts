@@ -5,6 +5,8 @@ import {
   isOverdue,
   parseMonth,
   previousMonth,
+  requestedPage,
+  resolvePage,
   todayKey,
 } from './financialDefinitions';
 
@@ -99,5 +101,25 @@ describe('financialDefinitions', () => {
     [InvoiceStatus.OVERDUE, '2026-10-01', true],
   ])('UT-009 isOverdue(%s due %s) is %p', (status, dueDate, expected) => {
     expect(isOverdue({ status, dueDate }, TODAY)).toBe(expected);
+  });
+});
+
+describe('requestedPage and resolvePage', () => {
+  it.each([
+    ['3', 3],
+    ['0', 1],
+    ['-2', 1],
+    ['abc', 1],
+    ['1.5', 1],
+    [undefined, 1],
+    ['99999999999999999999', 1_000_000],
+  ])('requestedPage(%s) is %s', (raw, expected) => {
+    expect(requestedPage(raw)).toBe(expected);
+  });
+
+  it('resolvePage clamps a page past the end to the last page that exists', () => {
+    expect(resolvePage('9', 45)).toBe(3);
+    expect(resolvePage('2', 45)).toBe(2);
+    expect(resolvePage('9', 0)).toBe(1);
   });
 });
