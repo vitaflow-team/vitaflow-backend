@@ -112,7 +112,7 @@ export class NutritionistPatientsService {
   }
 
   private async findConfirmedAccount(email: string) {
-    const account = await this.users.findByEmailInsensitive(email);
+    const account = await this.users.findByEmail(email);
     return account?.active ? account : null;
   }
 

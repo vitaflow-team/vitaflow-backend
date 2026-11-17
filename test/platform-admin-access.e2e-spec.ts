@@ -11,6 +11,7 @@
  *
  * Requires `TEST_DATABASE_URL` pointing at an isolated, migrated database.
  */
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { AuthGuard } from '@/auth/auth.guard';
 import { AuditLogController } from '@/backoffice/auditLog/auditLog.controller';
 import { AuditLogService } from '@/backoffice/auditLog/auditLog.service';
@@ -31,6 +32,7 @@ import { MailService } from '@/mail/mail.service';
 import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
 import { BackofficeViewAsSessionRepository } from '@/repositories/backoffice/backofficeViewAsSession.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { ProgressPhotosRepository } from '@/repositories/progress-photos/progressPhotos.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
@@ -102,7 +104,9 @@ describe('Platform admin access — staff management integration', () => {
         ClientsRepository,
         ProgressPhotosRepository,
         UploadService,
+        ProductsRepository,
         ProfileService,
+        { provide: AuditLogger, useValue: { log: jest.fn(), warn: jest.fn() } },
         { provide: MailService, useValue: { sendEmailPassword } },
         AuthGuard,
         BackofficeGuard,

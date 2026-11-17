@@ -1,4 +1,5 @@
 import { AcademiaProvisioningService } from '@/academia/academia.service';
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { AuthGuard } from '@/auth/auth.guard';
 import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
 import { TemplatesService } from '@/clinical-records/templates/templates.service';
@@ -110,6 +111,7 @@ describe('Platform hardening — avatar uploads and subscription sync', () => {
         ProductsRepository,
         UploadService,
         ProfileService,
+        { provide: AuditLogger, useValue: { log: jest.fn(), warn: jest.fn() } },
         SubscriptionService,
         SubscriptionWebhookService,
         Clock,

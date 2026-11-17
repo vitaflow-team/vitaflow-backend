@@ -1,8 +1,10 @@
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { ClientsRepositoryMock } from 'mock/clients.repository.mock';
 import { avatarFile } from 'mock/imageFile.mock';
 import { jwtServiceMock } from 'mock/jwtService.mock';
+import { ProductsRepositoryMock } from 'mock/product.repository.mock';
 import { progressPhotosRepositoryMock } from 'mock/progressPhotos.repository.mock';
 import { uploadServiceMock } from 'mock/upload.service.mock';
 import { userMock, userRepositoryMock } from 'mock/user.repository.mock';
@@ -22,6 +24,8 @@ describe('ProfileController Tests', () => {
         uploadServiceMock,
         ClientsRepositoryMock,
         progressPhotosRepositoryMock,
+        ProductsRepositoryMock,
+        { provide: AuditLogger, useValue: { log: jest.fn(), warn: jest.fn() } },
         ProfileService,
       ],
     }).compile();

@@ -28,13 +28,13 @@ describe('NutritionistPatientsService', () => {
     getAllByProfessionalId: jest.fn(),
     findOwnedById: jest.fn(),
   };
-  const users = { findByEmailInsensitive: jest.fn() };
+  const users = { findByEmail: jest.fn() };
   let service: NutritionistPatientsService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     clients.findByEmailAndProfessionalId.mockResolvedValue(null);
-    users.findByEmailInsensitive.mockResolvedValue(null);
+    users.findByEmail.mockResolvedValue(null);
     clients.create.mockImplementation((data: Record<string, unknown>) =>
       Promise.resolve(client({ ...data, professionalId: undefined })),
     );
@@ -62,7 +62,7 @@ describe('NutritionistPatientsService', () => {
     });
 
     it('links immediately when the email matches an existing confirmed account', async () => {
-      users.findByEmailInsensitive.mockResolvedValue({
+      users.findByEmail.mockResolvedValue({
         id: 'user-1',
         active: true,
       });
@@ -81,7 +81,7 @@ describe('NutritionistPatientsService', () => {
     });
 
     it('does not link when the matching account exists but is unconfirmed', async () => {
-      users.findByEmailInsensitive.mockResolvedValue({
+      users.findByEmail.mockResolvedValue({
         id: 'user-1',
         active: false,
       });
@@ -102,7 +102,7 @@ describe('NutritionistPatientsService', () => {
         phone: '(11) 98888-7777',
       });
 
-      expect(users.findByEmailInsensitive).not.toHaveBeenCalled();
+      expect(users.findByEmail).not.toHaveBeenCalled();
       expect(result.email).toBe('');
     });
 

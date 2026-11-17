@@ -61,6 +61,18 @@ export class ProfileResponseDTO {
   @ApiProperty({ example: 0 })
   clientsCount: number;
 
+  @ApiProperty({
+    example: false,
+    description: 'Whether a Google identity is linked to this account.',
+  })
+  googleLinked: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Whether this account holds internal-staff access.',
+  })
+  isBackoffice: boolean;
+
   @ApiProperty({ type: ProfileAddressResponseDTO, nullable: true })
   address: ProfileAddressResponseDTO | null;
 }

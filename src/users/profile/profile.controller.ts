@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AVATAR_UPLOAD_OPTIONS } from './avatarUpload';
+import { CustomerActivationDTO } from './customerActivation.Dto';
 import { ProfileDTO } from './profile.Dto';
 import { ProfileResponseDTO } from './profileResponse.Dto';
 import { ProfileService } from './profile.service';
@@ -89,6 +90,44 @@ export class ProfileController {
     @Request() req: AuthenticatedRequest,
   ): Promise<ProfileResponseDTO> {
     return await this.service.getProfile(req.user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Start using Vita Flow as a customer',
+    description:
+      'For an account without a plan (created by a staff invitation): ' +
+      'records the Terms of Use acceptance and the health-data consent and ' +
+      'assigns the Gratuito plan. Acts on the authenticated user only.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Account is now a customer on Gratuito.',
+    type: ProfileResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'A consent is missing or false.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized user.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'already_customer — the account already has a plan.',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Gratuito plan missing from the catalog; nothing recorded.',
+  })
+  @Post('customer-activation')
+  async activateAsCustomer(
+    // Validated for its two mandatory consents; the service needs no value
+    // from it beyond the fact that validation passed.
+    @Body() _body: CustomerActivationDTO,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<ProfileResponseDTO> {
+    return await this.service.activateAsCustomer(req.user.id);
   }
 
   @ApiOperation({

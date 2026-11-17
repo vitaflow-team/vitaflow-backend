@@ -155,7 +155,7 @@ export class StudentsService {
   // Exposes only whether a confirmed account exists and its holder's name, so
   // the educator can confirm who is being linked and nothing more.
   async lookupAccount(email: string): Promise<AccountLookupResponseDTO> {
-    const account = await this.users.findByEmailInsensitive(email);
+    const account = await this.users.findByEmail(email);
 
     if (!account || !account.active) {
       return { found: false, name: null };
@@ -384,7 +384,7 @@ export class StudentsService {
   }
 
   private async findConfirmedAccount(email: string) {
-    const account = await this.users.findByEmailInsensitive(email);
+    const account = await this.users.findByEmail(email);
     return account?.active ? account : null;
   }
 

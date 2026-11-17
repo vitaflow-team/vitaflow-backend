@@ -92,6 +92,8 @@ describe('UserTokenService', () => {
     it.each([
       [TokenType.ACTIVATION, 2],
       [TokenType.RECOVERY, 3],
+      // unified-login-account UT-027: same lifetime as ACTIVATION.
+      [TokenType.BACKOFFICE_INVITATION, 2],
     ])(
       'stores only the hash of a 256-bit %s token, expiring in %ih',
       async (type, hours) => {
@@ -112,6 +114,29 @@ describe('UserTokenService', () => {
         expect(TOKEN_TTL_MS[type]).toBe(hours * 60 * 60 * 1000);
       },
     );
+
+    it('UT-027: an invitation token lives exactly as long as an activation token', () => {
+      expect(TOKEN_TTL_MS[TokenType.BACKOFFICE_INVITATION]).toBe(
+        TOKEN_TTL_MS[TokenType.ACTIVATION],
+      );
+    });
+
+    it('revoke withdraws the token of that type only, so the emailed link stops working', async () => {
+      const invitation = await tokens.issue(
+        'user-1',
+        TokenType.BACKOFFICE_INVITATION,
+      );
+      const recovery = await tokens.issue('user-1', TokenType.RECOVERY);
+
+      await tokens.revoke('user-1', TokenType.BACKOFFICE_INVITATION);
+
+      await expect(
+        tokens.findLive(invitation, TokenType.BACKOFFICE_INVITATION),
+      ).resolves.toBeNull();
+      await expect(
+        tokens.findLive(recovery, TokenType.RECOVERY),
+      ).resolves.not.toBeNull();
+    });
 
     it('invalidates the earlier token of the same type only (EC-1)', async () => {
       const stale = await tokens.issue('user-1', TokenType.ACTIVATION);

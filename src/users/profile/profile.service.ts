@@ -1,4 +1,7 @@
+import { AuditLogger } from '@/auth/auditLogger.service';
+import { CodedError } from '@/common/errors/codedError';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
+import { ProductsRepository } from '@/repositories/product/product.repository';
 import { ProgressPhotosRepository } from '@/repositories/progress-photos/progressPhotos.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { AppError } from '@/utils/app.erro';
@@ -21,6 +24,8 @@ export class ProfileService {
     private readonly uploadService: UploadService,
     private readonly clients: ClientsRepository,
     private readonly progressPhotos: ProgressPhotosRepository,
+    private readonly products: ProductsRepository,
+    private readonly audit: AuditLogger,
   ) {}
 
   async postProfile(
@@ -157,8 +162,45 @@ export class ProfileService {
       // components, so the raw Asaas identifiers never leave the server.
       hasAsaasCustomer: Boolean(user.asaasCustomerId),
       clientsCount,
+      googleLinked: Boolean(user.oAuthIdentity),
+      isBackoffice: user.isBackoffice,
       address: this.toAddressResponse(user.userAddresses),
     };
+  }
+
+  // unified-login-account ADR-006: an account created by a staff invitation
+  // has no plan and has given no consent. Opting in records both consents
+  // and puts the same account on Gratuito — never a second account.
+  async activateAsCustomer(userId: string): Promise<ProfileResponseDTO> {
+    const user = await this.user.findUnique({ id: userId });
+    if (!user) {
+      throw new AppError('Usuário não encontrado.', 404);
+    }
+    if (user.productId) {
+      throw new CodedError(
+        'Esta conta já utiliza o Vita Flow como cliente.',
+        409,
+        'already_customer',
+      );
+    }
+
+    const freeProduct = await this.products.findFreeProduct();
+    if (!freeProduct) {
+      this.logger.error('free_product_missing at=customer_activation');
+      throw new AppError(
+        'Não foi possível ativar a conta: plano Gratuito indisponível.',
+        500,
+      );
+    }
+
+    await this.user.activateAsCustomer(userId, freeProduct.id);
+    this.audit.log({
+      event: 'customer_activated',
+      timestamp: new Date().toISOString(),
+      userId,
+    });
+
+    return await this.getProfile(userId);
   }
 
   private toAddressResponse(

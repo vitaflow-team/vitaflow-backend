@@ -1,4 +1,5 @@
 import { MailModule } from '@/mail/mail.module';
+import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
 import { OAuthIdentityRepository } from '@/repositories/auth/oauthIdentity.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
@@ -15,6 +16,7 @@ import { AuthService } from './auth.service';
 import { AuditLogger } from './auditLogger.service';
 import { DualBucketThrottlerGuard } from './dualBucketThrottler.guard';
 import { GoogleAuthService } from './googleAuth.service';
+import { GoogleLinkController } from './googleLink.controller';
 import { buildJwtOptions } from './jwtOptions';
 import { PrismaService } from '@/database/prisma.service';
 
@@ -29,11 +31,14 @@ import { PrismaService } from '@/database/prisma.service';
       },
     ]),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, GoogleLinkController],
   providers: [
     PrismaService,
     UserRepository,
     OAuthIdentityRepository,
+    // Google sign-in must know when an email belongs to a receptionist, so
+    // it never creates an ordinary account for it (ADR-005).
+    AcademiaStaffMemberRepository,
     ProductsRepository,
     UserTokenRepository,
     ClientsRepository,
