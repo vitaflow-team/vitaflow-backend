@@ -2,8 +2,6 @@ import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
 import { MailModule } from '@/mail/mail.module';
 import { NotificationsModule } from '@/notifications/notifications.module';
-import { ProfessionalGuard } from '@/common/guards/professional.guard';
-import { ProfessionalPremiumGuard } from '@/common/guards/professionalPremium.guard';
 import { InvoiceNotifications } from './shared/invoiceNotifications.service';
 import { BillingAccountRepository } from '@/repositories/billing/billingAccount.repository';
 import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
@@ -13,6 +11,9 @@ import { UserRepository } from '@/repositories/users/user.repository';
 import { Clock } from '@/scheduling/clock.service';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { BillingOwnerGuard } from './owner/billingOwner.guard';
+import { BillingOwnerService } from './owner/billingOwner.service';
+import { BillingPlanGuard } from './owner/billingPlan.guard';
 import { BillingAccountController } from './account/billingAccount.controller';
 import {
   API_PUBLIC_URL,
@@ -46,8 +47,9 @@ const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
     BillingAccountRepository,
     InvoicesRepository,
     StudentTaxIdRepository,
-    ProfessionalGuard,
-    ProfessionalPremiumGuard,
+    BillingOwnerService,
+    BillingOwnerGuard,
+    BillingPlanGuard,
     BillingAccountService,
     InvoicesService,
     AsaasWebhookService,
@@ -80,6 +82,8 @@ const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
     BillingAccountRepository,
     InvoicesService,
     InvoicesRepository,
+    BillingOwnerService,
+    BillingOwnerGuard,
     // Reused by UsersModule's platform subscription flow (ADR-010 decision
     // 2): the same AsaasGateway instance serves both, since every method
     // already takes the caller's own apiKey.

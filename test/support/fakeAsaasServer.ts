@@ -59,6 +59,22 @@ export class FakeAsaasServer {
     );
   }
 
+  // Registers a charge the way a seeded gym fee needs one: it exists at the
+  // gateway before the app knows about it, so webhooks and the "already paid
+  // at the gateway" checks have something to read. Returns the charge id.
+  addCharge(input: { valueCents: number; dueDate: string }): string {
+    const id = this.nextId('pay');
+    this.charges.set(id, {
+      id,
+      value: input.valueCents / 100,
+      dueDate: input.dueDate,
+      status: 'PENDING',
+      paymentDate: null,
+      deleted: false,
+    });
+    return id;
+  }
+
   setChargeStatus(
     id: string,
     status: string,

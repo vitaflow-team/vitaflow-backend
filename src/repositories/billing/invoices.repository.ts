@@ -75,35 +75,54 @@ export class InvoicesRepository {
     });
   }
 
-  // An invoice only if its billing account belongs to this professional —
-  // a foreign or missing id both resolve to null (ClientsRepository.findOwnedById's
-  // pattern, applied here through the account relation).
-  async findOwned(id: string, professionalId: string): Promise<Invoice | null> {
+  // An invoice only if its billing account belongs to this billing owner (a
+  // professional or a gym owner) — a foreign or missing id both resolve to
+  // null (ClientsRepository.findOwnedById's pattern, applied here through the
+  // account relation).
+  async findOwned(id: string, ownerId: string): Promise<Invoice | null> {
     return await this.prisma.invoice.findFirst({
-      where: { id, billingAccount: { userId: professionalId } },
+      where: { id, billingAccount: { userId: ownerId } },
     });
   }
 
-  async list(
-    clientId: string,
-    page: number,
-    pageSize: number,
-  ): Promise<{ items: Invoice[]; total: number }> {
+  // A student's invoices as seen by one billing owner: only those issued
+  // through the owner's own accounts, so a gym's fees never reach the
+  // educator assigned to the student, nor the educator's legacy invoices the
+  // gym.
+  async list(input: {
+    clientId: string;
+    ownerId: string;
+    page: number;
+    pageSize: number;
+  }): Promise<{ items: Invoice[]; total: number }> {
+    const where = {
+      clientId: input.clientId,
+      billingAccount: { userId: input.ownerId },
+    };
     const [items, total] = await Promise.all([
       this.prisma.invoice.findMany({
-        where: { clientId },
+        where,
         orderBy: [{ competenceYear: 'desc' }, { competenceMonth: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
       }),
-      this.prisma.invoice.count({ where: { clientId } }),
+      this.prisma.invoice.count({ where }),
     ]);
     return { items, total };
   }
 
-  async findOpenAndOverdueByClient(clientId: string): Promise<Invoice[]> {
+  // Open invoices of a student; with `ownerId`, only those of that billing
+  // owner's accounts.
+  async findOpenAndOverdueByClient(
+    clientId: string,
+    ownerId?: string,
+  ): Promise<Invoice[]> {
     return await this.prisma.invoice.findMany({
-      where: { clientId, status: { in: OPEN_STATUSES } },
+      where: {
+        clientId,
+        status: { in: OPEN_STATUSES },
+        ...(ownerId ? { billingAccount: { userId: ownerId } } : {}),
+      },
       orderBy: { dueDate: 'asc' },
     });
   }

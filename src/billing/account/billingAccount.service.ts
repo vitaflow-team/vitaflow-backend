@@ -1,5 +1,5 @@
 import { BILLING_LIMITS } from '@/billing/shared/billingLimits';
-import { isProfessionalPremium } from '@/billing/shared/premiumAccess';
+import { canBill, planRequirement } from '@/billing/shared/premiumAccess';
 import { decryptSecret, encryptSecret } from '@/billing/shared/secretCipher';
 import {
   hashWebhookToken,
@@ -23,7 +23,6 @@ const RECONNECT_MESSAGE =
   'A chave da sua conta Asaas foi recusada. Conecte a conta novamente.';
 const KEY_INVALID_MESSAGE = 'Informe uma chave de API válida.';
 const KEY_IN_USE_MESSAGE = 'Esta chave já está vinculada a outra conta.';
-const PREMIUM_MESSAGE = 'Este recurso requer o plano Premium.';
 const NOT_CONNECTED_MESSAGE = 'Conecte sua conta Asaas para continuar.';
 
 function isUniqueViolation(error: unknown): boolean {
@@ -86,7 +85,7 @@ export class BillingAccountService {
     const openInvoiceCount = account
       ? await this.accounts.countOpenInvoices(account.id)
       : 0;
-    return toResponse(isProfessionalPremium(user), account, openInvoiceCount);
+    return toResponse(canBill(user), account, openInvoiceCount);
   }
 
   async connect(
@@ -94,8 +93,9 @@ export class BillingAccountService {
     rawKey: unknown,
   ): Promise<BillingAccountResponseDTO> {
     const user = await this.users.findByIdWithProduct(userId);
-    if (!isProfessionalPremium(user)) {
-      throw new CodedError(PREMIUM_MESSAGE, 403, 'premium_required');
+    if (!canBill(user)) {
+      const { message, code } = planRequirement(user);
+      throw new CodedError(message, 403, code);
     }
 
     const apiKey = this.validKey(rawKey);

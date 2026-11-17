@@ -1,7 +1,7 @@
 import { AuthGuard } from '@/auth/auth.guard';
 import { IS_PUBLIC_WEBHOOK } from '@/common/decorators/publicWebhook.decorator';
-import { ProfessionalGuard } from '@/common/guards/professional.guard';
-import { ProfessionalPremiumGuard } from '@/common/guards/professionalPremium.guard';
+import { BillingOwnerGuard } from '@/billing/owner/billingOwner.guard';
+import { BillingPlanGuard } from '@/billing/owner/billingPlan.guard';
 import { ProgressController } from '@/progress/progress.controller';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { BillingAccountController } from './account/billingAccount.controller';
@@ -21,34 +21,34 @@ function methodGuards(target: unknown, method: string): unknown[] {
 }
 
 describe('Billing controllers — guard metadata (UT-105)', () => {
-  it('BillingAccountController requires AuthGuard and ProfessionalGuard; connect also requires Premium', () => {
+  it('BillingAccountController requires AuthGuard and BillingOwnerGuard; connect also requires a plan that can bill', () => {
     expect(classGuards(BillingAccountController)).toEqual([
       AuthGuard,
-      ProfessionalGuard,
+      BillingOwnerGuard,
     ]);
     expect(methodGuards(BillingAccountController, 'connect')).toContain(
-      ProfessionalPremiumGuard,
+      BillingPlanGuard,
     );
   });
 
-  it('InvoicesController requires AuthGuard, ProfessionalGuard and ProfessionalPremiumGuard for every mutation', () => {
+  it('InvoicesController requires AuthGuard, BillingOwnerGuard and BillingPlanGuard for every mutation', () => {
     expect(classGuards(InvoicesController)).toEqual([
       AuthGuard,
-      ProfessionalGuard,
-      ProfessionalPremiumGuard,
+      BillingOwnerGuard,
+      BillingPlanGuard,
     ]);
   });
 
-  it('StudentInvoicesController requires AuthGuard and ProfessionalGuard; create and setTaxId also require Premium, list does not', () => {
+  it('StudentInvoicesController requires AuthGuard and BillingOwnerGuard; create and setTaxId also require a plan that can bill, list does not', () => {
     expect(classGuards(StudentInvoicesController)).toEqual([
       AuthGuard,
-      ProfessionalGuard,
+      BillingOwnerGuard,
     ]);
     expect(methodGuards(StudentInvoicesController, 'create')).toContain(
-      ProfessionalPremiumGuard,
+      BillingPlanGuard,
     );
     expect(methodGuards(StudentInvoicesController, 'setTaxId')).toContain(
-      ProfessionalPremiumGuard,
+      BillingPlanGuard,
     );
     expect(methodGuards(StudentInvoicesController, 'list')).toEqual([]);
   });
@@ -83,7 +83,7 @@ describe('ApiKeyGuard opt-out marker (UT-027)', () => {
     }
   });
 
-  it('the webhook controller itself carries no ApiKeyGuard-irrelevant AuthGuard/ProfessionalGuard', () => {
+  it('the webhook controller itself carries no ApiKeyGuard-irrelevant AuthGuard/BillingOwnerGuard', () => {
     expect(classGuards(AsaasWebhookController)).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { AuthGuard } from '@/auth/auth.guard';
-import { ProfessionalGuard } from '@/common/guards/professional.guard';
-import { ProfessionalPremiumGuard } from '@/common/guards/professionalPremium.guard';
+import { BillingOwnerGuard } from '@/billing/owner/billingOwner.guard';
+import { BillingPlanGuard } from '@/billing/owner/billingPlan.guard';
 import type { AuthenticatedRequest } from '@/common/types/authenticatedRequest';
 import {
   Body,
@@ -25,28 +25,34 @@ import { BillingAccountResponse } from './dto/billingAccountResponse.Dto';
 @ApiTags('Billing')
 @Controller('billing/account')
 @ApiBearerAuth('jwt')
-@UseGuards(AuthGuard, ProfessionalGuard)
+@UseGuards(AuthGuard, BillingOwnerGuard)
 export class BillingAccountController {
   constructor(private readonly service: BillingAccountService) {}
 
-  @ApiOperation({ summary: "The professional's gateway connection and plan" })
+  @ApiOperation({ summary: "The billing owner's gateway connection and plan" })
   @ApiResponse({ status: 200, type: BillingAccountResponse })
   @Get()
   async get(@Request() req: AuthenticatedRequest) {
     return await this.service.get(req.user.id);
   }
 
-  @ApiOperation({ summary: 'Connect or replace the Asaas account (Premium)' })
+  @ApiOperation({
+    summary:
+      'Connect or replace the Asaas account (Premium professional or paid gym plan)',
+  })
   @ApiResponse({ status: 200, type: BillingAccountResponse })
   @ApiResponse({ status: 400, description: 'The key was refused.' })
-  @ApiResponse({ status: 403, description: 'Premium plan required.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Premium plan or paid gym subscription required.',
+  })
   @ApiResponse({
     status: 409,
     description: 'The key belongs to another account.',
   })
   @ApiResponse({ status: 503, description: 'The gateway is unavailable.' })
   @Put()
-  @UseGuards(ProfessionalPremiumGuard)
+  @UseGuards(BillingPlanGuard)
   async connect(
     @Body() dto: ConnectAccountDTO,
     @Request() req: AuthenticatedRequest,
