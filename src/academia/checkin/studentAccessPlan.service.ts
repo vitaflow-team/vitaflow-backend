@@ -6,10 +6,10 @@ import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { CodedError } from '@/common/errors/codedError';
 import { Injectable } from '@nestjs/common';
 import { AccessPlanValidityType, StudentAccessPlan } from '@prisma/client';
+import { buildAssignment } from './accessPlanAssignment';
 
 const STUDENT_NOT_FOUND = 'Aluno não encontrado nesta academia.';
 const ACCESS_PLAN_NOT_FOUND = 'Plano de acesso não encontrado.';
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type AccessPlanStatus = 'NO_PLAN' | 'VALID' | 'EXPIRED' | 'EXHAUSTED';
 
@@ -49,20 +49,9 @@ export class StudentAccessPlanService {
       throw new CodedError(ACCESS_PLAN_NOT_FOUND, 404, 'access_plan_not_found');
     }
 
-    const now = this.clock.now();
-    const expiresAt =
-      catalogPlan.validityType === AccessPlanValidityType.DAYS
-        ? new Date(now.getTime() + catalogPlan.validityValue * DAY_MS)
-        : null;
-
-    const created = await this.plans.create({
-      clientId,
-      accessPlanId,
-      validityType: catalogPlan.validityType,
-      validityValue: catalogPlan.validityValue,
-      referencePrice: Number(catalogPlan.referencePrice),
-      expiresAt,
-    });
+    const created = await this.plans.create(
+      buildAssignment(catalogPlan, clientId, this.clock.now()),
+    );
     await this.plans.activate(clientId, created.id);
     return (await this.plans.findById(created.id))!;
   }

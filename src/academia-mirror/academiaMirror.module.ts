@@ -2,6 +2,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { PrismaService } from '@/database/prisma.service';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
 import { StudentAccessPlanRepository } from '@/repositories/academia/studentAccessPlan.repository';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { StudentAccessPlanService } from '@/academia/checkin/studentAccessPlan.service';
@@ -24,6 +25,7 @@ import { AcademiaMirrorService } from './academiaMirror.service';
     StudentAccessPlanRepository,
     StudentAccessPlanService,
     AcademiaAccessPlanRepository,
+    InvoicesRepository,
     Clock,
     AcademiaMirrorService,
   ],

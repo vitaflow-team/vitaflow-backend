@@ -38,6 +38,7 @@ export class FakeAsaasServer {
   private server: Server | null = null;
   private counter = 0;
   slowMs = 1_500;
+  private chargeFailures: { remaining: number; status: number } | null = null;
 
   get baseUrl(): string {
     const address = this.server?.address() as AddressInfo;
@@ -73,6 +74,16 @@ export class FakeAsaasServer {
       deleted: false,
     });
     return id;
+  }
+
+  // Makes the next `count` charge creations fail with an HTTP status (500
+  // reads as the gateway being down, 400 as a rejected charge).
+  failNextCharges(count: number, status = 500): void {
+    this.chargeFailures = { remaining: count, status };
+  }
+
+  clearChargeFailures(): void {
+    this.chargeFailures = null;
   }
 
   setChargeStatus(
@@ -197,6 +208,12 @@ export class FakeAsaasServer {
     body: Record<string, unknown>,
     response: ServerResponse,
   ): void {
+    if (this.chargeFailures && this.chargeFailures.remaining > 0) {
+      this.chargeFailures.remaining -= 1;
+      return this.send(response, this.chargeFailures.status, {
+        errors: [{ description: 'Falha injetada na cobrança.' }],
+      });
+    }
     const value = Number(body.value);
     if (value < 5) {
       return this.send(response, 400, {

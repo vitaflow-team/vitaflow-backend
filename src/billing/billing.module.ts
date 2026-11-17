@@ -82,6 +82,7 @@ const ASAAS_PRODUCTION_URL = 'https://api.asaas.com/v3';
     BillingAccountRepository,
     InvoicesService,
     InvoicesRepository,
+    StudentTaxIdRepository,
     BillingOwnerService,
     BillingOwnerGuard,
     // Reused by UsersModule's platform subscription flow (ADR-010 decision

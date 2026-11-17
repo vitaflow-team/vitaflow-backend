@@ -1,4 +1,5 @@
 import { AuthModule } from '@/auth/auth.module';
+import { BillingModule } from '@/billing/billing.module';
 import { TemplatesService } from '@/clinical-records/templates/templates.service';
 import { PrismaService } from '@/database/prisma.service';
 import { EducatorStudentsModule } from '@/educator-students/educatorStudents.module';
@@ -9,6 +10,8 @@ import { FixedTimesModule } from '@/scheduling/fixed-times/fixedTimes.module';
 import { ReceptionistAuthGuard } from '@/common/guards/receptionistAuth.guard';
 import { GymStudentGuard } from '@/common/guards/gymStudent.guard';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
+import { AcademiaRepository } from '@/repositories/academia/academia.repository';
+import { GymRecurringBillingRepository } from '@/repositories/academia/gymRecurringBilling.repository';
 import { AcademiaInvitationRepository } from '@/repositories/academia/academiaInvitation.repository';
 import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
 import { AcademiaStaffMemberTokenRepository } from '@/repositories/academia/academiaStaffMemberToken.repository';
@@ -27,6 +30,12 @@ import { AcademiaAccessPlanController } from './accessPlans/academiaAccessPlan.c
 import { AcademiaAccessPlanService } from './accessPlans/academiaAccessPlan.service';
 import { AcademiaActivityService } from './activity/academiaActivity.service';
 import { AcademiaProvisioningService } from './academia.service';
+import { AccessPlanLinkService } from './billing/accessPlanLink.service';
+import { GymBillingActivationService } from './billing/gymBillingActivation.service';
+import { GymRecurringBillingService } from './billing/gymRecurringBilling.service';
+import { RecurringFeeIssuer } from './billing/recurringFeeIssuer.service';
+import { StudentBillingController } from './billing/studentBilling.controller';
+import { CheckInNoticeService } from './checkin/checkinNotice.service';
 import { AcademiaEmploymentController } from './invitations/academiaEmployment.controller';
 import { AcademiaInvitationService } from './invitations/academiaInvitation.service';
 import { AcademiaStaffInvitationController } from './invitations/academiaStaffInvitation.controller';
@@ -66,6 +75,7 @@ import { TurmasService } from './turmas/turmas.service';
     EducatorStudentsModule,
     FixedTimesModule,
     ChurnRiskModule,
+    BillingModule,
   ],
   controllers: [
     AcademiaEmploymentController,
@@ -80,6 +90,7 @@ import { TurmasService } from './turmas/turmas.service';
     CheckInController,
     ReceptionistCheckInController,
     StudentAccessPlanController,
+    StudentBillingController,
     EngajamentoController,
     TurmasController,
     StudentTurmasController,
@@ -114,6 +125,13 @@ import { TurmasService } from './turmas/turmas.service';
     StudentAccessPlanRepository,
     CheckInService,
     StudentAccessPlanService,
+    AcademiaRepository,
+    GymRecurringBillingRepository,
+    GymRecurringBillingService,
+    GymBillingActivationService,
+    AccessPlanLinkService,
+    RecurringFeeIssuer,
+    CheckInNoticeService,
     EngajamentoService,
     TurmasRepository,
     TurmaEnrollmentRepository,

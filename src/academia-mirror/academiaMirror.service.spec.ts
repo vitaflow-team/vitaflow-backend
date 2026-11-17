@@ -2,9 +2,10 @@ import { Clock } from '@/scheduling/clock.service';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
 import { StudentAccessPlanRepository } from '@/repositories/academia/studentAccessPlan.repository';
 import { StudentAccessPlanService } from '@/academia/checkin/studentAccessPlan.service';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Client } from '@prisma/client';
+import { Client, InvoiceStatus } from '@prisma/client';
 import { AcademiaMirrorService } from './academiaMirror.service';
 
 const NOW = new Date('2026-11-11T12:00:00.000Z');
@@ -34,6 +35,7 @@ describe('AcademiaMirrorService', () => {
   const currentForClient = jest.fn();
   const findHistoryByClient = jest.fn();
   const findById = jest.fn();
+  const findGymFeesByClient = jest.fn();
 
   let service: AcademiaMirrorService;
 
@@ -41,6 +43,7 @@ describe('AcademiaMirrorService', () => {
     jest.clearAllMocks();
     findHistoryByClient.mockResolvedValue([]);
     findById.mockResolvedValue(null);
+    findGymFeesByClient.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -60,6 +63,10 @@ describe('AcademiaMirrorService', () => {
         {
           provide: AcademiaAccessPlanRepository,
           useValue: { findById },
+        },
+        {
+          provide: InvoicesRepository,
+          useValue: { findGymFeesByClient },
         },
         {
           provide: Clock,
@@ -457,6 +464,135 @@ describe('AcademiaMirrorService', () => {
           'validityValue',
         ].sort(),
       );
+    });
+  });
+
+  describe('fees', () => {
+    function fee(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'fee-1',
+        amountCents: 14990,
+        dueDate: new Date('2026-12-10T00:00:00.000Z'),
+        status: InvoiceStatus.PENDING,
+        paymentUrl: 'https://pay.test/fee-1',
+        clientId: 'client-1',
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      findAcademiaMembershipsByUserId.mockResolvedValue([makeMembership()]);
+      currentForClient.mockResolvedValue({
+        plan: null,
+        status: 'NO_PLAN',
+        remaining: null,
+      });
+    });
+
+    it('UT-097 lists a pending fee with its payment link and a paid fee, each with id, amount, due date and status', async () => {
+      findGymFeesByClient.mockResolvedValue([
+        fee(),
+        fee({
+          id: 'fee-2',
+          status: InvoiceStatus.PAID,
+          dueDate: new Date('2026-11-10T00:00:00.000Z'),
+        }),
+      ]);
+
+      const [membership] = await service.getMemberships('user-1');
+
+      expect(membership.fees).toEqual([
+        {
+          id: 'fee-1',
+          amountCents: 14990,
+          dueDate: '2026-12-10',
+          status: 'PENDING',
+          paymentUrl: 'https://pay.test/fee-1',
+        },
+        {
+          id: 'fee-2',
+          amountCents: 14990,
+          dueDate: '2026-11-10',
+          status: 'PAID',
+          paymentUrl: null,
+        },
+      ]);
+    });
+
+    it('UT-098 a canceled fee is not listed, and the repository is asked for this membership only', async () => {
+      findGymFeesByClient.mockResolvedValue([
+        fee(),
+        fee({ id: 'fee-canceled', status: InvoiceStatus.CANCELED }),
+      ]);
+
+      const [membership] = await service.getMemberships('user-1');
+
+      expect(membership.fees.map((f) => f.id)).toEqual(['fee-1']);
+      expect(findGymFeesByClient).toHaveBeenCalledWith(
+        'client-1',
+        'academia-1',
+      );
+    });
+
+    it('UT-099 a membership with no fees has an empty list, and a user with no membership has no memberships', async () => {
+      const [membership] = await service.getMemberships('user-1');
+      expect(membership.fees).toEqual([]);
+
+      findAcademiaMembershipsByUserId.mockResolvedValue([]);
+      expect(await service.getMemberships('user-2')).toEqual([]);
+    });
+
+    it('UT-100 queries each membership by its own client id, so another student of the same academia is never read', async () => {
+      findAcademiaMembershipsByUserId.mockResolvedValue([
+        makeMembership({ id: 'client-1' }),
+        makeMembership({ id: 'client-2', academiaId: 'academia-2' }),
+      ]);
+
+      await service.getMemberships('user-1');
+
+      expect(findGymFeesByClient).toHaveBeenCalledTimes(2);
+      expect(findGymFeesByClient).toHaveBeenCalledWith(
+        'client-1',
+        'academia-1',
+      );
+      expect(findGymFeesByClient).toHaveBeenCalledWith(
+        'client-2',
+        'academia-2',
+      );
+    });
+
+    it('UT-101 an open fee past its due date reads OVERDUE whatever its stored status, a paid one reads PAID', async () => {
+      findGymFeesByClient.mockResolvedValue([
+        fee({
+          id: 'late-pending',
+          dueDate: new Date('2026-11-10T00:00:00.000Z'),
+        }),
+        fee({
+          id: 'late-overdue',
+          status: InvoiceStatus.OVERDUE,
+          dueDate: new Date('2026-11-01T00:00:00.000Z'),
+        }),
+        fee({
+          id: 'due-today',
+          dueDate: new Date('2026-11-11T00:00:00.000Z'),
+        }),
+        fee({
+          id: 'paid-by-hand',
+          status: InvoiceStatus.PAID_MANUALLY,
+          dueDate: new Date('2026-10-10T00:00:00.000Z'),
+        }),
+      ]);
+
+      const [membership] = await service.getMemberships('user-1');
+
+      expect(
+        Object.fromEntries(membership.fees.map((f) => [f.id, f.status])),
+      ).toEqual({
+        'late-pending': 'OVERDUE',
+        'late-overdue': 'OVERDUE',
+        'due-today': 'PENDING',
+        'paid-by-hand': 'PAID',
+      });
     });
   });
 });

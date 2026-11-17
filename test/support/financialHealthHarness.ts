@@ -14,11 +14,14 @@ import { PrismaService } from '@/database/prisma.service';
 import { FinancialHealthModule } from '@/financial-health/financialHealth.module';
 import { MailService } from '@/mail/mail.service';
 import { Clock } from '@/scheduling/clock.service';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Type } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import {
+  AcademiaAccessPlan,
+  AcademiaStaffMember,
+  AccessPlanValidityType,
   BillingAccount,
   BillingAccountStatus,
   Client,
@@ -46,6 +49,8 @@ export interface SeedInvoiceInput {
   paidAt?: string | null;
   paidAmountCents?: number | null;
   externalId?: string | null;
+  recurringBillingId?: string | null;
+  paymentUrl?: string | null;
 }
 
 export class FinancialHealthHarness {
@@ -65,7 +70,10 @@ export class FinancialHealthHarness {
   private groupId!: string;
   private sequence = 0;
 
-  constructor(readonly tag: string) {}
+  constructor(
+    readonly tag: string,
+    private readonly extraModules: Type<unknown>[] = [],
+  ) {}
 
   async start(): Promise<void> {
     if (!process.env.TEST_DATABASE_URL) {
@@ -85,6 +93,7 @@ export class FinancialHealthHarness {
         ConfigModule.forRoot({ isGlobal: true }),
         BillingModule,
         FinancialHealthModule,
+        ...this.extraModules,
       ],
     })
       .overrideProvider(MailService)
@@ -202,6 +211,7 @@ export class FinancialHealthHarness {
 
   async createClient(input: {
     name?: string;
+    userId?: string | null;
     professionalId?: string | null;
     academiaId?: string | null;
   }): Promise<Client> {
@@ -210,6 +220,7 @@ export class FinancialHealthHarness {
         name: input.name ?? `Aluno ${this.next()}`,
         phone: '11999990000',
         email: `${this.tag}-aluno-${this.next()}@integration.test`,
+        userId: input.userId ?? null,
         professionalId: input.professionalId ?? null,
         academiaId: input.academiaId ?? null,
       },
@@ -233,6 +244,8 @@ export class FinancialHealthHarness {
           input.externalId === undefined
             ? `seed_${this.tag}_${this.next()}`
             : input.externalId,
+        recurringBillingId: input.recurringBillingId ?? null,
+        paymentUrl: input.paymentUrl ?? null,
         paidAt: input.paidAt ? new Date(input.paidAt) : null,
         paidAmountCents: input.paidAmountCents ?? null,
       },
@@ -250,6 +263,8 @@ export class FinancialHealthHarness {
     dueDate: string;
     status?: InvoiceStatus;
     paidAt?: string | null;
+    recurringBillingId?: string | null;
+    paymentUrl?: string | null;
   }): Promise<Invoice> {
     const chargeId = this.fake.addCharge({
       valueCents: input.amountCents,
@@ -259,6 +274,61 @@ export class FinancialHealthHarness {
       ...input,
       billingAccountId: input.account.id,
       externalId: chargeId,
+    });
+  }
+
+  // --- Gym plans, tax IDs and reception ---
+
+  async createAccessPlan(
+    academiaId: string,
+    input: { name?: string; priceReais: number; active?: boolean },
+  ): Promise<AcademiaAccessPlan> {
+    return await this.prisma.academiaAccessPlan.create({
+      data: {
+        academiaId,
+        name: input.name ?? `Plano ${this.next()}`,
+        validityType: AccessPlanValidityType.DAYS,
+        validityValue: 30,
+        referencePrice: input.priceReais,
+        active: input.active ?? true,
+      },
+    });
+  }
+
+  // A student already linked to a plan before recurring billing existed.
+  async linkStudentToPlan(
+    clientId: string,
+    plan: AcademiaAccessPlan,
+  ): Promise<void> {
+    await this.prisma.studentAccessPlan.create({
+      data: {
+        clientId,
+        accessPlanId: plan.id,
+        validityType: plan.validityType,
+        validityValue: plan.validityValue,
+        referencePrice: plan.referencePrice,
+        expiresAt: new Date(Date.now() + 30 * 86_400_000),
+        status: 'ACTIVE',
+      },
+    });
+  }
+
+  async storeTaxId(clientId: string, digits = '52998224725'): Promise<void> {
+    await this.prisma.studentTaxId.upsert({
+      where: { clientId },
+      create: { clientId, ciphertext: encryptSecret(digits, CIPHER_KEY) },
+      update: { ciphertext: encryptSecret(digits, CIPHER_KEY) },
+    });
+  }
+
+  async createReceptionist(academiaId: string): Promise<AcademiaStaffMember> {
+    return await this.prisma.academiaStaffMember.create({
+      data: {
+        academiaId,
+        name: `Recepcao ${this.next()}`,
+        email: `${this.tag}-staff-${this.next()}@integration.test`,
+        active: true,
+      },
     });
   }
 
@@ -278,7 +348,7 @@ export class FinancialHealthHarness {
 
   get(
     user: { id: string; email: string },
-    method: 'get' | 'put' | 'post' | 'patch',
+    method: 'get' | 'put' | 'post' | 'patch' | 'delete',
     path: string,
   ) {
     return request(this.server())
@@ -380,6 +450,10 @@ export class FinancialHealthHarness {
         ],
       },
     });
+    await prisma.checkIn.deleteMany({ where: { clientId: { in: clientIds } } });
+    await prisma.studentAccessPlan.deleteMany({
+      where: { clientId: { in: clientIds } },
+    });
     await prisma.billingCustomer.deleteMany({
       where: { billingAccount: { userId: { in: userIds } } },
     });
@@ -396,6 +470,9 @@ export class FinancialHealthHarness {
       where: { academiaId: { in: academiaIds } },
     });
     await prisma.client.deleteMany({ where: { id: { in: clientIds } } });
+    await prisma.academiaAccessPlan.deleteMany({
+      where: { academiaId: { in: academiaIds } },
+    });
     await prisma.users.deleteMany({ where: { id: { in: userIds } } });
     await prisma.academia.deleteMany({ where: { id: { in: academiaIds } } });
     await prisma.product.deleteMany({ where: { groupId: this.groupId } });

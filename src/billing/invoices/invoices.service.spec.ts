@@ -1024,3 +1024,243 @@ describe('InvoicesService for gym owners and educators (financial-health UT-024 
     );
   });
 });
+
+describe('InvoicesService gym recurring fees', () => {
+  const GYM_OWNER = {
+    id: 'gym-owner-1',
+    subscriptionStatus: 'active',
+    product: { type: ProductType.ACADEMIA, tier: ProductTier.STANDARD },
+  };
+
+  function fee(overrides: Record<string, unknown> = {}) {
+    return {
+      account: accountRow({ userId: GYM_OWNER.id }),
+      client: clientRow({ academiaId: 'academia-1', professionalId: null }),
+      recurringBillingId: 'rec-1',
+      competence: { year: 2026, month: 12 },
+      amountCents: 14990,
+      dueDate: '2026-12-10',
+      ...overrides,
+    };
+  }
+
+  it('issueRecurringFee reserves the fee with its recurring billing, charges it, confirms it and tells the student', async () => {
+    const { service, invoices, gateway, notifications } = build({
+      user: GYM_OWNER,
+    });
+    const student = clientRow({ userId: 'student-user-1' });
+
+    const issued = await service.issueRecurringFee(fee({ client: student }));
+
+    expect(invoices.reserve).toHaveBeenCalledWith({
+      clientId: CLIENT_ID,
+      billingAccountId: ACCOUNT_ID,
+      competenceYear: 2026,
+      competenceMonth: 12,
+      amountCents: 14990,
+      dueDate: '2026-12-10',
+      recurringBillingId: 'rec-1',
+    });
+    expect(gateway.createCharge).toHaveBeenCalledWith(
+      'fake-api-key',
+      expect.objectContaining({ amountCents: 14990, dueDate: '2026-12-10' }),
+    );
+    expect(invoices.confirmCharge).toHaveBeenCalled();
+    expect(issued.externalId).toBe('pay_1');
+    expect(notifications.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('UT-051 / UT-065 a charge the gateway refuses leaves no reservation behind', async () => {
+    const { service, invoices } = build({
+      user: GYM_OWNER,
+      gateway: {
+        createCharge: jest
+          .fn()
+          .mockRejectedValue(
+            new CodedError('fora', 503, 'gateway_unavailable'),
+          ),
+      },
+    });
+
+    await expect(service.issueRecurringFee(fee())).rejects.toMatchObject({
+      code: 'gateway_unavailable',
+    });
+    expect(invoices.deleteReservation).toHaveBeenCalledWith('inv-new');
+  });
+
+  it('without a stored tax ID nothing is reserved: tax_id_required', async () => {
+    const { service, invoices } = build({
+      user: GYM_OWNER,
+      taxIds: { find: jest.fn().mockResolvedValue(null) },
+    });
+
+    await expect(service.issueRecurringFee(fee())).rejects.toMatchObject({
+      status: 400,
+      code: 'tax_id_required',
+    });
+    expect(invoices.reserve).not.toHaveBeenCalled();
+  });
+
+  it('a second fee for the same student and competence is refused as invoice_exists_for_month', async () => {
+    const { service } = build({
+      user: GYM_OWNER,
+      invoices: {
+        reserve: jest.fn().mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError('unique', {
+            code: 'P2002',
+            clientVersion: 'x',
+          }),
+        ),
+        findOpenForCompetence: jest.fn().mockResolvedValue(invoiceRow()),
+      },
+    });
+
+    await expect(service.issueRecurringFee(fee())).rejects.toMatchObject({
+      status: 409,
+      code: 'invoice_exists_for_month',
+    });
+  });
+
+  describe('requireIssuingAccount', () => {
+    it('returns the connected account of a gym owner with a paid subscription', async () => {
+      const { service } = build({ user: GYM_OWNER });
+
+      const account = await service.requireIssuingAccount(GYM_OWNER.id);
+
+      expect(account.id).toBe(ACCOUNT_ID);
+    });
+
+    it('refuses a lapsed subscription before looking at the account', async () => {
+      const { service, accounts } = build({
+        user: { ...GYM_OWNER, subscriptionStatus: 'canceled' },
+      });
+
+      await expect(
+        service.requireIssuingAccount(GYM_OWNER.id),
+      ).rejects.toMatchObject({ status: 403, code: 'subscription_required' });
+      expect(accounts.findActiveByUser).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['no account', null, 'billing_not_connected'],
+      [
+        'a disconnected account',
+        accountRow({ apiKeyEncrypted: null }),
+        'billing_not_connected',
+      ],
+      [
+        'a rejected key',
+        accountRow({ keyInvalidAt: TODAY }),
+        'billing_reconnect_needed',
+      ],
+    ])('answers 409 for %s with %s', async (_label, account, code) => {
+      const { service } = build({
+        user: GYM_OWNER,
+        accounts: { findActiveByUser: jest.fn().mockResolvedValue(account) },
+      });
+
+      await expect(
+        service.requireIssuingAccount(GYM_OWNER.id),
+      ).rejects.toMatchObject({ status: 409, code });
+    });
+  });
+
+  describe('cancelUpcomingFees', () => {
+    const input = {
+      ownerId: GYM_OWNER.id,
+      clientId: CLIENT_ID,
+      todayKey: '2026-11-17',
+    };
+
+    it('UT-053 cancels each open fee at the gateway and locally, asking only for fees due from today', async () => {
+      const upcoming = invoiceRow({ dueDate: new Date('2026-11-30') });
+      const { service, invoices, gateway } = build({
+        user: GYM_OWNER,
+        invoices: { findOpenDueFrom: jest.fn().mockResolvedValue([upcoming]) },
+      });
+
+      const failed = await service.cancelUpcomingFees(input);
+
+      expect(failed).toBe(0);
+      expect(invoices.findOpenDueFrom).toHaveBeenCalledWith({
+        clientId: CLIENT_ID,
+        ownerId: GYM_OWNER.id,
+        fromKey: '2026-11-17',
+      });
+      expect(gateway.cancelCharge).toHaveBeenCalledWith(
+        'fake-api-key',
+        'pay_1',
+      );
+      expect(invoices.transition).toHaveBeenCalledWith(
+        INVOICE_ID,
+        [InvoiceStatus.PENDING, InvoiceStatus.OVERDUE],
+        { status: InvoiceStatus.CANCELED },
+      );
+    });
+
+    it('deletes a reservation that never reached the gateway instead of canceling it', async () => {
+      const { service, invoices, gateway } = build({
+        user: GYM_OWNER,
+        invoices: {
+          findOpenDueFrom: jest
+            .fn()
+            .mockResolvedValue([invoiceRow({ externalId: null })]),
+        },
+      });
+
+      await service.cancelUpcomingFees(input);
+
+      expect(invoices.deleteReservation).toHaveBeenCalledWith(INVOICE_ID);
+      expect(gateway.cancelCharge).not.toHaveBeenCalled();
+    });
+
+    it('cancels locally when the account key is no longer accepted', async () => {
+      const { service, invoices, gateway } = build({
+        user: GYM_OWNER,
+        invoices: {
+          findOpenDueFrom: jest.fn().mockResolvedValue([invoiceRow()]),
+        },
+        accounts: {
+          findById: jest
+            .fn()
+            .mockResolvedValue(accountRow({ keyInvalidAt: TODAY })),
+        },
+      });
+
+      const failed = await service.cancelUpcomingFees(input);
+
+      expect(failed).toBe(0);
+      expect(gateway.cancelCharge).not.toHaveBeenCalled();
+      expect(invoices.transition).toHaveBeenCalled();
+    });
+
+    it('a fee the gateway cannot cancel stays open and is counted, while the others are still canceled', async () => {
+      const first = invoiceRow({ id: 'inv-a', externalId: 'pay_a' });
+      const second = invoiceRow({ id: 'inv-b', externalId: 'pay_b' });
+      const { service, invoices } = build({
+        user: GYM_OWNER,
+        invoices: {
+          findOpenDueFrom: jest.fn().mockResolvedValue([first, second]),
+        },
+        gateway: {
+          cancelCharge: jest
+            .fn()
+            .mockRejectedValueOnce(
+              new CodedError('fora', 503, 'gateway_unavailable'),
+            )
+            .mockResolvedValueOnce(undefined),
+        },
+      });
+
+      const failed = await service.cancelUpcomingFees(input);
+
+      expect(failed).toBe(1);
+      expect(invoices.transition).toHaveBeenCalledTimes(1);
+      expect(invoices.transition).toHaveBeenCalledWith(
+        'inv-b',
+        expect.anything(),
+        { status: InvoiceStatus.CANCELED },
+      );
+    });
+  });
+});

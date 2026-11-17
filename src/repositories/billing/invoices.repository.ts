@@ -31,6 +31,8 @@ export interface NewInvoiceReservation {
   competenceMonth: number;
   amountCents: number;
   dueDate: string;
+  // Set only on a gym fee issued by a recurring billing (ADR-007).
+  recurringBillingId?: string;
 }
 
 @Injectable()
@@ -124,6 +126,42 @@ export class InvoicesRepository {
         ...(ownerId ? { billingAccount: { userId: ownerId } } : {}),
       },
       orderBy: { dueDate: 'asc' },
+    });
+  }
+
+  // The owner's open fees for a student due on or after `fromKey` (a
+  // `YYYY-MM-DD` Brasília date): what an unlink cancels. Overdue fees are
+  // not in this set and stay owed.
+  async findOpenDueFrom(input: {
+    clientId: string;
+    ownerId: string;
+    fromKey: string;
+  }): Promise<Invoice[]> {
+    return await this.prisma.invoice.findMany({
+      where: {
+        clientId: input.clientId,
+        status: { in: OPEN_STATUSES },
+        dueDate: { gte: new Date(`${input.fromKey}T00:00:00.000Z`) },
+        billingAccount: { userId: input.ownerId },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+  }
+
+  // The fees a gym billed one of its own students, canceled and unconfirmed
+  // ones left out: what the student sees in the membership view.
+  async findGymFeesByClient(
+    clientId: string,
+    academiaId: string,
+  ): Promise<Invoice[]> {
+    return await this.prisma.invoice.findMany({
+      where: {
+        clientId,
+        status: { not: InvoiceStatus.CANCELED },
+        externalId: { not: null },
+        billingAccount: { user: { academiaId } },
+      },
+      orderBy: { dueDate: 'desc' },
     });
   }
 

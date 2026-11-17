@@ -52,6 +52,8 @@ import { InvoiceResponseDTO } from './dto/invoiceResponse.Dto';
 import { MarkPaidDTO } from './dto/markPaid.Dto';
 import { TaxIdResponseDTO } from './dto/taxIdResponse.Dto';
 import { UpdateInvoiceDTO } from './dto/updateInvoice.Dto';
+import type { RecurringFeeInput } from './types/recurringFeeInput';
+import type { UpcomingFeesInput } from './types/upcomingFeesInput';
 
 const OPEN_STATUSES: InvoiceStatus[] = [
   InvoiceStatus.PENDING,
@@ -73,6 +75,7 @@ const STUDENT_BILLED_BY_GYM = 'Este aluno é cobrado pela academia.';
 const MANUAL_INVOICE_NOT_ALLOWED =
   'As mensalidades da academia são geradas automaticamente.';
 const RECONNECT_NEEDED = 'Conecte sua conta Asaas novamente para continuar.';
+const NOT_CONNECTED = 'Conecte sua conta Asaas para continuar.';
 
 @Injectable()
 export class InvoicesService {
@@ -344,6 +347,85 @@ export class InvoicesService {
     return warnings;
   }
 
+  // --- Gym recurring fees (ADR-007) ---
+
+  // The account a gym owner issues fees with: a plan that can bill, a
+  // connected account whose key is still accepted.
+  async requireIssuingAccount(ownerId: string): Promise<BillingAccount> {
+    const user = await this.users.findByIdWithProduct(ownerId);
+    if (!canBill(user)) {
+      const { message, code } = planRequirement(user);
+      throw new CodedError(message, 403, code);
+    }
+    const account = await this.accounts.findActiveByUser(ownerId);
+    if (!account || !account.apiKeyEncrypted) {
+      throw new CodedError(NOT_CONNECTED, 409, 'billing_not_connected');
+    }
+    if (account.keyInvalidAt) throw this.reconnectNeededError();
+    return account;
+  }
+
+  // Reserve, charge, confirm and notify one fee of a recurring billing. A
+  // second fee for the same student and competence is refused by the unique
+  // index (`invoice_exists_for_month`), never duplicated.
+  async issueRecurringFee(input: RecurringFeeInput): Promise<Invoice> {
+    const { account, client, competence } = input;
+    const taxDigits = await this.resolveTaxId(client.id, undefined);
+    const reservation = await this.reserveInvoice({
+      clientId: client.id,
+      billingAccountId: account.id,
+      competenceYear: competence.year,
+      competenceMonth: competence.month,
+      amountCents: input.amountCents,
+      dueDate: input.dueDate,
+      recurringBillingId: input.recurringBillingId,
+    });
+    const confirmed = await this.chargeReservation(reservation, account, {
+      client,
+      taxDigits,
+    });
+    await this.notifyInvoiceCreated(confirmed, client, account.accountName);
+    return confirmed;
+  }
+
+  // Unlink: cancels the owner's open fees due today or later, at the gateway
+  // and locally. A fee the gateway refuses to cancel stays open and is
+  // counted, never thrown: the unlink itself must complete. Returns how many
+  // fees could not be canceled.
+  async cancelUpcomingFees(input: UpcomingFeesInput): Promise<number> {
+    const upcoming = await this.invoices.findOpenDueFrom({
+      clientId: input.clientId,
+      ownerId: input.ownerId,
+      fromKey: input.todayKey,
+    });
+    let failed = 0;
+    for (const invoice of upcoming) {
+      try {
+        await this.cancelUpcomingFee(invoice);
+      } catch {
+        failed += 1;
+        this.logger.error(`upcoming_fee_cancel_failed invoiceId=${invoice.id}`);
+      }
+    }
+    return failed;
+  }
+
+  private async cancelUpcomingFee(invoice: Invoice): Promise<void> {
+    if (!invoice.externalId) {
+      await this.invoices.deleteReservation(invoice.id);
+      return;
+    }
+    const account = await this.requireAccount(invoice.billingAccountId);
+    await this.whenGatewayAccepts(account, () =>
+      this.withGateway(account, (apiKey) =>
+        this.gateway.cancelCharge(apiKey, invoice.externalId!),
+      ),
+    );
+    await this.invoices.transition(invoice.id, OPEN_STATUSES, {
+      status: InvoiceStatus.CANCELED,
+    });
+  }
+
   // --- Ownership and account lookups ---
 
   // The student of this billing owner (ADR-008): independent for a
@@ -448,11 +530,7 @@ export class InvoicesService {
   }
 
   private notConnectedError(): CodedError {
-    return new CodedError(
-      'Conecte sua conta Asaas para continuar.',
-      409,
-      'gateway_not_connected',
-    );
+    return new CodedError(NOT_CONNECTED, 409, 'gateway_not_connected');
   }
 
   // --- Gateway calls ---
@@ -510,7 +588,7 @@ export class InvoicesService {
   // Returns the resolved digits so the caller (create) can thread them
   // straight into ensureBillingCustomer without a second, redundant
   // decrypt-from-storage round trip.
-  private async resolveTaxId(
+  async resolveTaxId(
     clientId: string,
     cpfCnpj: string | undefined,
   ): Promise<string> {
@@ -708,10 +786,7 @@ export class InvoicesService {
     );
   }
 
-  private toResponse(
-    invoice: Invoice,
-    emailSent?: boolean,
-  ): InvoiceResponseDTO {
+  toResponse(invoice: Invoice, emailSent?: boolean): InvoiceResponseDTO {
     const canResendAt = invoice.linkSentAt
       ? new Date(
           invoice.linkSentAt.getTime() +

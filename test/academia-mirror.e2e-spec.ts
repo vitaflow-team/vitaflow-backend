@@ -18,6 +18,7 @@ import { AcademiaMirrorService } from '@/academia-mirror/academiaMirror.service'
 import { StudentAccessPlanService } from '@/academia/checkin/studentAccessPlan.service';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
 import { StudentAccessPlanRepository } from '@/repositories/academia/studentAccessPlan.repository';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { Clock } from '@/scheduling/clock.service';
@@ -75,6 +76,7 @@ describe('Academia mirror ("Minha academia") integration', () => {
         StudentAccessPlanRepository,
         StudentAccessPlanService,
         AcademiaAccessPlanRepository,
+        InvoicesRepository,
         Clock,
         AuthGuard,
         AcademiaMirrorService,

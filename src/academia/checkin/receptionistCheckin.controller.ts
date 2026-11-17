@@ -13,7 +13,12 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CheckInService } from './checkin.service';
 
 const STUDENT_NOT_FOUND = 'Aluno não encontrado nesta academia.';
@@ -41,6 +46,12 @@ export class ReceptionistCheckInController {
   }
 
   @ApiOperation({ summary: "Register a check-in on a student's behalf" })
+  @ApiResponse({
+    status: 201,
+    description:
+      '{ id, createdAt, notice }; notice is SEE_ADMINISTRATION when the student has an overdue fee, else null.',
+  })
+  @ApiResponse({ status: 404, description: 'student_not_found.' })
   @HttpCode(201)
   @Post(':clientId/checkin')
   async checkIn(
@@ -51,6 +62,6 @@ export class ReceptionistCheckInController {
     if (!client || client.academiaId !== req.user.academiaId) {
       throw new CodedError(STUDENT_NOT_FOUND, 404, 'student_not_found');
     }
-    return await this.checkIns.register(clientId, 'RECEPTIONIST', req.user.id);
+    return await this.checkIns.registerByReceptionist(clientId, req.user);
   }
 }

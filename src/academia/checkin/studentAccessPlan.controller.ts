@@ -7,13 +7,22 @@ import { CodedError } from '@/common/errors/codedError';
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   Post,
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { AccessPlanLinkService } from '../billing/accessPlanLink.service';
+import { gymOwnerOf } from '../billing/gymOwner';
 import { AssignAccessPlanDTO } from './dto/assignAccessPlan.Dto';
 import { StudentAccessPlanService } from './studentAccessPlan.service';
 
@@ -26,12 +35,32 @@ const STUDENT_NOT_FOUND = 'Aluno não encontrado nesta academia.';
 export class StudentAccessPlanController {
   constructor(
     private readonly accessPlans: StudentAccessPlanService,
+    private readonly links: AccessPlanLinkService,
     private readonly clients: ClientsRepository,
     private readonly clock: Clock,
   ) {}
 
   @ApiOperation({
-    summary: "Assign or replace this student's active access plan",
+    summary:
+      "Assign or replace this student's active access plan, optionally starting the monthly billing",
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      '{ plan, billing, firstInvoice }; the last two are null when no billing was started.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'invalid_due_day, invalid_amount or tax_id_required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'student_not_found or access_plan_not_found.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'recurring_billing_exists, billing_not_connected or billing_reconnect_needed.',
   })
   @Post()
   async assign(
@@ -40,7 +69,30 @@ export class StudentAccessPlanController {
     @Request() req: AcademiaOwnerRequest,
   ) {
     await this.assertOwned(id, req.user.academiaId);
-    return await this.accessPlans.assign(id, dto.accessPlanId);
+    return await this.links.assign({
+      owner: gymOwnerOf(req),
+      clientId: id,
+      accessPlanId: dto.accessPlanId,
+      billing: dto.billing,
+    });
+  }
+
+  @ApiOperation({
+    summary:
+      'Unlink the student: archive the plan, end the monthly billing and cancel the open fees due today or later',
+  })
+  @ApiResponse({ status: 204, description: 'Sem corpo de resposta.' })
+  @ApiResponse({
+    status: 404,
+    description: 'student_not_found or student_has_no_plan.',
+  })
+  @HttpCode(204)
+  @Delete()
+  async unlink(
+    @Param('id') id: string,
+    @Request() req: AcademiaOwnerRequest,
+  ): Promise<void> {
+    await this.links.unlink({ owner: gymOwnerOf(req), clientId: id });
   }
 
   @ApiOperation({
