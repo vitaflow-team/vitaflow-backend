@@ -69,6 +69,11 @@ model Users {
   // the historical fact of what tier they held.
   backofficeTier BackofficeTier?
 
+  // Tier offered by a staff invitation that the owner of this existing
+  // account has not accepted yet (unified-login-account ADR-010). Null on
+  // every other row. Acceptance copies it to backofficeTier and clears it.
+  pendingBackofficeTier BackofficeTier?
+
   // Set only on the Users row of an Academia's owner/manager, the moment
   // their subscription becomes an ACADEMIA product (AcademiaProvisioningService).
   // The Academia itself, not this row, is the stable identity every other
@@ -202,6 +207,7 @@ model Client {
 enum TokenType {
   ACTIVATION
   RECOVERY
+  BACKOFFICE_INVITATION
 }
 
 // The value sent to the user is never stored: only its hash is, so a

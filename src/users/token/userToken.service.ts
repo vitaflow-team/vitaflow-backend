@@ -8,6 +8,9 @@ const HOUR_MS = 60 * 60 * 1000;
 export const TOKEN_TTL_MS: Record<TokenType, number> = {
   [TokenType.ACTIVATION]: 2 * HOUR_MS,
   [TokenType.RECOVERY]: 3 * HOUR_MS,
+  // Same lifetime as an activation link: both are staff-invitation links,
+  // one for a new account and one for an existing account (ADR-010).
+  [TokenType.BACKOFFICE_INVITATION]: 2 * HOUR_MS,
 };
 
 // 32 random bytes = 256 bits of entropy.
@@ -40,6 +43,12 @@ export class UserTokenService {
     });
 
     return raw;
+  }
+
+  // Withdraws whatever token of this type the user still holds, so a link
+  // already sent stops working (a cancelled staff invitation, ADR-010).
+  async revoke(userID: string, type: TokenType): Promise<void> {
+    await this.userTokens.deleteAll({ userID, type });
   }
 
   // Returns the live token matching the raw value, or null. An expired one

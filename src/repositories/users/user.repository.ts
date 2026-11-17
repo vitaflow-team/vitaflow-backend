@@ -12,10 +12,10 @@ import {
   Product,
   ProductTier,
   ProductType,
-  UserAddress,
   Users,
   UsersToken,
 } from '@prisma/client';
+import type { UserProfileRow } from './types/userProfileRow';
 
 export interface RegisteredByRoleAndPlanCount {
   role: ProductType;
@@ -220,6 +220,33 @@ export class UserRepository {
     });
   }
 
+  // unified-login-account ADR-010: grants the pending tier to the existing
+  // account in the same transaction that consumes the invitation token. An
+  // account whose invitation was withdrawn (no pending tier left) gets null
+  // before the token is touched, so nothing is half-applied.
+  async acceptBackofficeInvitation(token: UsersToken): Promise<Users | null> {
+    return await this.prisma.$transaction(async (tx) => {
+      const account = await tx.users.findUnique({
+        where: { id: token.userID },
+      });
+      if (!account?.pendingBackofficeTier) {
+        return null;
+      }
+      if (!(await this.consumeToken(tx, token.id))) {
+        return null;
+      }
+
+      return await tx.users.update({
+        where: { id: token.userID },
+        data: {
+          isBackoffice: true,
+          backofficeTier: account.pendingBackofficeTier,
+          pendingBackofficeTier: null,
+        },
+      });
+    });
+  }
+
   private async consumeToken(
     tx: Prisma.TransactionClient,
     tokenId: string,
@@ -231,17 +258,28 @@ export class UserRepository {
     return count === 1;
   }
 
-  async getUserProfile(
-    userId: string,
-  ): Promise<
-    | (Users & { userAddresses: UserAddress | null; product: Product | null })
-    | null
-  > {
+  async getUserProfile(userId: string): Promise<UserProfileRow | null> {
     return await this.prisma.users.findUnique({
       where: { id: userId },
       include: {
         userAddresses: true,
         product: true,
+        oAuthIdentity: true,
+      },
+    });
+  }
+
+  // unified-login-account ADR-006: the moment a plan-less account becomes a
+  // customer. Both consents are stamped together with the plan, so a plan
+  // never exists without the acceptance that authorizes it.
+  async activateAsCustomer(id: string, productId: string): Promise<Users> {
+    const acceptedAt = new Date();
+    return await this.prisma.users.update({
+      where: { id },
+      data: {
+        termsAcceptedAt: acceptedAt,
+        healthDataConsentAt: acceptedAt,
+        product: { connect: { id: productId } },
       },
     });
   }
@@ -333,10 +371,25 @@ export class UserRepository {
     return types;
   }
 
+  // Staff rows plus the existing accounts that hold an invitation not yet
+  // accepted (unified-login-account ADR-010), so the staff screen shows
+  // both kinds of pending invitation.
   async findAllBackofficeStaff(): Promise<Users[]> {
     return await this.prisma.users.findMany({
-      where: { isBackoffice: true },
+      where: {
+        OR: [{ isBackoffice: true }, { pendingBackofficeTier: { not: null } }],
+      },
       orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async setPendingBackofficeTier(
+    id: string,
+    tier: BackofficeTier | null,
+  ): Promise<Users> {
+    return await this.prisma.users.update({
+      where: { id },
+      data: { pendingBackofficeTier: tier },
     });
   }
 

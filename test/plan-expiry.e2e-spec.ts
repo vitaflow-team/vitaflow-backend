@@ -1,5 +1,6 @@
 import { AcademiaProvisioningService } from '@/academia/academia.service';
 import { createValidationPipe } from '@/config/validationPipe';
+import { AuditLogger } from '@/auth/auditLogger.service';
 import { AuthGuard } from '@/auth/auth.guard';
 import { PAYMENT_GATEWAY } from '@/billing/gateway/paymentGateway';
 import { TemplatesService } from '@/clinical-records/templates/templates.service';
@@ -62,6 +63,7 @@ describe('plan expiry — expiresAt and autoRenew on the real endpoints', () => 
         ClientsRepository,
         ProductsRepository,
         ProfileService,
+        { provide: AuditLogger, useValue: { log: jest.fn(), warn: jest.fn() } },
         SubscriptionService,
         Clock,
         AuthGuard,
