@@ -52,4 +52,16 @@ export class NotificationPreferencesEntity {
 
   @ApiProperty()
   SCHEDULE_CHANGE: boolean;
+
+  @ApiProperty()
+  ACADEMIA_ACTIVITY: boolean;
+
+  @ApiProperty()
+  CHURN_RISK_ALERT: boolean;
+
+  @ApiProperty()
+  DIARY_REMINDER: boolean;
+
+  @ApiProperty()
+  CHECKIN_ABSENCE: boolean;
 }

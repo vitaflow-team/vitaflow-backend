@@ -82,15 +82,15 @@ model Users {
   academia   Academia? @relation("AcademiaOwner", fields: [academiaId], references: [id])
   academiaId String?   @unique
 
-  createdAt                   DateTime                 @default(now())
-  updatedAt                   DateTime                 @updatedAt
+  createdAt                   DateTime                  @default(now())
+  updatedAt                   DateTime                  @updatedAt
   usersTokens                 UsersToken[]
   userAddresses               UserAddress?
   clients                     Client[]
   oAuthIdentity               OAuthIdentity?
   measurementRecords          MeasurementRecord[]
-  submittedExercises          Exercise[]               @relation("ExerciseSubmittedBy")
-  reviewedExercises           Exercise[]               @relation("ExerciseReviewedBy")
+  submittedExercises          Exercise[]                @relation("ExerciseSubmittedBy")
+  reviewedExercises           Exercise[]                @relation("ExerciseReviewedBy")
   fitnessProfile              FitnessProfile?
   workouts                    Workout[]
   meals                       Meal[]
@@ -100,18 +100,18 @@ model Users {
   notifications               Notification[]
   notificationPreferences     NotificationPreference[]
   professionalProfile         ProfessionalProfile?
-  connectionRequestsSent      ConnectionRequest[]      @relation("ConnectionRequestFromUser")
-  connectionRequestsReceived  ConnectionRequest[]      @relation("ConnectionRequestToProfessional")
-  conversationsAsUser         Conversation[]           @relation("ConversationAsUser")
-  conversationsAsProfessional Conversation[]           @relation("ConversationAsProfessional")
-  sentMessages                Message[]                @relation("MessageSender")
+  connectionRequestsSent      ConnectionRequest[]       @relation("ConnectionRequestFromUser")
+  connectionRequestsReceived  ConnectionRequest[]       @relation("ConnectionRequestToProfessional")
+  conversationsAsUser         Conversation[]            @relation("ConversationAsUser")
+  conversationsAsProfessional Conversation[]            @relation("ConversationAsProfessional")
+  sentMessages                Message[]                 @relation("MessageSender")
   availabilityWindows         AvailabilityWindow[]
-  slotsAsProfessional         Slot[]                   @relation("SlotProfessional")
-  slotsAsUser                 Slot[]                   @relation("SlotUser")
-  fixedTimesAsProfessional    FixedTime[]              @relation("FixedTimeProfessional")
-  fixedSessionsAsProfessional FixedSession[]           @relation("FixedSessionProfessional")
-  employments                 Employment[]             @relation("EmploymentEducator")
-  turmasAsProfessional        Turma[]                  @relation("TurmaProfessional")
+  slotsAsProfessional         Slot[]                    @relation("SlotProfessional")
+  slotsAsUser                 Slot[]                    @relation("SlotUser")
+  fixedTimesAsProfessional    FixedTime[]               @relation("FixedTimeProfessional")
+  fixedSessionsAsProfessional FixedSession[]            @relation("FixedSessionProfessional")
+  employments                 Employment[]              @relation("EmploymentEducator")
+  turmasAsProfessional        Turma[]                   @relation("TurmaProfessional")
   viewAsSessionsAsStaff       BackofficeViewAsSession[] @relation("BackofficeViewAsStaff")
   assessmentTemplates         AssessmentTemplate[]
   servicePackages             ServicePackage[]
@@ -253,7 +253,7 @@ model ProductGroup {
 // Carries no billing fields of its own — the owner's Users row keeps the
 // subscription exactly as every other account type does (gym-foundation ADR-007).
 model Academia {
-  id          String               @id @default(uuid(7))
+  id          String                @id @default(uuid(7))
   // The gym's own business name (distinct from the owner's personal
   // Users.name) — defaults to the owner's name at provisioning time, since
   // the generic signup form collects no per-type fields (every account
@@ -261,14 +261,14 @@ model Academia {
   // at checkout time by the frontend, task_07); renameable later via
   // Configurações.
   name        String
-  owner       Users?               @relation("AcademiaOwner")
+  owner       Users?                @relation("AcademiaOwner")
   invitations AcademiaInvitation[]
   employments Employment[]
   students    Client[]
   staff       AcademiaStaffMember[]
   accessPlans AcademiaAccessPlan[]
   turmas      Turma[]
-  createdAt   DateTime             @default(now())
+  createdAt   DateTime              @default(now())
 
   assessmentTemplates AssessmentTemplate[]
 
@@ -316,15 +316,15 @@ model AcademiaAccessPlan {
 // customer". Authenticates through the same shared login screen via a
 // dual lookup (Users first, this table as fallback).
 model AcademiaStaffMember {
-  id           String    @id @default(uuid(7))
-  academia     Academia  @relation(fields: [academiaId], references: [id])
+  id           String                     @id @default(uuid(7))
+  academia     Academia                   @relation(fields: [academiaId], references: [id])
   academiaId   String
   name         String
-  email        String    @unique
+  email        String                     @unique
   passwordHash String?
-  active       Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  active       Boolean                    @default(true)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
   tokens       AcademiaStaffMemberToken[]
 }
 
@@ -398,6 +398,7 @@ model Employment {
   @@index([academiaId, status])
   @@index([educatorId, status])
 }
+
 // A hand-authored partial unique index enforces "at most one ACTIVE
 // employment per (academiaId, educatorId) pair" — see the migration SQL;
 // Prisma's schema DSL cannot express a partial (WHERE-qualified) index.
@@ -853,6 +854,8 @@ enum NotificationCategory {
   SCHEDULE_CHANGE
   ACADEMIA_ACTIVITY
   CHURN_RISK_ALERT
+  DIARY_REMINDER
+  CHECKIN_ABSENCE
 }
 
 // A missing `NotificationPreference` row for a (userId, category) pair is
@@ -860,14 +863,17 @@ enum NotificationCategory {
 // (everything `true` except PRODUCT_NEWS) by the service layer, so a new
 // category never needs a migration to seed existing users (ADR-003).
 model Notification {
-  id        String               @id @default(uuid(7))
-  userId    String
-  user      Users                @relation(fields: [userId], references: [id])
-  category  NotificationCategory
-  message   String
-  link      String?
-  readAt    DateTime?
-  createdAt DateTime             @default(now())
+  id         String               @id @default(uuid(7))
+  userId     String
+  user       Users                @relation(fields: [userId], references: [id])
+  category   NotificationCategory
+  message    String
+  link       String?
+  readAt     DateTime?
+  // Set while a push for this notification waits for the user's quiet hours
+  // to end (push-notifications ADR-006); cleared by the flush claim.
+  pushHeldAt DateTime?
+  createdAt  DateTime             @default(now())
 
   @@index([userId, createdAt])
 }
@@ -882,24 +888,103 @@ model NotificationPreference {
   @@unique([userId, category])
 }
 
+enum PushDeviceStatus {
+  ACTIVE
+  LOGGED_OUT
+}
+
+enum ReengagementKind {
+  DIARY_INACTIVITY
+  CHECKIN_ABSENCE
+}
+
+// One browser push subscription. `endpoint` is the device identity and is
+// globally unique: registering it for another user transfers ownership
+// (push-notifications ADR-009). No relation to Users — `deleteAccount`
+// removes these rows explicitly, like the other plain-column owners.
+model PushDevice {
+  id        String           @id @default(uuid(7))
+  userId    String
+  endpoint  String           @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  status    PushDeviceStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId, status])
+}
+
+// A missing row means the category's documented push default.
+model PushCategoryPreference {
+  id       String               @id @default(uuid(7))
+  userId   String
+  category NotificationCategory
+  enabled  Boolean
+
+  @@unique([userId, category])
+}
+
+// A missing row means the documented defaults: quiet hours 22:00–07:00
+// enabled, diary reminder 19:00, never invited. Times are minutes of the day
+// in Brasília time.
+model PushSettings {
+  userId              String    @id
+  quietHoursEnabled   Boolean   @default(true)
+  quietStartMinute    Int       @default(1320)
+  quietEndMinute      Int       @default(420)
+  diaryReminderMinute Int       @default(1140)
+  invitationShownAt   DateTime?
+}
+
+model ReengagementEpisode {
+  id         String           @id @default(uuid(7))
+  userId     String
+  kind       ReengagementKind
+  scopeKey   String
+  startedAt  DateTime         @default(now())
+  notifiedAt DateTime?
+  endedAt    DateTime?
+
+  @@index([kind, endedAt])
+  @@index([userId])
+}
+
+// One row per account per BRT day: the insert is the daily re-engagement
+// push claim (push-notifications ADR-008).
+model ReengagementPush {
+  userId    String
+  dateKey   DateTime          @db.Date
+  kind      ReengagementKind?
+  createdAt DateTime          @default(now())
+
+  @@id([userId, dateKey])
+}
+
+model ReengagementBaseline {
+  kind      ReengagementKind @id
+  createdAt DateTime         @default(now())
+}
+
 // Public profile content for a NUTRITIONIST/PHYSICAL_EDUCATOR account
 // (ADR-004 of professional-discovery). Created lazily on first edit, not
 // eagerly for every professional account — a professional who never edited
 // their profile still has no row here and still appears in search with
 // null fields (US-001.EC-2, UT-003/UT-006).
 model ProfessionalProfile {
-  id            String   @id @default(uuid(7))
-  userId        String   @unique
-  user          Users    @relation(fields: [userId], references: [id])
-  bio           String?
-  specialty     String?
-  priceFrom     Decimal?
-  attendsOnline Boolean  @default(false)
+  id                 String   @id @default(uuid(7))
+  userId             String   @unique
+  user               Users    @relation(fields: [userId], references: [id])
+  bio                String?
+  specialty          String?
+  priceFrom          Decimal?
+  attendsOnline      Boolean  @default(false)
   // CRN (NUTRITIONIST) or CREF (PHYSICAL_EDUCATOR), label driven by
   // ProductType in the UI — one shared free-text field, no format
   // validation (PRD ADR-009).
   registrationNumber String?
-  updatedAt     DateTime @updatedAt
+  updatedAt          DateTime @updatedAt
 }
 
 enum ConnectionRequestStatus {
@@ -1089,16 +1174,16 @@ enum FormFieldType {
 // professionalId/academiaId (hand-authored CHECK constraint in the
 // migration, same pattern as Client's own ownership split above).
 model AssessmentTemplate {
-  id             String           @id @default(uuid(7))
-  professional   Users?           @relation(fields: [professionalId], references: [id])
+  id             String          @id @default(uuid(7))
+  professional   Users?          @relation(fields: [professionalId], references: [id])
   professionalId String?
-  academia       Academia?        @relation(fields: [academiaId], references: [id])
+  academia       Academia?       @relation(fields: [academiaId], references: [id])
   academiaId     String?
   name           String
   purpose        TemplatePurpose
-  active         Boolean          @default(true)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   fields         TemplateField[]
   records        FormRecord[]
 
@@ -1145,14 +1230,14 @@ model FormRecord {
 }
 
 model FormRecordValue {
-  id         String        @id @default(uuid(7))
-  record     FormRecord    @relation(fields: [recordId], references: [id], onDelete: Cascade)
-  recordId   String
-  position   Int
-  fieldLabel String
-  fieldType  FormFieldType
-  weightRole Boolean       @default(false)
-  heightRole Boolean       @default(false)
+  id             String        @id @default(uuid(7))
+  record         FormRecord    @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  recordId       String
+  position       Int
+  fieldLabel     String
+  fieldType      FormFieldType
+  weightRole     Boolean       @default(false)
+  heightRole     Boolean       @default(false)
   // Exactly one of the four is populated, matching fieldType. MULTIPLE_CHOICE
   // stores the chosen option's literal text in selectedOption (not an
   // index), so a later edit to the template's option list never invalidates

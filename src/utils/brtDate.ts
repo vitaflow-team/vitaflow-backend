@@ -16,3 +16,9 @@ export function brtHour(instant: Date): number {
   const shifted = new Date(instant.getTime() - BRT_OFFSET_MS);
   return shifted.getUTCHours();
 }
+
+/** Minutes since BRT midnight, 0 through 1439. */
+export function brtMinuteOfDay(instant: Date): number {
+  const shifted = new Date(instant.getTime() - BRT_OFFSET_MS);
+  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+}

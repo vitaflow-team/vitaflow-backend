@@ -331,6 +331,11 @@ describe('UserRepository Tests', () => {
       progressPhoto: { deleteMany: jest.Mock };
       notification: { deleteMany: jest.Mock };
       notificationPreference: { deleteMany: jest.Mock };
+      pushDevice: { deleteMany: jest.Mock };
+      pushCategoryPreference: { deleteMany: jest.Mock };
+      pushSettings: { deleteMany: jest.Mock };
+      reengagementEpisode: { deleteMany: jest.Mock };
+      reengagementPush: { deleteMany: jest.Mock };
       professionalProfile: { deleteMany: jest.Mock };
       connectionRequest: { deleteMany: jest.Mock };
       usersToken: { deleteMany: jest.Mock };
@@ -357,6 +362,15 @@ describe('UserRepository Tests', () => {
         notificationPreference: {
           deleteMany: record('notificationPreference.deleteMany'),
         },
+        pushDevice: { deleteMany: record('pushDevice.deleteMany') },
+        pushCategoryPreference: {
+          deleteMany: record('pushCategoryPreference.deleteMany'),
+        },
+        pushSettings: { deleteMany: record('pushSettings.deleteMany') },
+        reengagementEpisode: {
+          deleteMany: record('reengagementEpisode.deleteMany'),
+        },
+        reengagementPush: { deleteMany: record('reengagementPush.deleteMany') },
         professionalProfile: {
           deleteMany: record('professionalProfile.deleteMany'),
         },
@@ -434,6 +448,11 @@ describe('UserRepository Tests', () => {
         'progressPhoto.deleteMany',
         'notification.deleteMany',
         'notificationPreference.deleteMany',
+        'pushDevice.deleteMany',
+        'pushCategoryPreference.deleteMany',
+        'pushSettings.deleteMany',
+        'reengagementEpisode.deleteMany',
+        'reengagementPush.deleteMany',
         'professionalProfile.deleteMany',
         'connectionRequest.deleteMany',
         'usersToken.deleteMany',
@@ -443,6 +462,26 @@ describe('UserRepository Tests', () => {
         'client.updateMany',
         'users.delete',
       ]);
+    });
+
+    // push-notifications UT-195
+    it('UT-195 removes push devices, preferences, settings, episodes, and cap rows in the same transaction', async () => {
+      await repository.deleteAccount('u1');
+
+      for (const table of [
+        tx.pushDevice,
+        tx.pushCategoryPreference,
+        tx.pushSettings,
+        tx.reengagementEpisode,
+        tx.reengagementPush,
+      ]) {
+        expect(table.deleteMany).toHaveBeenCalledWith({
+          where: { userId: 'u1' },
+        });
+      }
+      expect(calls.indexOf('pushDevice.deleteMany')).toBeLessThan(
+        calls.indexOf('users.delete'),
+      );
     });
 
     // UT-002

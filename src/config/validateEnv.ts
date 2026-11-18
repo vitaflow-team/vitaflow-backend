@@ -62,6 +62,33 @@ function assertGoogleCredentialsPaired(env: NodeJS.ProcessEnv): void {
   }
 }
 
+const VAPID_VARIABLES = [
+  'VAPID_PUBLIC_KEY',
+  'VAPID_PRIVATE_KEY',
+  'VAPID_SUBJECT',
+] as const;
+
+// Push is optional: all three VAPID variables or none (push-notifications
+// ADR-005). With none, the app boots and push is simply disabled.
+function assertVapidConfigured(env: NodeJS.ProcessEnv): void {
+  const present = VAPID_VARIABLES.filter((variable) =>
+    isPresent(env[variable]),
+  );
+  if (present.length === 0) return;
+
+  const missing = VAPID_VARIABLES.find((variable) => !isPresent(env[variable]));
+  if (missing) {
+    throw new Error(`Missing required environment variable: ${missing}`);
+  }
+
+  const subject = env.VAPID_SUBJECT!.trim();
+  if (!subject.startsWith('mailto:') && !subject.startsWith('https://')) {
+    throw new Error(
+      'Invalid environment variable: VAPID_SUBJECT must start with mailto: or https://',
+    );
+  }
+}
+
 // Values are never echoed: the message names the variable and the rule only.
 function assertWellFormed(env: NodeJS.ProcessEnv): void {
   if (env.JWT_SECRET!.length < JWT_SECRET_MIN_LENGTH) {
@@ -120,5 +147,6 @@ export function splitList(value: string | undefined): string[] {
 export function validateEnv(env: NodeJS.ProcessEnv = process.env): void {
   assertRequiredVariables(env);
   assertGoogleCredentialsPaired(env);
+  assertVapidConfigured(env);
   assertWellFormed(env);
 }

@@ -14,7 +14,7 @@ const EMAIL_SUBJECT = 'Nova notificação Vita Flow';
 // Every category defaults on except PRODUCT_NEWS (PRD Business Rules,
 // ADR-003): a missing NotificationPreference row is never backfilled —
 // this is the documented default it falls back to.
-const DEFAULT_PREFERENCES: Record<NotificationCategory, boolean> = {
+export const DEFAULT_PREFERENCES: Record<NotificationCategory, boolean> = {
   WORKOUT_REMINDER: true,
   CONSULTATION_REMINDER: true,
   MESSAGES: true,
@@ -25,6 +25,8 @@ const DEFAULT_PREFERENCES: Record<NotificationCategory, boolean> = {
   SCHEDULE_CHANGE: true,
   ACADEMIA_ACTIVITY: true,
   CHURN_RISK_ALERT: true,
+  DIARY_REMINDER: true,
+  CHECKIN_ABSENCE: true,
 };
 
 @Injectable()

@@ -250,6 +250,8 @@ describe('NotificationsService', () => {
         SCHEDULE_CHANGE: true,
         ACADEMIA_ACTIVITY: true,
         CHURN_RISK_ALERT: true,
+        DIARY_REMINDER: true,
+        CHECKIN_ABSENCE: true,
       });
     });
 

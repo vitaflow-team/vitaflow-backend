@@ -89,6 +89,68 @@ describe('validateEnv', () => {
     );
   });
 
+  describe('push-notifications VAPID group', () => {
+    const vapidEnv = {
+      VAPID_PUBLIC_KEY: 'vapid-public-key',
+      VAPID_PRIVATE_KEY: 'vapid-private-key',
+      VAPID_SUBJECT: 'mailto:ops@vitaflow.com',
+    };
+
+    it('UT-089 accepts the configuration with no VAPID variable set', () => {
+      expect(() => validateEnv(requiredEnv)).not.toThrow();
+    });
+
+    it('UT-090 accepts all three VAPID variables with a mailto subject', () => {
+      expect(() => validateEnv({ ...requiredEnv, ...vapidEnv })).not.toThrow();
+      expect(() =>
+        validateEnv({
+          ...requiredEnv,
+          ...vapidEnv,
+          VAPID_SUBJECT: 'https://vitaflow.com',
+        }),
+      ).not.toThrow();
+    });
+
+    it('UT-091 names the missing variable for a partial group, without values', () => {
+      let message = '';
+      try {
+        validateEnv({
+          ...requiredEnv,
+          VAPID_PUBLIC_KEY: vapidEnv.VAPID_PUBLIC_KEY,
+        });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toBe(
+        'Missing required environment variable: VAPID_PRIVATE_KEY',
+      );
+      expect(message).not.toContain(vapidEnv.VAPID_PUBLIC_KEY);
+    });
+
+    it('UT-092 rejects a subject without a mailto or https scheme, without echoing it', () => {
+      const subject = 'ops@vitaflow.com';
+      let message = '';
+      try {
+        validateEnv({ ...requiredEnv, ...vapidEnv, VAPID_SUBJECT: subject });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain('VAPID_SUBJECT');
+      expect(message).not.toContain(subject);
+    });
+
+    it('UT-093 treats blank VAPID values as unset', () => {
+      expect(() =>
+        validateEnv({
+          ...requiredEnv,
+          VAPID_PUBLIC_KEY: '  ',
+          VAPID_PRIVATE_KEY: '',
+          VAPID_SUBJECT: ' ',
+        }),
+      ).not.toThrow();
+    });
+  });
+
   describe('UT-001 fail-fast configuration (platform-hardening)', () => {
     it('rejects an unset or empty JWT_SECRET', () => {
       expect(() =>
