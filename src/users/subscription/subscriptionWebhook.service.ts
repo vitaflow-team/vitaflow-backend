@@ -1,9 +1,21 @@
 import { secretsMatch } from '@/common/guards/apiKey.guard';
 import { CodedError } from '@/common/errors/codedError';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AsaasSyncInput } from './asaasSyncInput';
+import { PlatformPaymentEvents } from './platformPayments/platformPaymentEvents.service';
 import { PLATFORM_WEBHOOK_TOKEN } from './platformGateway.tokens';
 import { SubscriptionService } from './subscription.service';
+
+// The payment notices that keep the local payment table current (ADR-006).
+const PAYMENT_TABLE_EVENTS = new Set([
+  'PAYMENT_CREATED',
+  'PAYMENT_UPDATED',
+  'PAYMENT_CONFIRMED',
+  'PAYMENT_RECEIVED',
+  'PAYMENT_OVERDUE',
+  'PAYMENT_DELETED',
+  'PAYMENT_REFUNDED',
+]);
 
 const GENERIC_UNAUTHORIZED =
   'Não foi possível autenticar a notificação do gateway.';
@@ -47,21 +59,35 @@ export class SubscriptionWebhookService {
   constructor(
     @Inject(PLATFORM_WEBHOOK_TOKEN) private readonly webhookToken: string,
     private readonly subscriptions: SubscriptionService,
+    // Optional so a module that only exercises the subscription sync can wire
+    // this service without the payment table; UsersModule always provides it.
+    @Optional() private readonly paymentTable?: PlatformPaymentEvents,
   ) {}
 
   async handle(tokenHeader: unknown, body: unknown): Promise<void> {
     this.authenticate(tokenHeader);
 
-    const input = this.toSyncInput(body as AsaasWebhookBody);
-    if (!input) {
-      this.logger.log(
-        `platform_webhook_received accepted=true reason=unhandled_event`,
-      );
-      return;
-    }
+    const notice = body as AsaasWebhookBody;
+    const input = this.toSyncInput(notice);
+    if (input) await this.subscriptions.syncFromGateway(input);
+    const recorded = await this.recordPayment(notice);
 
-    await this.subscriptions.syncFromGateway(input);
-    this.logger.log('platform_webhook_received accepted=true');
+    this.logger.log(
+      input || recorded
+        ? 'platform_webhook_received accepted=true'
+        : 'platform_webhook_received accepted=true reason=unhandled_event',
+    );
+  }
+
+  // The payment table is fed after the subscription sync, which is left exactly
+  // as it was; a failure here answers 503 and the idempotent sync simply runs
+  // again when Asaas delivers the notice a second time.
+  private async recordPayment(body: AsaasWebhookBody): Promise<boolean> {
+    const paymentId = body.payment?.id;
+    if (!this.paymentTable || !paymentId) return false;
+    if (!body.event || !PAYMENT_TABLE_EVENTS.has(body.event)) return false;
+    await this.paymentTable.record(paymentId);
+    return true;
   }
 
   private authenticate(tokenHeader: unknown): void {

@@ -15,6 +15,15 @@ export class AcademiaRepository {
     return rows.map((row) => row.id);
   }
 
+  /** The Users.id of the gym owner, who holds its billing account. */
+  async findOwnerId(academiaId: string): Promise<string | null> {
+    const academia = await this.prisma.academia.findUnique({
+      where: { id: academiaId },
+      select: { owner: { select: { id: true } } },
+    });
+    return academia?.owner?.id ?? null;
+  }
+
   /** null = never evaluated by the churn-risk feature (ADR-005's silent-
    * baseline marker). */
   async findChurnRiskBaselineAt(academiaId: string): Promise<Date | null> {

@@ -1,7 +1,8 @@
 import { AuthGuard } from '@/auth/auth.guard';
-import { ProfessionalGuard } from '@/common/guards/professional.guard';
-import { ProfessionalPremiumGuard } from '@/common/guards/professionalPremium.guard';
-import type { AuthenticatedRequest } from '@/common/types/authenticatedRequest';
+import { BillingOwnerGuard } from '@/billing/owner/billingOwner.guard';
+import { BillingPlanGuard } from '@/billing/owner/billingPlan.guard';
+import { CurrentBillingOwner } from '@/billing/owner/currentBillingOwner.decorator';
+import type { BillingOwner } from '@/billing/owner/types/billingOwner';
 import {
   Body,
   Controller,
@@ -10,7 +11,6 @@ import {
   Post,
   Put,
   Query,
-  Request,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -29,7 +29,7 @@ import { InvoicesService } from './invoices.service';
 @ApiTags('Billing')
 @Controller('billing/students/:clientId')
 @ApiBearerAuth('jwt')
-@UseGuards(AuthGuard, ProfessionalGuard)
+@UseGuards(AuthGuard, BillingOwnerGuard)
 export class StudentInvoicesController {
   constructor(private readonly service: InvoicesService) {}
 
@@ -42,42 +42,49 @@ export class StudentInvoicesController {
   async list(
     @Param('clientId') clientId: string,
     @Query('page') page: string | undefined,
-    @Request() req: AuthenticatedRequest,
+    @CurrentBillingOwner() owner: BillingOwner,
   ) {
-    return await this.service.list(req.user.id, clientId, Number(page) || 1);
+    return await this.service.list(owner, clientId, Number(page) || 1);
   }
 
-  @ApiOperation({ summary: 'Generate a new invoice for the student (Premium)' })
+  @ApiOperation({
+    summary: 'Generate a new invoice for the student (professionals only)',
+  })
   @ApiResponse({ status: 201, type: InvoiceResponse })
   @ApiResponse({ status: 400, description: 'Invalid input or missing tax id.' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'manual_invoice_not_allowed (gym owner) or student_billed_by_gym (educator).',
+  })
   @ApiResponse({ status: 404, description: 'Student not found.' })
   @ApiResponse({
     status: 409,
     description: 'An invoice already exists for that month.',
   })
   @Post('invoices')
-  @UseGuards(ProfessionalPremiumGuard)
+  @UseGuards(BillingPlanGuard)
   async create(
     @Param('clientId') clientId: string,
     @Body() dto: CreateInvoiceDTO,
-    @Request() req: AuthenticatedRequest,
+    @CurrentBillingOwner() owner: BillingOwner,
   ) {
-    return await this.service.create(req.user.id, clientId, dto);
+    return await this.service.create(owner, clientId, dto);
   }
 
   @ApiOperation({
-    summary: "Store or replace the student's CPF or CNPJ (Premium)",
+    summary: "Store or replace the student's CPF or CNPJ",
   })
   @ApiResponse({ status: 200, type: TaxIdResponse })
   @ApiResponse({ status: 400, description: 'Invalid CPF or CNPJ.' })
   @ApiResponse({ status: 404, description: 'Student not found.' })
   @Put('tax-id')
-  @UseGuards(ProfessionalPremiumGuard)
+  @UseGuards(BillingPlanGuard)
   async setTaxId(
     @Param('clientId') clientId: string,
     @Body() dto: SetTaxIdDTO,
-    @Request() req: AuthenticatedRequest,
+    @CurrentBillingOwner() owner: BillingOwner,
   ) {
-    return await this.service.setTaxId(req.user.id, clientId, dto.cpfCnpj);
+    return await this.service.setTaxId(owner, clientId, dto.cpfCnpj);
   }
 }

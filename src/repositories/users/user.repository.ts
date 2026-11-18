@@ -15,6 +15,7 @@ import {
   Users,
   UsersToken,
 } from '@prisma/client';
+import type { PlatformSubscriber } from './types/platformSubscriber';
 import type { UserProfileRow } from './types/userProfileRow';
 
 export interface RegisteredByRoleAndPlanCount {
@@ -77,6 +78,27 @@ export class UserRepository {
     return await this.prisma.users.findUnique({
       where: { asaasCustomerId },
     });
+  }
+
+  // The users behind a batch of gateway customers, with their current plan:
+  // the platform payment sync matches a whole page of payments in one query.
+  async findSubscribersByCustomerIds(
+    asaasCustomerIds: string[],
+  ): Promise<PlatformSubscriber[]> {
+    if (asaasCustomerIds.length === 0) return [];
+    const rows = await this.prisma.users.findMany({
+      where: { asaasCustomerId: { in: asaasCustomerIds } },
+      select: {
+        id: true,
+        asaasCustomerId: true,
+        product: { select: { type: true, name: true } },
+      },
+    });
+    return rows.flatMap((row) =>
+      row.asaasCustomerId === null
+        ? []
+        : [{ ...row, asaasCustomerId: row.asaasCustomerId }],
+    );
   }
 
   async updateSubscription(

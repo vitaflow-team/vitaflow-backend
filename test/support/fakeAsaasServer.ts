@@ -23,6 +23,26 @@ interface StoredCharge {
   status: string;
   paymentDate: string | null;
   deleted: boolean;
+  customer: string | null;
+  subscription: string | null;
+}
+
+// A payment of the platform account as the paged listing and the single read
+// serve it.
+export interface FakePaymentInput {
+  customer: string;
+  subscription?: string | null;
+  valueCents: number;
+  dueDate: string;
+  status?: string;
+  paymentDate?: string | null;
+}
+
+// Makes payment listings fail once `afterPages` of them were served.
+interface ListingFailure {
+  afterPages: number;
+  remaining: number;
+  status: number;
 }
 
 interface StoredSubscription {
@@ -38,6 +58,9 @@ export class FakeAsaasServer {
   private server: Server | null = null;
   private counter = 0;
   slowMs = 1_500;
+  private chargeFailures: { remaining: number; status: number } | null = null;
+  private listingFailure: ListingFailure | null = null;
+  private down = false;
 
   get baseUrl(): string {
     const address = this.server?.address() as AddressInfo;
@@ -57,6 +80,73 @@ export class FakeAsaasServer {
     await new Promise<void>(
       (resolve) => this.server?.close(() => resolve()) ?? resolve(),
     );
+  }
+
+  // Registers a charge the way a seeded gym fee needs one: it exists at the
+  // gateway before the app knows about it, so webhooks and the "already paid
+  // at the gateway" checks have something to read. Returns the charge id.
+  addCharge(input: { valueCents: number; dueDate: string }): string {
+    const id = this.nextId('pay');
+    this.charges.set(id, {
+      id,
+      value: input.valueCents / 100,
+      dueDate: input.dueDate,
+      status: 'PENDING',
+      paymentDate: null,
+      deleted: false,
+      customer: null,
+      subscription: null,
+    });
+    return id;
+  }
+
+  // Registers a payment of a customer, as the platform account's payment
+  // listing and the webhook re-read serve it. Returns the payment id.
+  addPayment(input: FakePaymentInput): string {
+    const id = this.nextId('pay');
+    this.charges.set(id, {
+      id,
+      value: input.valueCents / 100,
+      dueDate: input.dueDate,
+      status: input.status ?? 'PENDING',
+      paymentDate: input.paymentDate ?? null,
+      deleted: false,
+      customer: input.customer,
+      subscription: input.subscription ?? null,
+    });
+    return id;
+  }
+
+  // The gateway removing a payment: it leaves the listing and a single read
+  // reports it as deleted.
+  deletePayment(id: string): void {
+    const charge = this.charges.get(id);
+    if (charge) charge.deleted = true;
+  }
+
+  // Every call fails with a 500 while the gateway is "down", whatever the key.
+  setDown(down: boolean): void {
+    this.down = down;
+  }
+
+  // The payment listing answers `status` for the next `count` calls once
+  // `afterPages` listings were served (a failure on a later page).
+  failNextListings(count: number, status = 500, afterPages = 0): void {
+    this.listingFailure = { afterPages, remaining: count, status };
+  }
+
+  clearListingFailures(): void {
+    this.listingFailure = null;
+  }
+
+  // Makes the next `count` charge creations fail with an HTTP status (500
+  // reads as the gateway being down, 400 as a rejected charge).
+  failNextCharges(count: number, status = 500): void {
+    this.chargeFailures = { remaining: count, status };
+  }
+
+  clearChargeFailures(): void {
+    this.chargeFailures = null;
   }
 
   setChargeStatus(
@@ -86,6 +176,7 @@ export class FakeAsaasServer {
       body,
     });
 
+    if (this.down) return this.send(response, 500, { errors: [] });
     if (key === FAKE_KEYS.slow)
       await new Promise((resolve) => setTimeout(resolve, this.slowMs));
     if (key === FAKE_KEYS.revoked)
@@ -113,6 +204,8 @@ export class FakeAsaasServer {
       return this.send(response, 200, { id: this.nextId('cus') });
     if (method === 'POST' && path === '/payments')
       return this.createCharge(body ?? {}, response);
+    if (method === 'GET' && path.startsWith('/payments?'))
+      return this.listPayments(path, response);
     if (path.startsWith('/payments/'))
       return this.chargeRoute(
         method,
@@ -181,6 +274,12 @@ export class FakeAsaasServer {
     body: Record<string, unknown>,
     response: ServerResponse,
   ): void {
+    if (this.chargeFailures && this.chargeFailures.remaining > 0) {
+      this.chargeFailures.remaining -= 1;
+      return this.send(response, this.chargeFailures.status, {
+        errors: [{ description: 'Falha injetada na cobrança.' }],
+      });
+    }
     const value = Number(body.value);
     if (value < 5) {
       return this.send(response, 400, {
@@ -195,11 +294,54 @@ export class FakeAsaasServer {
       status: 'PENDING',
       paymentDate: null,
       deleted: false,
+      customer: typeof body.customer === 'string' ? body.customer : null,
+      subscription: null,
     });
     return this.send(response, 200, {
       id,
       invoiceUrl: `https://sandbox.asaas.test/i/${id}`,
     });
+  }
+
+  // The paged payment listing (limit 100, offset), filtered by due date like
+  // Asaas does and without removed payments. Shaped like the real list answer.
+  private listPayments(path: string, response: ServerResponse): void {
+    if (this.listingShouldFail()) {
+      return this.send(response, this.listingFailure!.status, {
+        errors: [{ description: 'Falha injetada na listagem.' }],
+      });
+    }
+    const query = new URL(path, 'http://fake.local').searchParams;
+    const from = query.get('dueDate[ge]');
+    const to = query.get('dueDate[le]');
+    const limit = Number(query.get('limit') ?? 10);
+    const offset = Number(query.get('offset') ?? 0);
+    const matching = [...this.charges.values()].filter(
+      (charge) =>
+        !charge.deleted &&
+        (from === null || charge.dueDate >= from) &&
+        (to === null || charge.dueDate <= to),
+    );
+    return this.send(response, 200, {
+      object: 'list',
+      hasMore: offset + limit < matching.length,
+      totalCount: matching.length,
+      limit,
+      offset,
+      data: matching.slice(offset, offset + limit),
+    });
+  }
+
+  private listingShouldFail(): boolean {
+    const failure = this.listingFailure;
+    if (!failure) return false;
+    if (failure.afterPages > 0) {
+      failure.afterPages -= 1;
+      return false;
+    }
+    if (failure.remaining <= 0) return false;
+    failure.remaining -= 1;
+    return true;
   }
 
   private chargeRoute(

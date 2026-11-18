@@ -38,6 +38,14 @@ export class AcademiaAccessPlanRepository {
     });
   }
 
+  // Catalog plans by id, for pricing a batch of recurring fees at once.
+  async findByIds(ids: string[]): Promise<AcademiaAccessPlan[]> {
+    if (ids.length === 0) return [];
+    return await this.prisma.academiaAccessPlan.findMany({
+      where: { id: { in: ids } },
+    });
+  }
+
   async update(
     id: string,
     academiaId: string,

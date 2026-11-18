@@ -3,7 +3,9 @@ import { BillingModule } from '@/billing/billing.module';
 import { PrismaService } from '@/database/prisma.service';
 import { MailModule } from '@/mail/mail.module';
 import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
+import { BackofficeAccessLogRepository } from '@/repositories/backoffice/backofficeAccessLog.repository';
 import { BackofficeViewAsSessionRepository } from '@/repositories/backoffice/backofficeViewAsSession.repository';
+import { PlatformFinancialRepository } from '@/repositories/billing/platformFinancial.repository';
 import { ProductsRepository } from '@/repositories/product/product.repository';
 import { UserRepository } from '@/repositories/users/user.repository';
 import { UserTokenRepository } from '@/repositories/users/userToken.repository';
@@ -17,6 +19,8 @@ import { AuditLogController } from './auditLog/auditLog.controller';
 import { AuditLogService } from './auditLog/auditLog.service';
 import { BackofficeDirectoryController } from './directory/backofficeDirectory.controller';
 import { BackofficeDirectoryService } from './directory/backofficeDirectory.service';
+import { PlatformFinancialController } from './financialHealth/platformFinancial.controller';
+import { PlatformFinancialService } from './financialHealth/platformFinancial.service';
 import { MetricsController } from './metrics/metrics.controller';
 import { MetricsService } from './metrics/metrics.service';
 import { PlansController } from './plans/plans.controller';
@@ -37,6 +41,7 @@ import { ViewAsSessionService } from './viewAs/viewAsSession.service';
     AuditLogController,
     MetricsController,
     PlansController,
+    PlatformFinancialController,
   ],
   providers: [
     PrismaService,
@@ -55,6 +60,9 @@ import { ViewAsSessionService } from './viewAs/viewAsSession.service';
     MetricsService,
     ProductsRepository,
     PlansService,
+    BackofficeAccessLogRepository,
+    PlatformFinancialRepository,
+    PlatformFinancialService,
     Clock,
     // Same PLATFORM_ASAAS_API_KEY token UsersModule's SubscriptionService
     // already injects (platformGateway.tokens.ts) — re-provided here with

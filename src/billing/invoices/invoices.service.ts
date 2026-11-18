@@ -10,7 +10,12 @@ import {
   applyChargeToInvoice,
   financialSituation,
 } from '@/billing/shared/invoiceTransitions';
-import { isProfessionalPremium } from '@/billing/shared/premiumAccess';
+import { canBill, planRequirement } from '@/billing/shared/premiumAccess';
+import {
+  canViewClientBilling,
+  ownsClient,
+} from '@/billing/owner/billingOwnerRules';
+import type { BillingOwner } from '@/billing/owner/types/billingOwner';
 import { decryptSecret, encryptSecret } from '@/billing/shared/secretCipher';
 import { parseReaisToCents } from '@/billing/shared/money';
 import {
@@ -47,6 +52,8 @@ import { InvoiceResponseDTO } from './dto/invoiceResponse.Dto';
 import { MarkPaidDTO } from './dto/markPaid.Dto';
 import { TaxIdResponseDTO } from './dto/taxIdResponse.Dto';
 import { UpdateInvoiceDTO } from './dto/updateInvoice.Dto';
+import type { RecurringFeeInput } from './types/recurringFeeInput';
+import type { UpcomingFeesInput } from './types/upcomingFeesInput';
 
 const OPEN_STATUSES: InvoiceStatus[] = [
   InvoiceStatus.PENDING,
@@ -64,6 +71,11 @@ const INVOICE_EXISTS = 'Já existe uma cobrança para esse mês.';
 const NOT_OPEN = 'Esta cobrança não pode mais ser alterada.';
 const ALREADY_PAID = 'Esta cobrança já foi paga.';
 const TAX_ID_REQUIRED = 'Informe o CPF ou CNPJ do aluno.';
+const STUDENT_BILLED_BY_GYM = 'Este aluno é cobrado pela academia.';
+const MANUAL_INVOICE_NOT_ALLOWED =
+  'As mensalidades da academia são geradas automaticamente.';
+const RECONNECT_NEEDED = 'Conecte sua conta Asaas novamente para continuar.';
+const NOT_CONNECTED = 'Conecte sua conta Asaas para continuar.';
 
 @Injectable()
 export class InvoicesService {
@@ -83,21 +95,25 @@ export class InvoicesService {
   ) {}
 
   async list(
-    professionalId: string,
+    owner: BillingOwner,
     clientId: string,
     page: number,
   ): Promise<InvoiceListResponseDTO> {
-    await this.ownedClient(clientId, professionalId);
-    const user = await this.users.findByIdWithProduct(professionalId);
-    const account = await this.accounts.findActiveByUser(professionalId);
+    await this.viewableClient(clientId, owner);
+    const user = await this.users.findByIdWithProduct(owner.ownerId);
+    const account = await this.accounts.findActiveByUser(owner.ownerId);
     const taxId = await this.taxIds.find(clientId);
-    const all = await this.invoices.findOpenAndOverdueByClient(clientId);
-
-    const { items, total } = await this.invoices.list(
+    const all = await this.invoices.findOpenAndOverdueByClient(
       clientId,
-      page,
-      BILLING_LIMITS.invoicePageSize,
+      owner.ownerId,
     );
+
+    const { items, total } = await this.invoices.list({
+      clientId,
+      ownerId: owner.ownerId,
+      page,
+      pageSize: BILLING_LIMITS.invoicePageSize,
+    });
     return {
       items: items.map((i) => this.toResponse(i)),
       total,
@@ -107,16 +123,17 @@ export class InvoicesService {
       taxId: this.toTaxIdResponse(taxId?.ciphertext ?? null),
       gateway: {
         connected: account !== null && account.apiKeyEncrypted !== null,
-        premium: isProfessionalPremium(user),
+        premium: canBill(user),
       },
     };
   }
 
   async create(
-    professionalId: string,
+    owner: BillingOwner,
     clientId: string,
     dto: CreateInvoiceDTO,
   ): Promise<InvoiceResponseDTO> {
+    this.refuseManualInvoiceForGym(owner);
     const todayKey = brasiliaDateKey(new Date());
     const amountCents = parseReaisToCents(dto.amount);
     const dueDate = validateDueDate(dto.dueDate, todayKey);
@@ -126,8 +143,8 @@ export class InvoicesService {
       todayKey,
     );
 
-    const client = await this.ownedClient(clientId, professionalId);
-    const account = await this.requirePremiumAccount(professionalId);
+    const client = await this.billableClient(clientId, owner);
+    const account = await this.requireBillableAccount(owner.ownerId);
     const taxDigits = await this.resolveTaxId(clientId, dto.cpfCnpj);
 
     const reservation = await this.reserveInvoice({
@@ -151,11 +168,12 @@ export class InvoicesService {
   }
 
   async update(
-    professionalId: string,
+    owner: BillingOwner,
     invoiceId: string,
     dto: UpdateInvoiceDTO,
   ): Promise<InvoiceResponseDTO> {
-    const invoice = await this.ownedInvoice(invoiceId, professionalId);
+    this.refuseManualInvoiceForGym(owner);
+    const invoice = await this.ownedInvoice(invoiceId, owner.ownerId);
     this.requireOpen(invoice);
     const account = await this.requireAccount(invoice.billingAccountId);
     await this.rejectIfGatewayShowsPaid(invoice, account);
@@ -194,10 +212,10 @@ export class InvoicesService {
   }
 
   async cancel(
-    professionalId: string,
+    owner: BillingOwner,
     invoiceId: string,
   ): Promise<InvoiceResponseDTO> {
-    const invoice = await this.ownedInvoice(invoiceId, professionalId);
+    const invoice = await this.ownedInvoice(invoiceId, owner.ownerId);
     if (invoice.status === InvoiceStatus.CANCELED) {
       return this.toResponse(invoice);
     }
@@ -216,21 +234,25 @@ export class InvoicesService {
   }
 
   async markPaid(
-    professionalId: string,
+    owner: BillingOwner,
     invoiceId: string,
     dto: MarkPaidDTO,
   ): Promise<InvoiceResponseDTO> {
-    const invoice = await this.ownedInvoice(invoiceId, professionalId);
+    const invoice = await this.ownedInvoice(invoiceId, owner.ownerId);
     if (invoice.status === InvoiceStatus.PAID_MANUALLY) {
       return this.toResponse(invoice);
     }
     this.requireOpen(invoice);
     const account = await this.requireAccount(invoice.billingAccountId);
-    await this.rejectIfGatewayShowsPaid(invoice, account);
+    await this.whenGatewayAccepts(account, () =>
+      this.rejectIfGatewayShowsPaid(invoice, account),
+    );
     const paidAt = this.validateMarkPaidInput(dto);
 
-    await this.withGateway(account, (apiKey) =>
-      this.gateway.cancelCharge(apiKey, invoice.externalId!),
+    await this.whenGatewayAccepts(account, () =>
+      this.withGateway(account, (apiKey) =>
+        this.gateway.cancelCharge(apiKey, invoice.externalId!),
+      ),
     );
     const updated = await this.invoices.transition(invoiceId, OPEN_STATUSES, {
       status: InvoiceStatus.PAID_MANUALLY,
@@ -242,9 +264,11 @@ export class InvoicesService {
     return this.toResponse(updated);
   }
 
-  async resend(professionalId: string, invoiceId: string): Promise<void> {
-    const invoice = await this.ownedInvoice(invoiceId, professionalId);
+  async resend(owner: BillingOwner, invoiceId: string): Promise<void> {
+    const invoice = await this.ownedInvoice(invoiceId, owner.ownerId);
     this.requireOpen(invoice);
+    const account = await this.requireAccount(invoice.billingAccountId);
+    if (account.keyInvalidAt) throw this.reconnectNeededError();
 
     const now = new Date();
     const windowStart = new Date(
@@ -266,18 +290,17 @@ export class InvoicesService {
     }
 
     const client = await this.clients.getClientById(invoice.clientId);
-    const account = await this.accounts.findById(invoice.billingAccountId);
-    if (client && account) {
+    if (client) {
       await this.sendLinkEmail(invoice, client, account.accountName);
     }
   }
 
   async setTaxId(
-    professionalId: string,
+    owner: BillingOwner,
     clientId: string,
     cpfCnpj: unknown,
   ): Promise<TaxIdResponseDTO> {
-    await this.ownedClient(clientId, professionalId);
+    await this.ownedClient(clientId, owner);
     const tax = validateTaxId(cpfCnpj);
     await this.taxIds.upsert(
       clientId,
@@ -324,23 +347,142 @@ export class InvoicesService {
     return warnings;
   }
 
+  // --- Gym recurring fees (ADR-007) ---
+
+  // The account a gym owner issues fees with: a plan that can bill, a
+  // connected account whose key is still accepted.
+  async requireIssuingAccount(ownerId: string): Promise<BillingAccount> {
+    const user = await this.users.findByIdWithProduct(ownerId);
+    if (!canBill(user)) {
+      const { message, code } = planRequirement(user);
+      throw new CodedError(message, 403, code);
+    }
+    const account = await this.accounts.findActiveByUser(ownerId);
+    if (!account || !account.apiKeyEncrypted) {
+      throw new CodedError(NOT_CONNECTED, 409, 'billing_not_connected');
+    }
+    if (account.keyInvalidAt) throw this.reconnectNeededError();
+    return account;
+  }
+
+  // Reserve, charge, confirm and notify one fee of a recurring billing. A
+  // second fee for the same student and competence is refused by the unique
+  // index (`invoice_exists_for_month`), never duplicated.
+  async issueRecurringFee(input: RecurringFeeInput): Promise<Invoice> {
+    const { account, client, competence } = input;
+    const taxDigits = await this.resolveTaxId(client.id, undefined);
+    const reservation = await this.reserveInvoice({
+      clientId: client.id,
+      billingAccountId: account.id,
+      competenceYear: competence.year,
+      competenceMonth: competence.month,
+      amountCents: input.amountCents,
+      dueDate: input.dueDate,
+      recurringBillingId: input.recurringBillingId,
+    });
+    const confirmed = await this.chargeReservation(reservation, account, {
+      client,
+      taxDigits,
+    });
+    await this.notifyInvoiceCreated(confirmed, client, account.accountName);
+    return confirmed;
+  }
+
+  // Unlink: cancels the owner's open fees due today or later, at the gateway
+  // and locally. A fee the gateway refuses to cancel stays open and is
+  // counted, never thrown: the unlink itself must complete. Returns how many
+  // fees could not be canceled.
+  async cancelUpcomingFees(input: UpcomingFeesInput): Promise<number> {
+    const upcoming = await this.invoices.findOpenDueFrom({
+      clientId: input.clientId,
+      ownerId: input.ownerId,
+      fromKey: input.todayKey,
+    });
+    let failed = 0;
+    for (const invoice of upcoming) {
+      try {
+        await this.cancelUpcomingFee(invoice);
+      } catch {
+        failed += 1;
+        this.logger.error(`upcoming_fee_cancel_failed invoiceId=${invoice.id}`);
+      }
+    }
+    return failed;
+  }
+
+  private async cancelUpcomingFee(invoice: Invoice): Promise<void> {
+    if (!invoice.externalId) {
+      await this.invoices.deleteReservation(invoice.id);
+      return;
+    }
+    const account = await this.requireAccount(invoice.billingAccountId);
+    await this.whenGatewayAccepts(account, () =>
+      this.withGateway(account, (apiKey) =>
+        this.gateway.cancelCharge(apiKey, invoice.externalId!),
+      ),
+    );
+    await this.invoices.transition(invoice.id, OPEN_STATUSES, {
+      status: InvoiceStatus.CANCELED,
+    });
+  }
+
   // --- Ownership and account lookups ---
 
+  // The student of this billing owner (ADR-008): independent for a
+  // professional, of its own academia for a gym owner.
   private async ownedClient(
     clientId: string,
-    professionalId: string,
+    owner: BillingOwner,
   ): Promise<Client> {
-    const client = await this.clients.findOwnedById(clientId, professionalId);
-    if (!client)
+    const client = await this.clients.getClientById(clientId);
+    if (!client || !ownsClient(owner, client)) {
       throw new CodedError(STUDENT_NOT_FOUND, 404, 'student_not_found');
+    }
     return client;
+  }
+
+  // Like ownedClient, but a professional may still open the billing tab of a
+  // student who has since joined a gym: the invoices issued before stay theirs.
+  private async viewableClient(
+    clientId: string,
+    owner: BillingOwner,
+  ): Promise<Client> {
+    const client = await this.clients.getClientById(clientId);
+    if (!client || !canViewClientBilling(owner, client)) {
+      throw new CodedError(STUDENT_NOT_FOUND, 404, 'student_not_found');
+    }
+    return client;
+  }
+
+  // Creating an invoice: the educator's own student, but never one the gym
+  // bills (PRD rule 27), which is a refusal with its own code rather than a 404.
+  private async billableClient(
+    clientId: string,
+    owner: BillingOwner,
+  ): Promise<Client> {
+    const client = await this.viewableClient(clientId, owner);
+    if (client.academiaId !== null) {
+      throw new CodedError(STUDENT_BILLED_BY_GYM, 403, 'student_billed_by_gym');
+    }
+    return client;
+  }
+
+  // Gym fees come only from the recurrence (ADR-008).
+  private refuseManualInvoiceForGym(owner: BillingOwner): void {
+    if (owner.kind === 'GYM') {
+      throw new CodedError(
+        MANUAL_INVOICE_NOT_ALLOWED,
+        403,
+        'manual_invoice_not_allowed',
+      );
+    }
   }
 
   private async ownedInvoice(
     invoiceId: string,
-    professionalId: string,
+    ownerId: string,
   ): Promise<Invoice> {
-    const invoice = await this.invoices.findOwned(invoiceId, professionalId);
+    const invoice = await this.invoices.findOwned(invoiceId, ownerId);
     if (!invoice)
       throw new CodedError(INVOICE_NOT_FOUND, 404, 'invoice_not_found');
     return invoice;
@@ -357,21 +499,18 @@ export class InvoicesService {
     }
   }
 
-  // create() needs the Premium check itself: a unit test can call the
-  // service directly, bypassing ProfessionalPremiumGuard entirely, so the
-  // guard alone is not sufficient defense (UT-055).
-  private async requirePremiumAccount(
-    professionalId: string,
+  // create() needs the plan check itself: a unit test can call the service
+  // directly, bypassing BillingPlanGuard entirely, so the guard alone is not
+  // sufficient defense (UT-055).
+  private async requireBillableAccount(
+    ownerId: string,
   ): Promise<BillingAccount> {
-    const user = await this.users.findByIdWithProduct(professionalId);
-    if (!isProfessionalPremium(user)) {
-      throw new CodedError(
-        'Este recurso requer o plano Premium.',
-        403,
-        'premium_required',
-      );
+    const user = await this.users.findByIdWithProduct(ownerId);
+    if (!canBill(user)) {
+      const { message, code } = planRequirement(user);
+      throw new CodedError(message, 403, code);
     }
-    const account = await this.accounts.findActiveByUser(professionalId);
+    const account = await this.accounts.findActiveByUser(ownerId);
     if (!account) throw this.notConnectedError();
     return account;
   }
@@ -386,12 +525,12 @@ export class InvoicesService {
     return account;
   }
 
+  private reconnectNeededError(): CodedError {
+    return new CodedError(RECONNECT_NEEDED, 409, 'billing_reconnect_needed');
+  }
+
   private notConnectedError(): CodedError {
-    return new CodedError(
-      'Conecte sua conta Asaas para continuar.',
-      409,
-      'gateway_not_connected',
-    );
+    return new CodedError(NOT_CONNECTED, 409, 'gateway_not_connected');
   }
 
   // --- Gateway calls ---
@@ -404,6 +543,25 @@ export class InvoicesService {
     operation: (apiKey: string) => Promise<T>,
   ): Promise<T> {
     return await this.accountService.withAccountKey(account, operation);
+  }
+
+  // Marking a payment received outside the gateway must work even when the
+  // account's key is no longer accepted: the gateway steps (is it already
+  // paid there, cancel the charge) are skipped for an account that cannot
+  // authenticate, and an authentication failure during them is not fatal.
+  // Any other gateway failure still stops the manual path.
+  private async whenGatewayAccepts(
+    account: BillingAccount,
+    operation: () => Promise<unknown>,
+  ): Promise<void> {
+    if (account.keyInvalidAt || !account.apiKeyEncrypted) return;
+    try {
+      await operation();
+    } catch (error) {
+      const refusedKey =
+        error instanceof CodedError && error.code === 'gateway_auth_failed';
+      if (!refusedKey) throw error;
+    }
   }
 
   private async rejectIfGatewayShowsPaid(
@@ -430,7 +588,7 @@ export class InvoicesService {
   // Returns the resolved digits so the caller (create) can thread them
   // straight into ensureBillingCustomer without a second, redundant
   // decrypt-from-storage round trip.
-  private async resolveTaxId(
+  async resolveTaxId(
     clientId: string,
     cpfCnpj: string | undefined,
   ): Promise<string> {
@@ -628,10 +786,7 @@ export class InvoicesService {
     );
   }
 
-  private toResponse(
-    invoice: Invoice,
-    emailSent?: boolean,
-  ): InvoiceResponseDTO {
+  toResponse(invoice: Invoice, emailSent?: boolean): InvoiceResponseDTO {
     const canResendAt = invoice.linkSentAt
       ? new Date(
           invoice.linkSentAt.getTime() +

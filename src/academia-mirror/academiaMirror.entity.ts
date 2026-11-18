@@ -33,6 +33,18 @@ export class ArchivedAccessPlanEntity {
   @ApiProperty({ example: '2026-10-15T00:00:00.000Z' }) endedAt: string;
 }
 
+// One monthly fee the gym billed this student. Overdue is derived from the due
+// date, so a fee the nightly job has not flipped yet already reads OVERDUE; a
+// fee paid by hand reads PAID like any other, and a paid fee offers no link.
+export class GymFeeEntity {
+  @ApiProperty() id: string;
+  @ApiProperty({ example: 14990 }) amountCents: number;
+  @ApiProperty({ example: '2026-12-10' }) dueDate: string;
+  @ApiProperty({ enum: ['PENDING', 'OVERDUE', 'PAID'] })
+  status: 'PENDING' | 'OVERDUE' | 'PAID';
+  @ApiProperty({ nullable: true, type: String }) paymentUrl: string | null;
+}
+
 // One gym membership, as the student sees it (US-001/US-002) — every
 // membership the caller holds appears as one of these; "no memberships at
 // all" is the empty array, not a sentinel (unlike NoProfessionalEntity on
@@ -47,4 +59,7 @@ export class AcademiaMembershipEntity {
 
   @ApiProperty({ type: [ArchivedAccessPlanEntity] })
   history: ArchivedAccessPlanEntity[];
+
+  @ApiProperty({ type: [GymFeeEntity] })
+  fees: GymFeeEntity[];
 }

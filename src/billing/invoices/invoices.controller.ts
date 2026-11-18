@@ -1,7 +1,8 @@
 import { AuthGuard } from '@/auth/auth.guard';
-import { ProfessionalGuard } from '@/common/guards/professional.guard';
-import { ProfessionalPremiumGuard } from '@/common/guards/professionalPremium.guard';
-import type { AuthenticatedRequest } from '@/common/types/authenticatedRequest';
+import { BillingOwnerGuard } from '@/billing/owner/billingOwner.guard';
+import { BillingPlanGuard } from '@/billing/owner/billingPlan.guard';
+import { CurrentBillingOwner } from '@/billing/owner/currentBillingOwner.decorator';
+import type { BillingOwner } from '@/billing/owner/types/billingOwner';
 import {
   Body,
   Controller,
@@ -9,7 +10,6 @@ import {
   Param,
   Patch,
   Post,
-  Request,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -26,7 +26,7 @@ import { InvoicesService } from './invoices.service';
 @ApiTags('Billing')
 @Controller('billing/invoices')
 @ApiBearerAuth('jwt')
-@UseGuards(AuthGuard, ProfessionalGuard, ProfessionalPremiumGuard)
+@UseGuards(AuthGuard, BillingOwnerGuard, BillingPlanGuard)
 export class InvoicesController {
   constructor(private readonly service: InvoicesService) {}
 
@@ -41,9 +41,9 @@ export class InvoicesController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateInvoiceDTO,
-    @Request() req: AuthenticatedRequest,
+    @CurrentBillingOwner() owner: BillingOwner,
   ) {
-    return await this.service.update(req.user.id, id, dto);
+    return await this.service.update(owner, id, dto);
   }
 
   @ApiOperation({ summary: 'Cancel an open invoice' })
@@ -51,8 +51,11 @@ export class InvoicesController {
   @ApiResponse({ status: 404, description: 'Invoice not found.' })
   @Post(':id/cancel')
   @HttpCode(200)
-  async cancel(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return await this.service.cancel(req.user.id, id);
+  async cancel(
+    @Param('id') id: string,
+    @CurrentBillingOwner() owner: BillingOwner,
+  ) {
+    return await this.service.cancel(owner, id);
   }
 
   @ApiOperation({ summary: 'Record a payment received outside the gateway' })
@@ -63,9 +66,9 @@ export class InvoicesController {
   async markPaid(
     @Param('id') id: string,
     @Body() dto: MarkPaidDTO,
-    @Request() req: AuthenticatedRequest,
+    @CurrentBillingOwner() owner: BillingOwner,
   ) {
-    return await this.service.markPaid(req.user.id, id, dto);
+    return await this.service.markPaid(owner, id, dto);
   }
 
   @ApiOperation({ summary: 'Resend the payment link e-mail' })
@@ -78,8 +81,8 @@ export class InvoicesController {
   @HttpCode(204)
   async resend(
     @Param('id') id: string,
-    @Request() req: AuthenticatedRequest,
+    @CurrentBillingOwner() owner: BillingOwner,
   ): Promise<void> {
-    await this.service.resend(req.user.id, id);
+    await this.service.resend(owner, id);
   }
 }

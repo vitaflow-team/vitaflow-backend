@@ -324,3 +324,141 @@ describe('BillingAccountService.disconnect (UT-039)', () => {
     expect(accounts.disconnect).toHaveBeenCalled();
   });
 });
+
+// financial-health task 1: the same account flow serves a gym owner, keyed by
+// the owner's Users.id and gated by a paid subscription instead of Premium.
+describe('BillingAccountService.connect for a gym owner (financial-health UT-032 to UT-038)', () => {
+  const GYM_ID = 'gym-owner-1';
+  const TWENTY = 'gym-asaas-key-000001';
+
+  function gymOwner(subscriptionStatus: string | null = 'active') {
+    return {
+      id: GYM_ID,
+      academiaId: 'academia-1',
+      subscriptionStatus,
+      product: {
+        id: 'p-gym',
+        type: ProductType.ACADEMIA,
+        tier: ProductTier.STANDARD,
+        price: 99,
+      },
+    };
+  }
+
+  it('UT-032 connects with an active subscription: key verified, webhook registered, one ACTIVE account for the owner', async () => {
+    const { service, accounts, gateway } = build({ user: gymOwner() });
+    const result = await service.connect(GYM_ID, TWENTY);
+
+    expect(result).toMatchObject({ connected: true, status: 'CONNECTED' });
+    expect(gateway.verifyAccount).toHaveBeenCalledWith(TWENTY);
+    expect(gateway.registerWebhook).toHaveBeenCalledTimes(1);
+    expect(accounts.replaceActiveWith).toHaveBeenCalledTimes(1);
+    expect(accounts.replaceActiveWith).toHaveBeenCalledWith(
+      GYM_ID,
+      expect.objectContaining({ apiKeyEncrypted: expect.any(String) }),
+    );
+  });
+
+  it.each(['trialing', 'past_due'])(
+    'UT-032 also connects while the subscription is %s',
+    async (status) => {
+      const { service } = build({ user: gymOwner(status) });
+      await expect(service.connect(GYM_ID, TWENTY)).resolves.toMatchObject({
+        connected: true,
+      });
+    },
+  );
+
+  it.each(['', 'x'.repeat(9), 'x'.repeat(201)])(
+    'UT-033 refuses a key of %p characters with the field error, calling no gateway',
+    async (key) => {
+      const { service, gateway } = build({ user: gymOwner() });
+      const error = await errorOf(service.connect(GYM_ID, key));
+      expect(error.getStatus()).toBe(400);
+      expect(error.code).toBe('gateway_auth_failed');
+      expect(gateway.verifyAccount).not.toHaveBeenCalled();
+    },
+  );
+
+  it('UT-034 answers 409 account_key_in_use when another user holds the key fingerprint', async () => {
+    const { service, gateway } = build({
+      user: gymOwner(),
+      accounts: {
+        findLiveHolderOfFingerprint: jest
+          .fn()
+          .mockResolvedValue(accountRow({ userId: 'someone-else' })),
+      },
+    });
+    const error = await errorOf(service.connect(GYM_ID, TWENTY));
+    expect(error.getStatus()).toBe(409);
+    expect(error.code).toBe('account_key_in_use');
+    expect(gateway.verifyAccount).not.toHaveBeenCalled();
+  });
+
+  it.each(['canceled', null])(
+    'UT-035 refuses a gym owner with subscription %p: 403 subscription_required, no gateway call',
+    async (status) => {
+      const { service, gateway } = build({ user: gymOwner(status) });
+      const error = await errorOf(service.connect(GYM_ID, TWENTY));
+      expect(error.getStatus()).toBe(403);
+      expect(error.code).toBe('subscription_required');
+      expect(gateway.verifyAccount).not.toHaveBeenCalled();
+    },
+  );
+
+  it('UT-036 stores no account and registers no webhook when the key fails authentication', async () => {
+    const { service, accounts, gateway } = build({
+      user: gymOwner(),
+      gateway: {
+        verifyAccount: jest
+          .fn()
+          .mockRejectedValue(new GatewayError('auth', 'refused')),
+      },
+    });
+    const error = await errorOf(service.connect(GYM_ID, TWENTY));
+    expect(error.getStatus()).toBe(400);
+    expect(error.code).toBe('gateway_auth_failed');
+    expect(accounts.replaceActiveWith).not.toHaveBeenCalled();
+    expect(gateway.registerWebhook).not.toHaveBeenCalled();
+  });
+
+  it('UT-037 answers 503 gateway_unavailable and leaves the previous account untouched', async () => {
+    const { service, accounts } = build({
+      user: gymOwner(),
+      gateway: {
+        verifyAccount: jest
+          .fn()
+          .mockRejectedValue(new GatewayError('unavailable', 'down')),
+      },
+    });
+    const error = await errorOf(service.connect(GYM_ID, TWENTY));
+    expect(error.getStatus()).toBe(503);
+    expect(error.code).toBe('gateway_unavailable');
+    expect(accounts.replaceActiveWith).not.toHaveBeenCalled();
+    expect(accounts.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('UT-038 connecting twice with the same key goes through the replace-active path both times, so one account stays ACTIVE', async () => {
+    const { service, accounts } = build({ user: gymOwner() });
+    await service.connect(GYM_ID, TWENTY);
+    await service.connect(GYM_ID, TWENTY);
+
+    expect(accounts.replaceActiveWith).toHaveBeenCalledTimes(2);
+    expect(accounts.replaceActiveWith).toHaveBeenNthCalledWith(
+      1,
+      GYM_ID,
+      expect.objectContaining({ apiKeyFingerprint: expect.any(String) }),
+    );
+    // The repository marks the earlier ACTIVE row REPLACED in the same
+    // transaction; the real effect is asserted in IT-018.
+  });
+
+  it('reports the gym owner plan as able to bill on GET', async () => {
+    const { service } = build({ user: gymOwner() });
+    expect(await service.get(GYM_ID)).toMatchObject({ premium: true });
+    const canceled = build({ user: gymOwner('canceled') });
+    expect(await canceled.service.get(GYM_ID)).toMatchObject({
+      premium: false,
+    });
+  });
+});

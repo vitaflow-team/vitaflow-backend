@@ -116,7 +116,8 @@ model Users {
   assessmentTemplates         AssessmentTemplate[]
   servicePackages             ServicePackage[]
 
-  billingAccounts BillingAccount[]
+  billingAccounts  BillingAccount[]
+  platformPayments PlatformPayment[]
 
   // One email is one account (unified-login-account ADR-001): email is
   // unique case-insensitively through the hand-authored functional index
@@ -193,10 +194,11 @@ model Client {
   formRecords       FormRecord[]
   mealPlans         MealPlan[]
 
-  invoices         Invoice[]
-  billingCustomers BillingCustomer[]
-  taxId            StudentTaxId?
-  nutritionProfile ClientNutritionProfile?
+  invoices          Invoice[]
+  billingCustomers  BillingCustomer[]
+  taxId             StudentTaxId?
+  nutritionProfile  ClientNutritionProfile?
+  recurringBillings GymRecurringBilling[]
 
   @@index([email])
   @@index([academiaId])
@@ -752,9 +754,92 @@ model Invoice {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
+  // Set only on gym fees issued by a recurring billing (ADR-007); null for
+  // every professional invoice. Removing the recurring row drops the link,
+  // never the invoice.
+  recurringBillingId String?
+  recurringBilling   GymRecurringBilling? @relation(fields: [recurringBillingId], references: [id], onDelete: SetNull)
+
   @@unique([billingAccountId, externalId])
   @@index([clientId, competenceYear, competenceMonth])
   @@index([status, dueDate])
+  @@index([billingAccountId, dueDate])
+  @@index([billingAccountId, paidAt])
+  @@index([recurringBillingId])
+}
+
+enum RecurringBillingStatus {
+  ACTIVE
+  ENDED
+}
+
+// A gym student's monthly fee terms (financial-health ADR-007), independent
+// of the access plan's validity. A hand-authored partial unique index allows
+// at most one ACTIVE row per client, and CHECK constraints bound dueDay to
+// 1..28 and amountCents to > 0 — see the migration SQL; Prisma's schema DSL
+// cannot express either.
+model GymRecurringBilling {
+  id           String                 @id @default(uuid(7))
+  clientId     String
+  client       Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  accessPlanId String
+  dueDay       Int
+  amountCents  Int
+  customAmount Boolean                @default(false)
+  status       RecurringBillingStatus @default(ACTIVE)
+  startedAt    DateTime               @default(now())
+  endedAt      DateTime?
+  invoices     Invoice[]
+
+  @@index([status])
+}
+
+enum PlatformPaymentStatus {
+  PENDING
+  OVERDUE
+  PAID
+  REFUNDED
+  CANCELED
+}
+
+// Local copy of Vitaflow's own subscription payments (financial-health
+// ADR-006), fed by the platform webhook, a backfill and a nightly sync.
+model PlatformPayment {
+  id                  String                @id @default(uuid(7))
+  asaasPaymentId      String                @unique
+  userId              String
+  user                Users                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asaasCustomerId     String
+  asaasSubscriptionId String?
+  productType         ProductType
+  productName         String
+  valueCents          Int
+  status              PlatformPaymentStatus
+  dueDate             DateTime              @db.Date
+  paidAt              DateTime?             @db.Date
+  paidAmountCents     Int?
+  updatedAt           DateTime              @updatedAt
+
+  @@index([dueDate])
+  @@index([paidAt])
+  @@index([status, dueDate])
+  @@index([userId, status])
+}
+
+enum BackofficeAccessResource {
+  FINANCIAL_DELINQUENT_LIST
+}
+
+// Audit trail of who opened a sensitive backoffice list (ADR-010).
+model BackofficeAccessLog {
+  id          String                   @id @default(uuid(7))
+  staffUserId String
+  tier        BackofficeTier
+  resource    BackofficeAccessResource
+  page        Int
+  createdAt   DateTime                 @default(now())
+
+  @@index([staffUserId, createdAt])
 }
 
 enum NotificationCategory {

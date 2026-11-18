@@ -22,7 +22,8 @@
     "test:staged": "jest --passWithNoTests",
     "prepare": "husky",
     "commit": "cz",
-    "exercises:import": "ts-node -r tsconfig-paths/register scripts/importExerciseLibrary/main.ts"
+    "exercises:import": "ts-node -r tsconfig-paths/register scripts/importExerciseLibrary/main.ts",
+    "platform-payments:backfill": "ts-node -r tsconfig-paths/register scripts/backfillPlatformPayments/main.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.18.0",

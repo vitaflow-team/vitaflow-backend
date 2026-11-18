@@ -12,7 +12,11 @@ function makeDeps() {
         .mockResolvedValue({ id: 'c1', academiaId: 'academia-1' }),
     },
     checkIns: {
-      register: jest.fn().mockResolvedValue({ id: 'checkin-1' }),
+      registerByReceptionist: jest.fn().mockResolvedValue({
+        id: 'checkin-1',
+        createdAt: new Date(),
+        notice: null,
+      }),
     },
   };
 }
@@ -63,17 +67,29 @@ describe('ReceptionistCheckInController', () => {
   });
 
   describe('checkIn', () => {
-    it('UT-002 registers a check-in with the staff id and RECEPTIONIST source', async () => {
+    it('UT-002 registers the check-in through the receptionist flow with the staff identity', async () => {
       const deps = makeDeps();
       const controller = makeController(deps);
 
       await controller.checkIn('c1', RECEPTIONIST);
 
-      expect(deps.checkIns.register).toHaveBeenCalledWith(
+      expect(deps.checkIns.registerByReceptionist).toHaveBeenCalledWith(
         'c1',
-        'RECEPTIONIST',
-        'staff-1',
+        RECEPTIONIST.user,
       );
+    });
+
+    it('returns the service answer untouched, notice included', async () => {
+      const deps = makeDeps();
+      const answer = {
+        id: 'checkin-9',
+        createdAt: new Date(),
+        notice: 'SEE_ADMINISTRATION',
+      };
+      deps.checkIns.registerByReceptionist.mockResolvedValue(answer);
+      const controller = makeController(deps);
+
+      expect(await controller.checkIn('c1', RECEPTIONIST)).toBe(answer);
     });
 
     it('UT-022 refuses a clientId belonging to a different academia, even via a direct request', async () => {
@@ -89,7 +105,7 @@ describe('ReceptionistCheckInController', () => {
       ).rejects.toMatchObject({
         code: 'student_not_found',
       });
-      expect(deps.checkIns.register).not.toHaveBeenCalled();
+      expect(deps.checkIns.registerByReceptionist).not.toHaveBeenCalled();
     });
 
     it('UT-024 refuses a private client (academiaId: null), even by direct id', async () => {

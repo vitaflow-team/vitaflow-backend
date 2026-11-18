@@ -16,12 +16,20 @@ import { ReceptionistAuthGuard } from '@/common/guards/receptionistAuth.guard';
 import { createValidationPipe } from '@/config/validationPipe';
 import { PrismaService } from '@/database/prisma.service';
 import { CheckInController } from '@/academia/checkin/checkin.controller';
+import { AccessPlanLinkService } from '@/academia/billing/accessPlanLink.service';
+import { GymRecurringBillingService } from '@/academia/billing/gymRecurringBilling.service';
 import { CheckInService } from '@/academia/checkin/checkin.service';
+import { CheckInNoticeService } from '@/academia/checkin/checkinNotice.service';
 import { ReceptionistCheckInController } from '@/academia/checkin/receptionistCheckin.controller';
 import { StudentAccessPlanController } from '@/academia/checkin/studentAccessPlan.controller';
 import { StudentAccessPlanService } from '@/academia/checkin/studentAccessPlan.service';
 import { EngajamentoController } from '@/academia/engajamento/engajamento.controller';
 import { EngajamentoService } from '@/academia/engajamento/engajamento.service';
+import { InvoicesService } from '@/billing/invoices/invoices.service';
+import { AcademiaRepository } from '@/repositories/academia/academia.repository';
+import { GymRecurringBillingRepository } from '@/repositories/academia/gymRecurringBilling.repository';
+import { BillingAccountRepository } from '@/repositories/billing/billingAccount.repository';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { AcademiaAccessPlanRepository } from '@/repositories/academia/academiaAccessPlan.repository';
 import { AcademiaStaffMemberRepository } from '@/repositories/academia/academiaStaffMember.repository';
 import { CheckInRepository } from '@/repositories/academia/checkIn.repository';
@@ -92,7 +100,17 @@ describe('Gym check-in integration', () => {
         StudentAccessPlanRepository,
         ChurnRiskEpisodeRepository,
         CheckInService,
+        CheckInNoticeService,
         StudentAccessPlanService,
+        AccessPlanLinkService,
+        GymRecurringBillingService,
+        GymRecurringBillingRepository,
+        AcademiaRepository,
+        BillingAccountRepository,
+        InvoicesRepository,
+        // Plain assignment never reaches the billing stack; the recurring
+        // billing flows are covered by gym-recurring-billing.e2e-spec.ts.
+        { provide: InvoicesService, useValue: {} },
         EngajamentoService,
         Clock,
         AuthGuard,

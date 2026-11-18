@@ -4,18 +4,23 @@ import {
   CurrentAccessPlan,
   StudentAccessPlanService,
 } from '@/academia/checkin/studentAccessPlan.service';
+import { brasiliaDateKey, dateOnlyKey } from '@/billing/shared/dates';
+import { InvoicesRepository } from '@/repositories/billing/invoices.repository';
 import { ClientsRepository } from '@/repositories/clients/clients.repository';
 import { Clock } from '@/scheduling/clock.service';
 import { Injectable } from '@nestjs/common';
 import {
   AccessPlanValidityType,
   Client,
+  Invoice,
+  InvoiceStatus,
   StudentAccessPlan,
 } from '@prisma/client';
 import {
   AcademiaMembershipEntity,
   ArchivedAccessPlanEntity,
   CurrentAccessPlanEntity,
+  GymFeeEntity,
 } from './academiaMirror.entity';
 
 // Mirrors PAINEL_ACTIVITY_LIMIT's precedent (role-management-dashboards
@@ -47,6 +52,23 @@ function remainingDisplayValue(
   return current.remaining === null ? null : Math.max(0, current.remaining);
 }
 
+// A fee as the student sees it: paid in full or by hand is PAID, an open fee
+// past its due date is OVERDUE whatever the stored status says.
+function toFeeEntity(invoice: Invoice, today: string): GymFeeEntity {
+  const dueDate = dateOnlyKey(invoice.dueDate);
+  const paid =
+    invoice.status === InvoiceStatus.PAID ||
+    invoice.status === InvoiceStatus.PAID_MANUALLY;
+  const status = paid ? 'PAID' : dueDate < today ? 'OVERDUE' : 'PENDING';
+  return {
+    id: invoice.id,
+    amountCents: invoice.amountCents,
+    dueDate,
+    status,
+    paymentUrl: paid ? null : invoice.paymentUrl,
+  };
+}
+
 function toArchivedEntity(row: ArchivedPlanRow): ArchivedAccessPlanEntity {
   return {
     id: row.id,
@@ -66,6 +88,7 @@ export class AcademiaMirrorService {
     private readonly planHistory: StudentAccessPlanRepository,
     private readonly catalog: AcademiaAccessPlanRepository,
     private readonly clock: Clock,
+    private readonly invoices: InvoicesRepository,
   ) {}
 
   async getMemberships(userId: string): Promise<AcademiaMembershipEntity[]> {
@@ -82,12 +105,14 @@ export class AcademiaMirrorService {
     now: Date,
   ): Promise<AcademiaMembershipEntity> {
     const academiaId = membership.academiaId as string;
-    const [current, history] = await Promise.all([
+    const today = brasiliaDateKey(now);
+    const [current, history, fees] = await Promise.all([
       this.currentPlan.currentForClient(membership.id, now),
       this.planHistory.findHistoryByClient(
         membership.id,
         ACADEMIA_PLAN_HISTORY_LIMIT,
       ),
+      this.invoices.findGymFeesByClient(membership.id, academiaId),
     ]);
 
     return {
@@ -95,6 +120,9 @@ export class AcademiaMirrorService {
       academiaName: membership.academia.name,
       currentPlan: await this.toCurrentPlanEntity(current, academiaId, now),
       history: history.map(toArchivedEntity),
+      fees: fees
+        .filter((fee) => fee.status !== InvoiceStatus.CANCELED)
+        .map((fee) => toFeeEntity(fee, today)),
     };
   }
 
