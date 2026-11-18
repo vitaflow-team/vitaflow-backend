@@ -28,6 +28,7 @@ import { FoodDiaryModule } from './food-diary/foodDiary.module';
 import { MailModule } from './mail/mail.module';
 import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PushModule } from './push/push.module';
 
 import { ProductsModule } from './product/product.module';
 import { ProfessionalDiscoveryModule } from './professional-discovery/professionalDiscovery.module';
@@ -58,6 +59,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     FoodDiaryModule,
     ProgressPhotosModule,
     NotificationsModule,
+    PushModule,
     // Registered before ProfessionalDiscoveryModule: its
     // GET /professionals/templates would otherwise be shadowed by
     // ProfessionalSearchController's unconstrained GET /professionals/:id,
